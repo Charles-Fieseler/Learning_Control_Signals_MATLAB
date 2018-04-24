@@ -64,6 +64,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         
     properties (Hidden=true, SetAccess=private)
         raw
+        dat
         original_sz
         dat_sz
         total_sz
@@ -79,10 +80,13 @@ classdef CElegansModel < SettingsImportableFromStruct
         S_sparse_raw
         L_sparse
         S_sparse
+        L_sparse_modes
+        
+        state_labels_ind
+        state_labels_key
     end
     
     properties (SetAccess=private)
-        dat
         dat_with_control
         dat_without_control
         
@@ -90,6 +94,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         user_control_matrix
         user_control_input
+        user_control_reconstruction
     end
     
     methods
@@ -236,11 +241,37 @@ classdef CElegansModel < SettingsImportableFromStruct
                 self.user_control_matrix, self.user_control_input);
             
             % [With manual control matrices]
-            self.AdaptiveDmdc_obj.plot_reconstruction(true, true);
+            self.user_control_reconstruction = ...
+                self.AdaptiveDmdc_obj.plot_reconstruction(true, true);
             title('Data reconstructed with user-defined control signal')
             
             % Reset AdaptiveDmdc object
             self.reset_AdaptiveDmdc_controller(A_old, dat_old);
+        end
+        
+        function plot_colored_data(self, plot_pca)
+            if ~exist('plot_pca','var')
+                plot_pca = false;
+            end
+            [self.L_sparse_modes,~,~,proj3d] = plotSVD(self.L_sparse,...
+                struct('PCA3d',plot_pca,'sigma',false));
+            plot_colored(proj3d,...
+                self.state_labels_ind(end-size(proj3d,2)+1:end),...
+                self.state_labels_key,'o');
+            title('Dynamics of the low-rank component (data)')
+        end
+        
+        function plot_colored_user_control(self)
+            % Plots user control data on top of colored original dataset
+            assert(~isempty(self.user_control_reconstruction),...
+                'No reconstructed data stored')
+            
+            self.plot_colored_data(false);
+            
+            modes_3d = self.L_sparse_modes(:,1:3);
+            x = 1:size(modes_3d,1);
+            proj_3d = (modes_3d.')*self.user_control_reconstruction(x,:);
+            plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), 'k*')
         end
     end
     
@@ -269,6 +300,8 @@ classdef CElegansModel < SettingsImportableFromStruct
         function import_from_struct(self, Zimmer_struct)
             warning('Assumes struct of Zimmer type')
             self.raw = Zimmer_struct.traces.';
+            self.state_labels_ind = Zimmer_struct.SevenStates;
+            self.state_labels_key = Zimmer_struct.SevenStatesKey;
             if isempty(fieldnames(self.AdaptiveDmdc_settings))
                 x_ind = 1:size(self.raw,1);
                 id_struct = struct('ID',{Zimmer_struct.ID},...

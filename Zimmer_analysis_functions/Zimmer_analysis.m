@@ -1805,7 +1805,7 @@ ad_obj.plot_reconstruction(true,true);
 
 % Try actuating just AVA
 my_model.reset_user_control();
-my_model.add_manual_control_signal(72, 1, 500:550, 0.5)
+my_model.add_manual_control_signal(45, 1, 500:550, 0.2)
 my_model.plot_reconstruction_user_control()
 title('Custom acuation of AVA')
 
