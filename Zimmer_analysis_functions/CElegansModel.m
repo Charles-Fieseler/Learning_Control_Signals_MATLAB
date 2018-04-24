@@ -230,6 +230,43 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.AdaptiveDmdc_obj.dat = dat_old;
         end
         
+        function [signals, min_signal_length] =...
+                get_control_signal_during_label(self, ...
+                which_label, num_preceding_frames)
+            if ~exist('num_preceding_frames','var')
+                num_preceding_frames = 1;
+            end
+            assert(ismember(which_label, self.state_labels_key),...
+                'Invalid state label')
+            
+            % Get indices for this behavior
+            which_label_num = ...
+                find(strcmp(self.state_labels_key, which_label));
+            transition_ind = diff(self.state_labels_ind==which_label_num);
+            start_ind = find(transition_ind==1) - num_preceding_frames;
+            end_ind = find(transition_ind==-1);
+            if self.state_labels_ind(end) == which_label_num
+                end_ind = [end_ind length(transition_ind)]; 
+            end
+            if self.state_labels_ind(1) == which_label_num
+                start_ind = [1 start_ind]; 
+            end
+            assert(length(start_ind)==length(end_ind))
+            n = length(start_ind);
+            
+            % Get the actual control signals for these indices
+            signals = cell(n, 1);
+            ctr = self.dat_sz(1)+1;
+            min_signal_length = 0;
+            for i = 1:n
+                these_ind = start_ind(i):end_ind(i);
+                signals{i} = self.dat_with_control(ctr:end,these_ind);
+                if length(these_ind) < min_signal_length || i == 1
+                    min_signal_length = length(these_ind);
+                end
+            end
+        end
+        
     end
     
     methods % Plotting
@@ -272,6 +309,31 @@ classdef CElegansModel < SettingsImportableFromStruct
             x = 1:size(modes_3d,1);
             proj_3d = (modes_3d.')*self.user_control_reconstruction(x,:);
             plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), 'k*')
+        end
+        
+        function plot_mean_transition_signals(self, ...
+                which_label, num_preceding_frames)
+            % Uses hand-labeled behavior
+            [signals, min_signal_length] = ...
+                self.get_control_signal_during_label(...
+                which_label, num_preceding_frames);
+            num_channels = self.total_sz - self.dat_sz;
+            signal_mat = zeros(...
+                num_channels(1), min_signal_length, length(signals));
+            for i = 1:length(signals)
+                signal_mat(:,:,i) = signals{i}(:, 1:min_signal_length);
+            end
+            
+            title_str1 = sprintf(...
+                'Control signals for label %s; %d frames preceding',...
+                which_label, num_preceding_frames);
+            title_str2 = sprintf(...
+                'Standard deviation for label %s; %d frames preceding',...
+                which_label, num_preceding_frames);
+            mean_signal = mean(signal_mat, 3);
+            plot_2imagesc_colorbar(...
+                mean_signal, std(signal_mat, [], 3), '1 2',...
+                title_str1, title_str2);
         end
     end
     
