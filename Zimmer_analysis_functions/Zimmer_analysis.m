@@ -414,18 +414,18 @@ to_save = false;
 %==========================================================================
 
 
-%% Test data for adaptive_dmdc
+%% Test data for AdaptiveDmdc
 % Saved from a previous run
 % filename = './dat_test/test_dat_noise0_1.mat';
 
 [ dat, tspan, dyn_mat, ctr_mat ] = ...
     generate_test_data_DMDc(struct('amp_trigger',2.0));
 
-ad_obj = adaptive_dmdc(real(dat).');
+ad_obj = AdaptiveDmdc(real(dat).');
 %==========================================================================
 
 
-%% Use adaptive_dmdc to get a control signal from real data
+%% Use AdaptiveDmdc to get a control signal from real data
 filename = 'C:\Users\charl\Documents\MATLAB\Collaborations/Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
 dat = importdata(filename);
 
@@ -433,7 +433,7 @@ X = dat.traces';
 sort_mode = 'DMD_error';
 options = struct('sort_mode',sort_mode,...
     'cutoff_multiplier', 1.5);
-ad_obj = adaptive_dmdc(X, options);
+ad_obj = AdaptiveDmdc(X, options);
 %==========================================================================
 
 
@@ -445,7 +445,7 @@ if ~exist('dat_patch_long','var')
 end
     
 opt = struct('to_plot_cutoff',false, 'to_plot_data', false);
-dat_patch_long.calc_adaptive_dmdc_all(opt);
+dat_patch_long.calc_AdaptiveDmdc_all(opt);
 dat_patch_long.plot_control_neurons(true);
 
 % Cluster them using kmeans
@@ -453,7 +453,7 @@ dat_patch_long.plot_control_neurons(true);
 %==========================================================================
 
 
-%% Demo of adaptive_dmdc with outlier detection
+%% Demo of AdaptiveDmdc with outlier detection
 filename = '../Collaborations/Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 dat5 = importdata(filename);
 
@@ -461,7 +461,7 @@ settings = struct('sort_mode','DMD_error_outliers',...
     'to_plot_data_and_outliers',true,...
     'to_print_error',true);
 [ u_indices, sep_error, original_error, error_mat ] = ...
-    adaptive_dmdc(dat5.traces.',settings);
+    AdaptiveDmdc(dat5.traces.',settings);
 %==========================================================================
 
 
@@ -475,7 +475,7 @@ end
 opt = struct('to_plot_cutoff',false, 'to_plot_data', false,...
     'to_plot_data_and_outliers',true,...
     'sort_mode','DMD_error_outliers');
-dat_patch_long.calc_adaptive_dmdc_all(opt, true);
+dat_patch_long.calc_AdaptiveDmdc_all(opt, true);
 dat_patch_long.plot_control_neurons(true);
 
 % Cluster them using kmeans
@@ -494,7 +494,7 @@ settings = struct('to_plot_cutoff',false,...
     'sort_mode','DMD_error_outliers',...
     'to_plot_data_and_outliers',true,...
     'to_print_error',true);
-ad_obj = adaptive_dmdc(dat5.traces.',settings);
+ad_obj = AdaptiveDmdc(dat5.traces.',settings);
 u_indices = ad_obj.u_indices;
 % sep_error
 % original_error
@@ -568,7 +568,7 @@ settings = struct('to_plot_cutoff',false,...
     'sort_mode','DMD_error_outliers',...
     'to_plot_data_and_outliers',true,...
     'to_print_error',true);
-ad_obj = adaptive_dmdc(dat5.traces.',settings);
+ad_obj = AdaptiveDmdc(dat5.traces.',settings);
 u_indices = ad_obj.u_indices;
 % sep_error
 % original_error
@@ -608,13 +608,13 @@ settings = struct('to_plot_cutoff',false,...
     'to_print_error',true);
 % Note: low rank of L will make the dynamic matrix only have that many
 % non-zero columns
-ad_obj_L_raw = adaptive_dmdc(L_raw.',settings);
+ad_obj_L_raw = AdaptiveDmdc(L_raw.',settings);
 u_indices_L_raw = ad_obj_L_raw.u_indices;
 % sep_error
 % original_error
 error_mat_L_raw = ad_obj_L_raw.error_mat;
 
-ad_obj_S_raw = adaptive_dmdc(S_raw.',settings);
+ad_obj_S_raw = AdaptiveDmdc(S_raw.',settings);
 u_indices_S_raw = ad_obj_S_raw.u_indices;
 % sep_error
 % original_error
@@ -630,7 +630,7 @@ dat_patch_long_2patch = patchDMD(filename, settings);
 
 opt = struct('to_plot_cutoff',false, 'to_plot_data', false,...
     'sort_mode','DMD_error_outliers');
-dat_patch_long_2patch.calc_adaptive_dmdc_all(opt);
+dat_patch_long_2patch.calc_AdaptiveDmdc_all(opt);
 dat_patch_long_2patch.plot_control_neurons(true);
 
 % Cluster them using kmeans
@@ -696,7 +696,7 @@ settings = struct('to_normalize_envelope', false,...
     'to_plot_data_and_outliers',true,...
     'to_print_error',true);
 
-ad_obj_aug = adaptive_dmdc(augmented_dat.',settings);
+ad_obj_aug = AdaptiveDmdc(augmented_dat.',settings);
 u_indices_aug = ad_obj_aug.u_indices;
 % sep_error
 % original_error
@@ -740,7 +740,7 @@ for control_shift = 1:max_shift
     augmented_dat = [this_dat ...
         [control_signal(control_shift+1:end,:); ...
         zeros(control_shift,size(control_signal,2))]];
-    ad_obj = adaptive_dmdc(augmented_dat.',settings);
+    ad_obj = AdaptiveDmdc(augmented_dat.',settings);
     u_indices_augment = ad_obj.u_indices;
     
     all_ctr_neurons(control_shift) = length(find(u_indices_augment));
@@ -802,7 +802,7 @@ settings = struct('to_normalize_envelope', true,...
     'to_plot_data_and_outliers',false,...
     'to_print_error',false);
 x = dat5.traces.';
-ad_obj = adaptive_dmdc(x,settings);
+ad_obj = AdaptiveDmdc(x,settings);
 A_original = ad_obj.A_original;
 % x = (L-mean(L,1))';
 kalman = dsp.KalmanFilter(...
@@ -847,7 +847,7 @@ settings = struct('to_normalize_envelope', false,...
     'sort_mode','DMD_error_outliers',...
     'to_plot_data_and_outliers',false,...
     'to_print_error',false);
-ad_obj = adaptive_dmdc(this_dat,settings);
+ad_obj = AdaptiveDmdc(this_dat,settings);
 
 % Redo, trying to reconstruct the entire original data set with just the
 % error matrix from the above run
@@ -862,7 +862,7 @@ settings = struct('to_normalize_envelope', false,...
     'min_number_outliers',ad_obj.u_len);
 augmented_dat = [this_dat(:,2:end);...
     ad_obj.error_mat(ad_obj.x_len+1:end,:)];
-ad_obj_augment = adaptive_dmdc(augmented_dat,settings);
+ad_obj_augment = AdaptiveDmdc(augmented_dat,settings);
 
 x = ad_obj_augment.dat;
 A_original = ad_obj_augment.A_original;
@@ -963,7 +963,7 @@ settings = struct('to_normalize_envelope', true,...
     'sort_mode','DMD_error_outliers',...
     'to_plot_data_and_outliers',false,...
     'to_print_error',false);
-ad_obj = adaptive_dmdc(dat5.traces.',settings);
+ad_obj = AdaptiveDmdc(dat5.traces.',settings);
 
 dat_approx_control = ad_obj.plot_reconstruction(true,true);
 ad_obj.plot_reconstruction(false);
@@ -985,7 +985,7 @@ settings = struct('to_normalize_envelope', false,...
     'min_number_outliers',ad_obj.u_len);
 for i=1:length(all_sort_modes)
     settings.sort_mode = all_sort_modes{i};
-    ad_obj_rand = adaptive_dmdc(dat5.traces.',settings);
+    ad_obj_rand = AdaptiveDmdc(dat5.traces.',settings);
     approx_rand = ad_obj_rand.plot_reconstruction(true,true);
     fprintf('(sort mode: %s)\n',all_sort_modes{i})
     er_print(approx_rand,ad_obj_rand.dat);
@@ -1007,7 +1007,7 @@ settings = struct('to_normalize_envelope', true,...
     'sort_mode','DMD_error_outliers',...
     'to_plot_data_and_outliers',false,...
     'to_print_error',false);
-ad_obj = adaptive_dmdc(this_dat,settings);
+ad_obj = AdaptiveDmdc(this_dat,settings);
 
 er = @(x,y)norm(x - y)/numel(x);
 er_print = @(x,y) ...
@@ -1031,7 +1031,7 @@ settings = struct('to_normalize_envelope', false,...
 
 augmented_dat = [this_dat(:,2:end);...
     ad_obj.error_mat(ad_obj.x_len+1:end,:)];
-ad_obj_augment = adaptive_dmdc(augmented_dat,settings);
+ad_obj_augment = AdaptiveDmdc(augmented_dat,settings);
 approx_rand = ad_obj_augment.plot_reconstruction(true,true);
 disp('(Full data)')
 er_print(approx_rand,ad_obj_augment.dat);
@@ -1064,7 +1064,7 @@ settings = struct('to_normalize_envelope', false,...
     'sort_mode','DMD_error_outliers',...
     'to_plot_data_and_outliers',false,...
     'to_print_error',false);
-ad_obj = adaptive_dmdc(this_dat,settings);
+ad_obj = AdaptiveDmdc(this_dat,settings);
 % shift the control signal up in time a bit
 max_shift = 20;
 all_errors = zeros(max_shift,1);
@@ -1081,7 +1081,7 @@ for control_shift = 1:max_shift
     augmented_dat = [this_dat; ...
         [control_signal(:,control_shift+1:end) ...
         zeros(size(control_signal,1),control_shift+1)]];
-    all_objects{control_shift} = adaptive_dmdc(augmented_dat,settings);
+    all_objects{control_shift} = AdaptiveDmdc(augmented_dat,settings);
     
     all_errors(control_shift) = ...
         all_objects{control_shift}.calc_reconstruction_error();
@@ -1105,7 +1105,7 @@ settings = struct('to_normalize_envelope', true,...
     'to_plot_data',true,...
     'to_plot_data_and_outliers',true,...
     'cutoff_multiplier',3.0);
-ad_obj = adaptive_dmdc(dat5.traces.',settings);
+ad_obj = AdaptiveDmdc(dat5.traces.',settings);
 ad_obj.plot_reconstruction(true,true);
 
 interesting_neurons = [33, 58, 70, 14];
@@ -1129,7 +1129,7 @@ settings = struct('to_normalize_envelope', true,...
     'sort_mode','DMD_error_outliers',...
     'to_plot_data_and_outliers',false,...
     'to_print_error',false);
-ad_obj = adaptive_dmdc(this_dat,settings);
+ad_obj = AdaptiveDmdc(this_dat,settings);
 % Redo, trying to reconstruct the entire original data set with just the
 % error matrix from the above run
 settings = struct('to_normalize_envelope', false,...
@@ -1144,7 +1144,7 @@ settings = struct('to_normalize_envelope', false,...
 
 augmented_dat = [this_dat(:,2:end);...
     ad_obj.error_mat(ad_obj.x_len+1:end,:)];
-ad_obj_augment = adaptive_dmdc(augmented_dat,settings);
+ad_obj_augment = AdaptiveDmdc(augmented_dat,settings);
 approx_augment = ad_obj_augment.plot_reconstruction(true,true);
 
 interesting_neurons = [1, 15, 58, 93, 42];
@@ -1168,7 +1168,7 @@ settings = struct('to_normalize_envelope', true,...
     'to_plot_data',true,...
     'sort_mode','DMD_error_outliers',...
     'to_plot_data_and_outliers',false);
-ad_obj_stable = adaptive_dmdc(this_dat,settings);
+ad_obj_stable = AdaptiveDmdc(this_dat,settings);
 
 dat_approx_control = ad_obj_stable.plot_reconstruction(true,true);
 
@@ -1179,7 +1179,7 @@ end
 %==========================================================================
 
 
-%% patchDMD on 2 patches with adaptive_dmdc
+%% patchDMD on 2 patches with AdaptiveDmdc
 filename = '../Collaborations/Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 settings = struct('use_2_patches',true,...
     'patch_settings',struct('windowSize',140,'windowStep',10));
@@ -1187,10 +1187,10 @@ dat_patch_long_2patch = patchDMD(filename, settings);
 
 opt = struct('to_plot_cutoff',false, 'to_plot_data', false,...
     'sort_mode','DMD_error_outliers');
-dat_patch_long_2patch.calc_adaptive_dmdc_all(opt);
+dat_patch_long_2patch.calc_AdaptiveDmdc_all(opt);
 
 for i = 1:length(dat_patch_long_2patch.patch_starts)
-    ad_obj = dat_patch_long_2patch.adaptive_dmdc_objects{i};
+    ad_obj = dat_patch_long_2patch.AdaptiveDmdc_objects{i};
     if ~isempty(ad_obj)
         dat_approx_control = ad_obj.plot_reconstruction(true,true);
     end
@@ -1199,7 +1199,7 @@ end
 
 
 %% Reconstruct ALL of data (and derivatives) with augmented control signals
-filename = '../Collaborations/Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 dat5 = importdata(filename);
 my_filter = @(dat,w) filter(ones(w,1)/w,1,dat);
 this_dat = my_filter(dat5.traces,3).';
@@ -1214,7 +1214,7 @@ settings = struct('to_normalize_envelope', true,...
     'to_plot_data_and_outliers',false,...
     'to_print_error',false,...
     'to_augment_error_signals',true);
-ad_obj_augment = adaptive_dmdc(this_dat,settings);
+ad_obj_augment = AdaptiveDmdc(this_dat,settings);
 
 interesting_neurons = [1, 15, 58, 98, 41];
 for i=interesting_neurons
@@ -1225,7 +1225,7 @@ end
 
 %% PLOT ME
 %% Use Robust PCA twice to separate into motor-, inter-, and sensory neurons
-filename = '../Collaborations/Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 dat5 = importdata(filename);
 my_filter = @(dat,w) filter(ones(w,1)/w,1,dat);
 this_dat = my_filter(dat5.traces,3).';
@@ -1297,7 +1297,7 @@ settings = struct('to_plot_cutoff',true,...
     'sort_mode','user_set',...
     'x_indices',x_ind,...
     'use_optdmd',false);
-ad_obj_augment2 = adaptive_dmdc(ad_dat, settings);
+ad_obj_augment2 = AdaptiveDmdc(ad_dat, settings);
 
 % Plot reconstructions
 dat_approx_control = ad_obj_augment2.plot_reconstruction(true,true);
@@ -1312,9 +1312,9 @@ end
 %% PLOT ME
 %% Use Robust PCA twice on reconstructed data (partial)
 %---------------------------------------------
-% Do first adaptive_dmdc (get reconstruction)
+% Do first AdaptiveDmdc (get reconstruction)
 %---------------------------------------------
-filename = '../../Collaborations/Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 dat5 = importdata(filename);
 my_filter = @(dat,w) filter(ones(w,1)/w,1,dat);
 this_dat = my_filter(dat5.traces,3).';
@@ -1333,7 +1333,7 @@ settings = struct('to_normalize_envelope', true,...
     'id_struct',id_struct,...
     'to_plot_data_and_outliers',true,...
     'to_print_error',false);
-ad_obj = adaptive_dmdc(this_dat,settings);
+ad_obj = AdaptiveDmdc(this_dat,settings);
 
 %---------------------------------------------
 % Plot the first pass reconstruction
@@ -1388,7 +1388,7 @@ settings = struct('to_plot_cutoff',true,...
     'to_print_error',false,...
     'sort_mode','user_set',...
     'x_indices',1:size(approx_dat,2));
-ad_obj_augment = adaptive_dmdc(ad_dat, settings);
+ad_obj_augment = AdaptiveDmdc(ad_dat, settings);
 
 % Plot reconstructions
 ad_obj_augment.plot_reconstruction(true,true);
@@ -1420,7 +1420,7 @@ for i = 1:length(cutoff_multipliers)
         'to_subtract_mean',true,...
         'to_plot_nothing',true,...
         'cutoff_multiplier',cutoff_multipliers(i));
-    ad_obj_thresholds = adaptive_dmdc(this_dat,settings);
+    ad_obj_thresholds = AdaptiveDmdc(this_dat,settings);
 
 %     ad_obj_stable.plot_reconstruction(true,true);
 %     all_errors(i) = ...
@@ -1744,7 +1744,7 @@ settings = struct('to_normalize_envelope', true,...
     'sort_mode','DMD_error_outliers',...
     'to_plot_data_and_outliers',false,...
     'id_struct',id_struct);
-ad_obj_stable = adaptive_dmdc(this_dat,settings);
+ad_obj_stable = AdaptiveDmdc(this_dat,settings);
 
 dat_approx_control = ad_obj_stable.plot_reconstruction(true,false);
 
@@ -1796,6 +1796,16 @@ compare_obj.plot_imagesc()
 %==========================================================================
 
 
+%% Use C elegans model object
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 
+my_model = CElegansModel(filename);
+ad_obj = my_model.AdaptiveDmdc_obj;
+ad_obj.plot_reconstruction(true,true);
+
+% Try actuating just AVA
+my_model.add_control_signal(72, 500:550, 0.5)
+my_model.plot_reconstruction_user_control()
+%==========================================================================
 
 
