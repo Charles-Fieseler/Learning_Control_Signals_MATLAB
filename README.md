@@ -10,12 +10,12 @@ Uses Calcium imaging data, which is not included.
 
 ### How do I get set up? ###
 
-# Without downloading anything else you can:
+#### Without downloading anything else you can:
 * View the doc folder, particularly the pdfs
 	* These go through the basic DMD analysis and how Robust PCA is used
 	* Hopefully will include some more recent results soon!
 
-# Requirements to run:
+#### Requirements to run:
 * Get my utility functions
 * Get data files from an amazing experimentalist
 * Praise the experimentalist
