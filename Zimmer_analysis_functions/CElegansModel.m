@@ -230,7 +230,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.AdaptiveDmdc_obj.dat = dat_old;
         end
         
-        function [signals, min_signal_length] =...
+        function [signals, signal_mat, mean_signal] =...
                 get_control_signal_during_label(self, ...
                 which_label, num_preceding_frames)
             if ~exist('num_preceding_frames','var')
@@ -265,6 +265,15 @@ classdef CElegansModel < SettingsImportableFromStruct
                     min_signal_length = length(these_ind);
                 end
             end
+            
+            % Get the mean
+            num_channels = self.total_sz - self.dat_sz;
+            signal_mat = zeros(...
+                num_channels(1), min_signal_length, length(signals));
+            for i = 1:length(signals)
+                signal_mat(:,:,i) = signals{i}(:, 1:min_signal_length);
+            end
+            mean_signal = mean(signal_mat, 3);
         end
         
     end
@@ -314,15 +323,9 @@ classdef CElegansModel < SettingsImportableFromStruct
         function plot_mean_transition_signals(self, ...
                 which_label, num_preceding_frames)
             % Uses hand-labeled behavior
-            [signals, min_signal_length] = ...
+            [~, signal_mat, mean_signal] = ...
                 self.get_control_signal_during_label(...
                 which_label, num_preceding_frames);
-            num_channels = self.total_sz - self.dat_sz;
-            signal_mat = zeros(...
-                num_channels(1), min_signal_length, length(signals));
-            for i = 1:length(signals)
-                signal_mat(:,:,i) = signals{i}(:, 1:min_signal_length);
-            end
             
             title_str1 = sprintf(...
                 'Control signals for label %s; %d frames preceding',...
@@ -330,7 +333,6 @@ classdef CElegansModel < SettingsImportableFromStruct
             title_str2 = sprintf(...
                 'Standard deviation for label %s; %d frames preceding',...
                 which_label, num_preceding_frames);
-            mean_signal = mean(signal_mat, 3);
             plot_2imagesc_colorbar(...
                 mean_signal, std(signal_mat, [], 3), '1 2',...
                 title_str1, title_str2);
