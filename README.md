@@ -7,6 +7,7 @@ Uses Calcium imaging data, which is not included.
 ### What is this repository for? ###
 
 * Uses Dynamic Mode Decomposition to analyze C elegans behavior
+* Note: the Zimmer_analysis folder is quite messy! Direct your attention to ./doc
 
 ### How do I get set up? ###
 
