@@ -1,23 +1,24 @@
 # README #
 
-Requires some of my utility functions, which can be found on GitHub:
-https://github.com/Charles-Fieseler/Charles_Matlab_toolbox.git
+Requires some of my utility functions and classes, which are not public.
 
 Uses Calcium imaging data, which is not included.
 
 ### What is this repository for? ###
 
-* Uses multi-resolution Dynamic Mode Decomposition to analyze C elegans behavior
-* 0.7
+* Uses Dynamic Mode Decomposition to analyze C elegans behavior
 
 ### How do I get set up? ###
 
+# Without downloading anything else you can:
+* View the doc folder, particularly the pdfs
+	* These go through the basic DMD analysis and how Robust PCA is used
+	* Hopefully will include some more recent results soon!
+
+# Requirements to run:
 * Get my utility functions
 * Get data files from an amazing experimentalist
 * Praise the experimentalist
-* Database configuration
-* How to run tests
-* Deployment instructions
 
 ### Contribution guidelines ###
 
