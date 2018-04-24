@@ -146,14 +146,18 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.user_control_matrix = [];
         end
         
-        function add_control_signal(self, ...
-                neuron_ind, signal_ind, signal_amps)
+        function add_manual_control_signal(self, ...
+                neuron_ind, neuron_amps, ...
+                signal_ind, signal_amps)
             % Adds a row to the control matrix (B) going from 
             assert(max(neuron_ind)<self.dat_sz(1),...
                 'Control target must be in the original data set')
             this_ctr_connectivity = ...
                 zeros(size(self.dat_without_control, 1), 1);
-            this_ctr_connectivity(neuron_ind) = 1;
+            if isscalar(neuron_amps)
+                neuron_amps = neuron_amps*ones(size(neuron_ind));
+            end
+            this_ctr_connectivity(neuron_ind) = neuron_amps;
             self.user_control_matrix = ...
                 [self.user_control_matrix ...
                 this_ctr_connectivity];
@@ -171,17 +175,25 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
         end
         
-        function plot_reconstruction_user_control(self)
-            % Uses manually set control signals
-            [A_old, dat_old] = ...
-                self.set_AdaptiveDmdc_controller(...
-                self.user_control_matrix, self.user_control_input);
+        function add_partial_original_control_signal(self, signal_ind)
+            % Adds some of the current control signals to the user control
+            % matrix
+            assert(max(signal_ind)<=self.total_sz(1) && ...
+                min(signal_ind)>self.original_sz(1),...
+                'Indices must be within the discovered control signal')
             
-            % [With manual control matrices]
-            self.AdaptiveDmdc_obj.plot_reconstruction(true,true);
+            num_neurons = self.original_sz(1);
+            A = self.AdaptiveDmdc_obj.A_separate(1:num_neurons,:);
+            u = self.AdaptiveDmdc_obj.dat;
+            for i = 1:length(signal_ind)
+                this_ind = signal_ind(i);
+                this_connectivity = abs(A(:,this_ind))>0;
+                this_amp = A(:,this_ind);
+                this_signal = u(this_ind,:);
+                self.add_manual_control_signal(...
+                    this_connectivity, this_amp, this_signal);
+            end
             
-            % Reset AdaptiveDmdc object
-            self.reset_AdaptiveDmdc_controller(A_old, dat_old);
         end
         
         function [A_old, dat_old] = set_AdaptiveDmdc_controller(self,...
@@ -213,6 +225,23 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.AdaptiveDmdc_obj.dat = dat_old;
         end
         
+    end
+    
+    methods % Plotting
+        
+        function plot_reconstruction_user_control(self)
+            % Uses manually set control signals
+            [A_old, dat_old] = ...
+                self.set_AdaptiveDmdc_controller(...
+                self.user_control_matrix, self.user_control_input);
+            
+            % [With manual control matrices]
+            self.AdaptiveDmdc_obj.plot_reconstruction(true, true);
+            title('Data reconstructed with user-defined control signal')
+            
+            % Reset AdaptiveDmdc object
+            self.reset_AdaptiveDmdc_controller(A_old, dat_old);
+        end
     end
     
     methods (Access=private)

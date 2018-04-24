@@ -1796,7 +1796,7 @@ compare_obj.plot_imagesc()
 %==========================================================================
 
 
-%% Use C elegans model object
+%% Use C elegans model object to explore custom actuations
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 
 my_model = CElegansModel(filename);
@@ -1804,8 +1804,22 @@ ad_obj = my_model.AdaptiveDmdc_obj;
 ad_obj.plot_reconstruction(true,true);
 
 % Try actuating just AVA
-my_model.add_control_signal(72, 500:550, 0.5)
+my_model.reset_user_control();
+my_model.add_manual_control_signal(72, 1, 500:550, 0.5)
 my_model.plot_reconstruction_user_control()
+title('Custom acuation of AVA')
+
+% Global signals only
+my_model.reset_user_control();
+my_model.add_partial_original_control_signal([260:262])
+my_model.plot_reconstruction_user_control()
+title('Global signals only')
+
+% Sparse signals only
+my_model.reset_user_control();
+my_model.add_partial_original_control_signal(130:(130+129))
+my_model.plot_reconstruction_user_control()
+title('Sparse signals only')
 %==========================================================================
 
 
