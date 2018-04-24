@@ -120,7 +120,7 @@ if isempty(fieldnames(adaptive_dmdc_settings))
         'x_indices',x_ind,...
         'dmd_mode','naive');
 end
-ad_obj_augment2 = adaptive_dmdc(ad_dat, adaptive_dmdc_settings);
+ad_obj_augment2 = AdaptiveDmdc(ad_dat, adaptive_dmdc_settings);
 
 % Plot reconstructions
 dat_approx_control = ad_obj_augment2.plot_reconstruction(true,true);
