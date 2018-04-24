@@ -1823,3 +1823,93 @@ title('Sparse signals only')
 %==========================================================================
 
 
+%% Use mean pre-transition control signals only
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+my_model = CElegansModel(filename);
+ad_obj = my_model.AdaptiveDmdc_obj;
+ad_obj.plot_reconstruction(true,true);
+
+my_model.reset_user_control();
+% Get the mean transition control signal
+which_label = 'FWD';
+[~, ~, control_signal_fwd] = my_model.get_control_signal_during_label(...
+    which_label, 1);
+which_label = 'REVSUS';
+[~, ~, control_signal_revsus] = my_model.get_control_signal_during_label(...
+    which_label, 1);
+% Add it to the model
+num_neurons = my_model.dat_sz(1);
+ctr_ind = (num_neurons+1):my_model.total_sz(1);
+control_signal_fwd = ...
+    [zeros(num_neurons, size(control_signal_fwd,2));...
+    control_signal_fwd];
+control_signal_fwd_long = repmat(control_signal_fwd, [1,20]);
+control_signal_revsus = ...
+    [zeros(num_neurons, size(control_signal_revsus,2));...
+    control_signal_revsus];
+control_signal_revsus_long = repmat(control_signal_revsus, [1,20]);
+% Add several instances of the control signal
+t_start = 500;
+padding = zeros(size(control_signal_fwd,1), 100);
+this_signal = ...
+    [control_signal_fwd_long, padding,...
+    control_signal_revsus_long, padding];
+my_model.add_partial_original_control_signal(ctr_ind,...
+    this_signal, t_start)
+
+my_model.plot_reconstruction_user_control()
+title('Controller using FWD transition signal')
+my_model.plot_colored_user_control()
+my_model.reset_user_control()
+
+%==========================================================================
+
+
+%% Look at all of the behaviors in sequence
+my_model.reset_user_control();
+% Get the mean transition control signal
+[~, ~, control_signal_fwd] = my_model.get_control_signal_during_label(...
+    'FWD', 1);
+[~, ~, control_signal_revsus] = my_model.get_control_signal_during_label(...
+    'REVSUS', 1);
+[~, ~, control_signal_dt] = my_model.get_control_signal_during_label(...
+    'DT', 1);
+[~, ~, control_signal_vt] = my_model.get_control_signal_during_label(...
+    'VT', 1);
+[~, ~, control_signal_slow] = my_model.get_control_signal_during_label(...
+    'SLOW', 1);
+% Add it to the model
+num_neurons = my_model.dat_sz(1);
+num_channels = size(control_signal_fwd,2);
+ctr_ind = (num_neurons+1):my_model.total_sz(1);
+f = @(x) repmat(x, [1, 30]);
+pad_func = @(x) [zeros(num_neurons, size(x,2)); x];
+control_signal_fwd = f( pad_func( control_signal_fwd ));
+control_signal_revsus = f( pad_func( control_signal_revsus ));
+control_signal_slow = f( pad_func( control_signal_slow ));
+control_signal_vt = f( pad_func( control_signal_vt ));
+control_signal_dt = f( pad_func( control_signal_dt ));
+% Add several instances of the control signal
+t_start = 500;
+padding = zeros(size(control_signal_fwd,1), 100);
+this_signal = ...
+    [control_signal_fwd, padding,...
+    control_signal_revsus, padding,...
+    control_signal_slow, padding,...
+    control_signal_vt, padding,...
+    control_signal_dt, padding];
+my_model.add_partial_original_control_signal(ctr_ind,...
+    this_signal, t_start)
+
+my_model.plot_reconstruction_user_control()
+title('Controller using all transition signal')
+my_model.plot_colored_user_control()
+my_model.reset_user_control()
+%==========================================================================
+
+
+
+
+
+

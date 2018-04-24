@@ -69,6 +69,9 @@ classdef CElegansModel < SettingsImportableFromStruct
         dat_sz
         total_sz
         
+        A_old
+        dat_old
+        
         % Robust PCA matrices
         L_global_raw
         S_global_raw
@@ -83,6 +86,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         L_sparse_modes
         
         state_labels_ind
+        state_labels_ind_raw
         state_labels_key
     end
     
@@ -180,32 +184,50 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
         end
         
-        function add_partial_original_control_signal(self, signal_ind)
+        function add_partial_original_control_signal(self,...
+                signal_ind, custom_signal, signal_start)
             % Adds some of the current control signals to the user control
             % matrix
-            assert(max(signal_ind)<=self.total_sz(1) && ...
-                min(signal_ind)>self.original_sz(1),...
+            num_neurons = self.original_sz(1);
+            if ~exist('custom_signal','var')
+                custom_signal = self.AdaptiveDmdc_obj.dat;
+            elseif size(custom_signal,1) <= num_neurons
+                % Then it doesn't include the original data, which is the
+                % format we're looking for
+                custom_signal = ...
+                    [zeros(num_neurons, size(custom_signal,2));...
+                    custom_signal];
+            end
+            if ~exist('signal_start','var')
+                assert(size(custom_signal,2) == self.total_sz(2),...
+                    'Custom signal must be defined for the entire tspan')
+            else
+                tmp = zeros(size(custom_signal, 1), self.total_sz(2));
+                signal_end = signal_start+size(custom_signal, 2)-1;
+                tmp(:,signal_start:signal_end) = custom_signal;
+                custom_signal = tmp;
+            end
+            assert(max(signal_ind) <= self.total_sz(1) && ...
+                min(signal_ind) > num_neurons,...
                 'Indices must be within the discovered control signal')
             
-            num_neurons = self.original_sz(1);
             A = self.AdaptiveDmdc_obj.A_separate(1:num_neurons,:);
-            u = self.AdaptiveDmdc_obj.dat;
             for i = 1:length(signal_ind)
                 this_ind = signal_ind(i);
                 this_connectivity = abs(A(:,this_ind))>0;
                 this_amp = A(:,this_ind);
-                this_signal = u(this_ind,:);
+                this_signal = custom_signal(this_ind,:);
                 self.add_manual_control_signal(...
                     this_connectivity, this_amp, this_signal);
             end
             
         end
         
-        function [A_old, dat_old] = set_AdaptiveDmdc_controller(self,...
+        function set_AdaptiveDmdc_controller(self,...
                 new_control_matrix, new_control_input)
             % Save original matrices data
-            A_old = self.AdaptiveDmdc_obj.A_separate;
-            dat_old = self.AdaptiveDmdc_obj.dat;
+            self.A_old = self.AdaptiveDmdc_obj.A_separate;
+            self.dat_old = self.AdaptiveDmdc_obj.dat;
             % Get new matrices and data
             num_real_neurons = size(self.dat_without_control,1);
             num_controllers = size(new_control_matrix,2);
@@ -214,7 +236,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             new_control_matrix = [new_control_matrix;...
                 zeros(num_controllers)];
             A_new = ...
-                [A_old(1:num_neurons_and_controllers,1:num_real_neurons), ...
+                [self.A_old(1:num_neurons_and_controllers,1:num_real_neurons), ...
                 new_control_matrix];
             dat_new = ...
                 [self.dat_without_control;...
@@ -224,15 +246,15 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.AdaptiveDmdc_obj.dat = dat_new;
         end
         
-        function reset_AdaptiveDmdc_controller(self, A_old, dat_old)
+        function reset_AdaptiveDmdc_controller(self)
             % Update the object properties
-            self.AdaptiveDmdc_obj.A_separate = A_old;
-            self.AdaptiveDmdc_obj.dat = dat_old;
+            self.AdaptiveDmdc_obj.A_separate = self.A_old;
+            self.AdaptiveDmdc_obj.dat = self.dat_old;
         end
         
         function [signals, signal_mat, mean_signal] =...
                 get_control_signal_during_label(self, ...
-                which_label, num_preceding_frames)
+                    which_label, num_preceding_frames)
             if ~exist('num_preceding_frames','var')
                 num_preceding_frames = 1;
             end
@@ -243,7 +265,8 @@ classdef CElegansModel < SettingsImportableFromStruct
             which_label_num = ...
                 find(strcmp(self.state_labels_key, which_label));
             transition_ind = diff(self.state_labels_ind==which_label_num);
-            start_ind = find(transition_ind==1) - num_preceding_frames;
+            start_ind = max(...
+                find(transition_ind==1) - num_preceding_frames, 1);
             end_ind = find(transition_ind==-1);
             if self.state_labels_ind(end) == which_label_num
                 end_ind = [end_ind length(transition_ind)]; 
@@ -282,8 +305,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function plot_reconstruction_user_control(self)
             % Uses manually set control signals
-            [A_old, dat_old] = ...
-                self.set_AdaptiveDmdc_controller(...
+            self.set_AdaptiveDmdc_controller(...
                 self.user_control_matrix, self.user_control_input);
             
             % [With manual control matrices]
@@ -292,18 +314,21 @@ classdef CElegansModel < SettingsImportableFromStruct
             title('Data reconstructed with user-defined control signal')
             
             % Reset AdaptiveDmdc object
-            self.reset_AdaptiveDmdc_controller(A_old, dat_old);
+            self.reset_AdaptiveDmdc_controller();
         end
         
-        function plot_colored_data(self, plot_pca)
+        function plot_colored_data(self, plot_pca, plot_opt)
             if ~exist('plot_pca','var')
                 plot_pca = false;
+            end
+            if ~exist('plot_opt','var')
+                plot_opt = 'o';
             end
             [self.L_sparse_modes,~,~,proj3d] = plotSVD(self.L_sparse,...
                 struct('PCA3d',plot_pca,'sigma',false));
             plot_colored(proj3d,...
-                self.state_labels_ind(end-size(proj3d,2)+1:end),...
-                self.state_labels_key,'o');
+                self.state_labels_ind_raw(end-size(proj3d,2)+1:end),...
+                self.state_labels_key, plot_opt);
             title('Dynamics of the low-rank component (data)')
         end
         
@@ -312,7 +337,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             assert(~isempty(self.user_control_reconstruction),...
                 'No reconstructed data stored')
             
-            self.plot_colored_data(false);
+            self.plot_colored_data(false, '.');
             
             modes_3d = self.L_sparse_modes(:,1:3);
             x = 1:size(modes_3d,1);
@@ -364,7 +389,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         function import_from_struct(self, Zimmer_struct)
             warning('Assumes struct of Zimmer type')
             self.raw = Zimmer_struct.traces.';
-            self.state_labels_ind = Zimmer_struct.SevenStates;
+            self.state_labels_ind_raw = Zimmer_struct.SevenStates;
             self.state_labels_key = Zimmer_struct.SevenStatesKey;
             if isempty(fieldnames(self.AdaptiveDmdc_settings))
                 x_ind = 1:size(self.raw,1);
@@ -479,6 +504,8 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function postprocess(self)
             self.total_sz = size(self.dat_with_control);
+            self.state_labels_ind = ...
+                self.state_labels_ind_raw(end-self.total_sz(2)+1:end);
         end
     end
     
