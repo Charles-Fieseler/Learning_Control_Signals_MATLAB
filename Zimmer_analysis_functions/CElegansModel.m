@@ -57,6 +57,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         filter_window_global
         augment_data
         to_subtract_mean
+        dmd_mode
         AdaptiveDmdc_settings
         % Data importing
         use_deriv
@@ -95,9 +96,10 @@ classdef CElegansModel < SettingsImportableFromStruct
         dat_without_control
         
         AdaptiveDmdc_obj
-        
+        % Changing the control signals and/or matrix
         user_control_matrix
         user_control_input
+        user_neuron_ablation
         user_control_reconstruction
     end
     
@@ -153,6 +155,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         function reset_user_control(self)
             self.user_control_input = [];
             self.user_control_matrix = [];
+            self.user_neuron_ablation = [];
         end
         
         function add_manual_control_signal(self, ...
@@ -188,6 +191,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 signal_ind, custom_signal, signal_start)
             % Adds some of the current control signals to the user control
             % matrix
+            self.user_control_reconstruction = [];
             num_neurons = self.original_sz(1);
             if ~exist('custom_signal','var')
                 custom_signal = self.AdaptiveDmdc_obj.dat;
@@ -223,8 +227,16 @@ classdef CElegansModel < SettingsImportableFromStruct
             
         end
         
-        function set_AdaptiveDmdc_controller(self,...
-                new_control_matrix, new_control_input)
+        function ablate_neuron(self, neuron_ind)
+            % "Ablates" a neuron by setting all connections to 0
+            self.user_neuron_ablation = neuron_ind;
+        end
+        
+        function set_AdaptiveDmdc_controller(self)
+            % These are set manually in other functions
+            new_control_matrix = self.user_control_matrix;
+            new_control_input = self.user_control_input;
+            ablated_neurons = self.user_neuron_ablation;
             % Save original matrices data
             self.A_old = self.AdaptiveDmdc_obj.A_separate;
             self.dat_old = self.AdaptiveDmdc_obj.dat;
@@ -241,6 +253,10 @@ classdef CElegansModel < SettingsImportableFromStruct
             dat_new = ...
                 [self.dat_without_control;...
                 new_control_input];
+%             ctrb(self.A_old(1:num_real_neurons,1:num_real_neurons), ...
+%                 new_control_matrix(1:num_real_neurons,:));
+            % Ablate neurons
+            A_new(ablated_neurons, ablated_neurons) = 0;
             % Update the object properties
             self.AdaptiveDmdc_obj.A_separate = A_new;
             self.AdaptiveDmdc_obj.dat = dat_new;
@@ -305,8 +321,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function plot_reconstruction_user_control(self)
             % Uses manually set control signals
-            self.set_AdaptiveDmdc_controller(...
-                self.user_control_matrix, self.user_control_input);
+            self.set_AdaptiveDmdc_controller();
             
             % [With manual control matrices]
             self.user_control_reconstruction = ...
@@ -378,6 +393,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'AdaptiveDmdc_settings', struct(),...
                 'augment_data', 0,...
                 'to_subtract_mean',false,...
+                'dmd_mode', 'naive',...
                 ...% Data importing
                 'use_deriv', false);
             for key = fieldnames(defaults).'
@@ -401,7 +417,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                     'id_struct',id_struct,...
                     'sort_mode','user_set',...
                     'x_indices',x_ind,...
-                    'dmd_mode','naive');
+                    'dmd_mode',self.dmd_mode);
             end
         end
         

@@ -1909,7 +1909,142 @@ my_model.reset_user_control()
 %==========================================================================
 
 
+%% "ablate" various neurons (the sparse control signal part)
+my_model.reset_user_control();
 
+num_neurons = my_model.dat_sz(1);
+% ctr_ind = (num_neurons+1):my_model.total_sz(1);
+% No global modes
+ctr_ind = (num_neurons+1):(2*num_neurons);
+
+% No ablations, but no global modes
+my_model.add_partial_original_control_signal(ctr_ind)
+my_model.plot_reconstruction_user_control()
+my_model.plot_colored_user_control()
+title('No global modes')
+my_model.reset_user_control()
+
+% First do AVA
+neurons_to_ablate = [45 46];
+ctr_ind_no_AVA = ctr_ind;
+ctr_ind_no_AVA(neurons_to_ablate) = [];
+
+my_model.add_partial_original_control_signal(ctr_ind_no_AVA)
+my_model.plot_reconstruction_user_control()
+my_model.plot_colored_user_control()
+title('AVA ablated')
+my_model.reset_user_control()
+
+% Next do AVB
+neurons_to_ablate = [72 84];
+ctr_ind_no_AVB = ctr_ind;
+ctr_ind_no_AVB(neurons_to_ablate) = [];
+
+my_model.add_partial_original_control_signal(ctr_ind_no_AVB)
+my_model.plot_reconstruction_user_control()
+my_model.plot_colored_user_control()
+title('AVB ablated')
+my_model.reset_user_control()
+
+% Next ablate AVB, but with the global modes included
+neurons_to_ablate = [72 84];
+ctr_ind_no_AVB = (num_neurons+1):my_model.total_sz(1);
+ctr_ind_no_AVB(neurons_to_ablate) = [];
+
+my_model.add_partial_original_control_signal(ctr_ind_no_AVB)
+my_model.plot_reconstruction_user_control()
+my_model.plot_colored_user_control()
+title('AVB ablated; includes global modes')
+my_model.reset_user_control()
+
+% Remove the neurons important in the transition into FWD... note that
+% these do not really have clear interpretability!
+[~, ~, control_signal_fwd] = my_model.get_control_signal_during_label(...
+    'FWD', 1);
+tol = 0.001;
+neurons_to_ablate = find(abs(mean(control_signal_fwd,2))>tol);
+ctr_ind_no_FWD = (num_neurons+1):my_model.total_sz(1);
+ctr_ind_no_FWD(neurons_to_ablate) = [];
+
+my_model.add_partial_original_control_signal(ctr_ind_no_FWD)
+my_model.plot_reconstruction_user_control()
+my_model.plot_colored_user_control()
+title('FWD transition neurons ablated')
+my_model.reset_user_control()
+
+%==========================================================================
+
+
+%% ablate various neurons (control signal and neuron connectivity)
+my_model.reset_user_control();
+
+num_neurons = my_model.dat_sz(1);
+ctr_ind = (num_neurons+1):my_model.total_sz(1);
+% No global modes
+% ctr_ind = (num_neurons+1):(2*num_neurons);
+
+% No ablations, but no global modes
+my_model.add_partial_original_control_signal(ctr_ind)
+my_model.plot_reconstruction_user_control()
+my_model.plot_colored_user_control()
+title('No global modes')
+my_model.reset_user_control()
+
+% First do AVA
+neurons_to_ablate = [45 46];
+ctr_ind_no_AVA = ctr_ind;
+ctr_ind_no_AVA(neurons_to_ablate) = [];
+
+my_model.add_partial_original_control_signal(ctr_ind_no_AVA)
+my_model.ablate_neuron(neurons_to_ablate);
+
+my_model.plot_reconstruction_user_control()
+my_model.plot_colored_user_control()
+title('AVA ablated')
+my_model.reset_user_control()
+
+% Next do AVB
+neurons_to_ablate = [72 84];
+ctr_ind_no_AVB = ctr_ind;
+ctr_ind_no_AVB(neurons_to_ablate) = [];
+
+my_model.add_partial_original_control_signal(ctr_ind_no_AVB)
+my_model.ablate_neuron(neurons_to_ablate);
+
+my_model.plot_reconstruction_user_control()
+my_model.plot_colored_user_control()
+title('AVB ablated')
+my_model.reset_user_control()
+
+% Remove the neurons important in the transition into FWD... note that
+% these do not really have clear interpretability!
+[~, ~, control_signal_fwd] = my_model.get_control_signal_during_label(...
+    'FWD', 1);
+tol = 0.0683;
+neurons_to_ablate = find(abs(mean(control_signal_fwd,2))>tol);
+ctr_ind_no_FWD = (num_neurons+1):my_model.total_sz(1);
+ctr_ind_no_FWD(neurons_to_ablate) = [];
+
+my_model.add_partial_original_control_signal(ctr_ind_no_FWD)
+my_model.ablate_neuron(neurons_to_ablate);
+
+my_model.plot_reconstruction_user_control()
+my_model.plot_colored_user_control()
+title('FWD transition neurons ablated')
+my_model.reset_user_control()
+
+%==========================================================================
+
+
+%% Use CElegansModel with a sparsified matrix
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+settings = struct('dmd_mode','sparse');
+my_model = CElegansModel(filename, settings);
+ad_obj = my_model.AdaptiveDmdc_obj;
+ad_obj.plot_reconstruction(true,true);
+
+%==========================================================================
 
 
 
