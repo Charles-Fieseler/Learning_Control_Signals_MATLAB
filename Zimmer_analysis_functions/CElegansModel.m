@@ -61,10 +61,12 @@ classdef CElegansModel < SettingsImportableFromStruct
         AdaptiveDmdc_settings
         % Data importing
         use_deriv
+        to_normalize_deriv
     end
         
     properties (Hidden=true, SetAccess=private)
         raw
+        raw_deriv
         dat
         original_sz
         dat_sz
@@ -396,7 +398,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'to_subtract_mean',false,...
                 'dmd_mode', 'naive',...
                 ...% Data importing
-                'use_deriv', false);
+                'use_deriv', false,...
+                'to_normalize_deriv', false);
             for key = fieldnames(defaults).'
                 k = key{1};
                 self.(k) = defaults.(k);
@@ -406,10 +409,17 @@ classdef CElegansModel < SettingsImportableFromStruct
         function import_from_struct(self, Zimmer_struct)
             warning('Assumes struct of Zimmer type')
             self.raw = Zimmer_struct.traces.';
+            if self.use_deriv
+                self.raw_deriv = Zimmer_struct.tracesDif.';
+            end
             self.state_labels_ind_raw = Zimmer_struct.SevenStates;
             self.state_labels_key = Zimmer_struct.SevenStatesKey;
             if isempty(fieldnames(self.AdaptiveDmdc_settings))
-                x_ind = 1:size(self.raw,1);
+                if ~self.use_deriv
+                    x_ind = 1:size(self.raw,1);
+                else
+                    x_ind = 1:(2*size(self.raw,1));
+                end
                 id_struct = struct('ID',{Zimmer_struct.ID},...
                     'ID2',{Zimmer_struct.ID2},'ID3',{Zimmer_struct.ID3});
                 self.AdaptiveDmdc_settings =...
@@ -426,6 +436,9 @@ classdef CElegansModel < SettingsImportableFromStruct
         function preprocess(self)
             if self.verbose
                 disp('Preprocessing...')
+            end
+            if self.use_deriv
+                self.raw = self.preprocess_deriv();
             end
             self.dat_sz = size(self.raw);
             
@@ -458,6 +471,17 @@ classdef CElegansModel < SettingsImportableFromStruct
                 self.dat = ...
                     self.flat_filter(self.dat.',self.filter_window_dat).';
             end
+        end
+        
+        function new_raw = preprocess_deriv(self)
+            % Aligns and optionally normalizes the derivative signal
+            deriv = self.raw_deriv;
+            if self.to_normalize_deriv
+                deriv = deriv .* (var(self.raw,[],2) ./ var(deriv,[],2));
+            end
+            
+            % Derivative is one frame short, so throw out the last frame
+            new_raw = [self.raw(:,1:end-1); deriv];
         end
         
         function calc_all_control_signals(self)

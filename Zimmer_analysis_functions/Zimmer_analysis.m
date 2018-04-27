@@ -2098,6 +2098,17 @@ my_model.reset_user_control()
 %==========================================================================
 
 
+%% Analyze data and normalized derivatives
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 
+settings = struct('use_deriv',true,'to_normalize_deriv',true);
+my_model = CElegansModel(filename, settings);
+ad_obj = my_model.AdaptiveDmdc_obj;
+ad_obj.plot_reconstruction(true,true);
 
+interesting_neurons = [84, 45, 58, 46, 15, 174, 167];
+for i=interesting_neurons
+    ad_obj.plot_reconstruction(true,false,true,i);
+end
+%==========================================================================
 
