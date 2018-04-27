@@ -195,12 +195,13 @@ classdef CElegansModel < SettingsImportableFromStruct
             num_neurons = self.original_sz(1);
             if ~exist('custom_signal','var')
                 custom_signal = self.AdaptiveDmdc_obj.dat;
-            elseif size(custom_signal,1) <= num_neurons
+            elseif size(custom_signal,1) < max(signal_ind)
                 % Then it doesn't include the original data, which is the
                 % format we're looking for
-                custom_signal = ...
-                    [zeros(num_neurons, size(custom_signal,2));...
-                    custom_signal];
+                tmp = zeros(max(signal_ind),...
+                    size(custom_signal,2));
+                tmp(signal_ind,:) = custom_signal;
+                custom_signal = tmp;
             end
             if ~exist('signal_start','var')
                 assert(size(custom_signal,2) == self.total_sz(2),...

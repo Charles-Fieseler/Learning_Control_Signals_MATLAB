@@ -2016,6 +2016,19 @@ my_model.plot_colored_user_control()
 title('AVB ablated')
 my_model.reset_user_control()
 
+% Do SMBD and an unknown couple
+neurons_to_ablate = [90 113];% 64 121];
+ctr_ind_no_AVB = ctr_ind;
+ctr_ind_no_AVB(neurons_to_ablate) = [];
+
+my_model.add_partial_original_control_signal(ctr_ind_no_AVB)
+my_model.ablate_neuron(neurons_to_ablate);
+
+my_model.plot_reconstruction_user_control()
+my_model.plot_colored_user_control()
+title('SMBD ablated')
+my_model.reset_user_control()
+
 % Remove the neurons important in the transition into FWD... note that
 % these do not really have clear interpretability!
 [~, ~, control_signal_fwd] = my_model.get_control_signal_during_label(...
@@ -2045,6 +2058,46 @@ ad_obj = my_model.AdaptiveDmdc_obj;
 ad_obj.plot_reconstruction(true,true);
 
 %==========================================================================
+
+
+%% Look at just the global modes or sparse signals
+% All global
+my_model.add_partial_original_control_signal(130:133)
+% my_model.ablate_neuron(neurons_to_ablate);
+
+my_model.plot_reconstruction_user_control()
+my_model.plot_colored_user_control()
+title('Global modes 130:133')
+my_model.reset_user_control()
+
+% All global, but with a custom signal
+ctr_ind = 130:130;
+custom_signal = 4*ones(length(ctr_ind),200);
+t_start = 500;
+my_model.add_partial_original_control_signal(ctr_ind,...
+    custom_signal, t_start)
+% my_model.ablate_neuron(neurons_to_ablate);
+
+my_model.plot_reconstruction_user_control()
+my_model.plot_colored_user_control()
+title('Global modes 130:133')
+my_model.reset_user_control()
+
+% All sparse
+num_neurons = my_model.dat_sz(1);
+% ctr_ind = (num_neurons+1):my_model.total_sz(1);
+% No global modes
+ctr_ind = (num_neurons+1):(2*num_neurons);
+my_model.add_partial_original_control_signal(ctr_ind)
+% my_model.ablate_neuron(neurons_to_ablate);
+
+my_model.plot_reconstruction_user_control()
+my_model.plot_colored_user_control()
+title('Only sparse signals')
+my_model.reset_user_control()
+%==========================================================================
+
+
 
 
 
