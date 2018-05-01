@@ -61,6 +61,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         AdaptiveDmdc_settings
         % Data importing
         use_deriv
+        use_only_deriv
         to_normalize_deriv
     end
         
@@ -363,6 +364,25 @@ classdef CElegansModel < SettingsImportableFromStruct
             plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), 'k*')
         end
         
+        function plot_fixed_point(self)
+            % Plots the fixed point on top of colored original dataset
+            self.plot_colored_data(false, '.');
+            
+            % Get the dynamics and control matrices, and the control signal
+            ad_obj = self.AdaptiveDmdc_obj;
+            x_dat = 1:ad_obj.x_len;
+            x_ctr = (ad_obj.x_len+1):self.total_sz(1);
+            A = ad_obj.A_original(x_dat, x_dat);
+            B = ad_obj.A_original(x_dat, x_ctr);
+            u = self.dat_with_control(x_ctr, :);
+            % Reconstruct the attractor and project it into the same space
+            attractor_reconstruction = (A\B)*u;
+            
+            modes_3d = self.L_sparse_modes(:,1:3);
+            proj_3d = (modes_3d.')*attractor_reconstruction;
+            plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), 'k*')
+        end
+        
         function plot_mean_transition_signals(self, ...
                 which_label, num_preceding_frames)
             % Uses hand-labeled behavior
@@ -399,6 +419,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'dmd_mode', 'naive',...
                 ...% Data importing
                 'use_deriv', false,...
+                'use_only_deriv', false,...
                 'to_normalize_deriv', false);
             for key = fieldnames(defaults).'
                 k = key{1};
@@ -409,7 +430,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         function import_from_struct(self, Zimmer_struct)
             warning('Assumes struct of Zimmer type')
             self.raw = Zimmer_struct.traces.';
-            if self.use_deriv
+            if self.use_deriv || self.use_only_deriv
                 self.raw_deriv = Zimmer_struct.tracesDif.';
             end
             self.state_labels_ind_raw = Zimmer_struct.SevenStates;
@@ -437,7 +458,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             if self.verbose
                 disp('Preprocessing...')
             end
-            if self.use_deriv
+            if self.use_deriv || self.use_only_deriv
                 self.raw = self.preprocess_deriv();
             end
             self.dat_sz = size(self.raw);
@@ -477,11 +498,15 @@ classdef CElegansModel < SettingsImportableFromStruct
             % Aligns and optionally normalizes the derivative signal
             deriv = self.raw_deriv;
             if self.to_normalize_deriv
-                deriv = deriv .* (var(self.raw,[],2) ./ var(deriv,[],2));
+                deriv = deriv .* (std(self.raw,[],2) ./ std(deriv,[],2));
             end
             
             % Derivative is one frame short, so throw out the last frame
-            new_raw = [self.raw(:,1:end-1); deriv];
+            if ~self.use_only_deriv
+                new_raw = [self.raw(:,1:end-1); deriv];
+            else
+                new_raw = deriv;
+            end
         end
         
         function calc_all_control_signals(self)

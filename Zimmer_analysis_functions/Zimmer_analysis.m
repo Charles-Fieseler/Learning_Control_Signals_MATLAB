@@ -2061,6 +2061,9 @@ ad_obj.plot_reconstruction(true,true);
 
 
 %% Look at just the global modes or sparse signals
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+my_model = CElegansModel(filename);
+
 % All global
 my_model.add_partial_original_control_signal(130:133)
 % my_model.ablate_neuron(neurons_to_ablate);
@@ -2102,8 +2105,8 @@ my_model.reset_user_control()
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 
 settings = struct('use_deriv',true,'to_normalize_deriv',true);
-my_model = CElegansModel(filename, settings);
-ad_obj = my_model.AdaptiveDmdc_obj;
+my_model_deriv = CElegansModel(filename, settings);
+ad_obj = my_model_deriv.AdaptiveDmdc_obj;
 ad_obj.plot_reconstruction(true,true);
 
 interesting_neurons = [84, 45, 58, 46, 15, 174, 167];
@@ -2111,4 +2114,26 @@ for i=interesting_neurons
     ad_obj.plot_reconstruction(true,false,true,i);
 end
 %==========================================================================
+
+
+%% Visualize using only the (normalized) derivative
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+% lambda_global needs to be larger; default value gives rank(low-rank)=0
+lambda_global = 0.012;
+% lambda_sparse = 0.01;
+settings = struct('use_only_deriv',true,'to_normalize_deriv',true,...
+    'lambda_global',lambda_global);%, 'lambda_sparse',lambda_sparse);
+my_model_deriv = CElegansModel(filename, settings);
+my_model_deriv.plot_colored_data();
+ad_obj = my_model_deriv.AdaptiveDmdc_obj;
+ad_obj.plot_reconstruction(true,true);
+
+interesting_neurons = [84, 45, 58, 46, 15, 174, 167];
+for i=interesting_neurons
+    ad_obj.plot_reconstruction(true,false,true,i);
+end
+%==========================================================================
+
+
 
