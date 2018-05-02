@@ -351,12 +351,15 @@ classdef CElegansModel < SettingsImportableFromStruct
             title('Dynamics of the low-rank component (data)')
         end
         
-        function plot_colored_user_control(self)
+        function fig = plot_colored_user_control(self, fig)
             % Plots user control data on top of colored original dataset
             assert(~isempty(self.user_control_reconstruction),...
                 'No reconstructed data stored')
-            
-            self.plot_colored_data(false, '.');
+            if ~exist('fig','var')
+                self.plot_colored_data(false, '.');
+            else
+                fig = figure;
+            end
             
             modes_3d = self.L_sparse_modes(:,1:3);
             x = 1:size(modes_3d,1);
@@ -364,9 +367,13 @@ classdef CElegansModel < SettingsImportableFromStruct
             plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), 'k*')
         end
         
-        function plot_colored_fixed_point(self)
+        function fig = plot_colored_fixed_point(self, fig)
             % Plots the fixed point on top of colored original dataset
-            self.plot_colored_data(false, '.');
+            if ~exist('fig','var')
+                self.plot_colored_data(false, '.');
+            else
+                fig = figure;
+            end
             
             % Get the dynamics and control matrices, and the control signal
             ad_obj = self.AdaptiveDmdc_obj;
@@ -383,13 +390,17 @@ classdef CElegansModel < SettingsImportableFromStruct
             plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), 'k*')
         end
         
-        function plot_colored_control_arrow(self, ...
-                which_ctr_modes, arrow_base)
+        function fig = plot_colored_control_arrow(self, ...
+                which_ctr_modes, arrow_base, fig)
+            % Plots a control direction on top of colored original dataset
             if ~exist('arrow_base','var')
                 arrow_base = [0, 0, 0];
             end
-            % Plots a control direction on top of colored original dataset
-            self.plot_colored_data(false, '.');
+            if ~exist('fig','var')
+                self.plot_colored_data(false, '.');
+            else
+                fig = figure;
+            end
             
             % Get control matrices and columns to project
             ad_obj = self.AdaptiveDmdc_obj;
