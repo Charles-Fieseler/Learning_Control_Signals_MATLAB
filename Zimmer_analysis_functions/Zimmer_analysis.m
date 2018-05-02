@@ -2142,10 +2142,13 @@ end
 
 % Actuate a single mode for a long time to equilibrate
 ctr_ind = 131;
-custom_signal = 2*ones(length(ctr_ind),1000);
+num_neurons = 129;
+custom_signal = max(my_model.dat_with_control(num_neurons+ctr_ind,:)) *...
+    ones(length(ctr_ind),1000);
 t_start = 500;
+is_original_neuron = false;
 my_model.add_partial_original_control_signal(ctr_ind,...
-    custom_signal, t_start)
+    custom_signal, t_start, is_original_neuron)
 % my_model.ablate_neuron(neurons_to_ablate);
 my_model.plot_reconstruction_user_control();
 fig = my_model.plot_colored_user_control();

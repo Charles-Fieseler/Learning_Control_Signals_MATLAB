@@ -176,9 +176,9 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.user_control_matrix = ...
                 [self.user_control_matrix ...
                 this_ctr_connectivity];
-            if length(signal_ind) == self.total_sz(2)
+            if isempty(signal_ind)
                 self.user_control_input = [self.user_control_input;...
-                    signal_ind];
+                    signal_amps];
             else
                 this_signal = zeros(1,self.total_sz(2));
                 if isscalar(signal_amps)
@@ -191,11 +191,17 @@ classdef CElegansModel < SettingsImportableFromStruct
         end
         
         function add_partial_original_control_signal(self,...
-                signal_ind, custom_signal, signal_start)
+                signal_ind, custom_signal, signal_start, is_original_neuron)
             % Adds some of the current control signals to the user control
             % matrix
             self.user_control_reconstruction = [];
             num_neurons = self.original_sz(1);
+            if ~exist('is_original_neuron','var')
+                is_original_neuron = (max(signal_ind)<num_neurons);
+            end
+            if ~is_original_neuron
+                signal_ind = signal_ind + num_neurons;
+            end
             if ~exist('custom_signal','var')
                 custom_signal = self.AdaptiveDmdc_obj.dat;
             elseif size(custom_signal,1) < max(signal_ind)
@@ -226,7 +232,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 this_amp = A(:,this_ind);
                 this_signal = custom_signal(this_ind,:);
                 self.add_manual_control_signal(...
-                    this_connectivity, this_amp, this_signal);
+                    this_connectivity, this_amp, [], this_signal);
             end
             
         end
@@ -241,9 +247,13 @@ classdef CElegansModel < SettingsImportableFromStruct
             new_control_matrix = self.user_control_matrix;
             new_control_input = self.user_control_input;
             ablated_neurons = self.user_neuron_ablation;
-            % Save original matrices data
-            self.A_old = self.AdaptiveDmdc_obj.A_separate;
-            self.dat_old = self.AdaptiveDmdc_obj.dat;
+            % Save original matrices data, if not already saved
+            if isempty(self.A_old)
+                self.A_old = self.AdaptiveDmdc_obj.A_separate;
+            end
+            if isempty(self.dat_old)
+                self.dat_old = self.AdaptiveDmdc_obj.dat;
+            end
             % Get new matrices and data
             num_real_neurons = size(self.dat_without_control,1);
             num_controllers = size(new_control_matrix,2);
@@ -270,6 +280,9 @@ classdef CElegansModel < SettingsImportableFromStruct
             % Update the object properties
             self.AdaptiveDmdc_obj.A_separate = self.A_old;
             self.AdaptiveDmdc_obj.dat = self.dat_old;
+            
+            self.A_old = [];
+            self.dat_old = [];
         end
         
         function [signals, signal_mat, mean_signal, all_signal_ind] = ...
@@ -427,13 +440,12 @@ classdef CElegansModel < SettingsImportableFromStruct
             ad_obj = self.AdaptiveDmdc_obj;
             x_dat = 1:ad_obj.x_len;
             x_ctr = (ad_obj.x_len+1):self.total_sz(1);
-            A = ad_obj.A_original(x_dat, x_dat);
             B = ad_obj.A_original(x_dat, x_ctr);
             % Reconstruct the attractor and project it into the same space
-            arrow_direction = A\B(:,which_ctr_modes);
+            control_direction = B(:,which_ctr_modes);
             
             modes_3d = self.L_sparse_modes(:,1:3);
-            proj_3d = (modes_3d.')*arrow_direction;
+            proj_3d = (modes_3d.')*control_direction;
             arrow_length = 1;
             for j=1:size(proj_3d,2)
                 quiver3(arrow_base(1),arrow_base(2),arrow_base(3),...
@@ -484,6 +496,9 @@ classdef CElegansModel < SettingsImportableFromStruct
                 k = key{1};
                 self.(k) = defaults.(k);
             end
+            
+            self.A_old = [];
+            self.dat_old = [];
         end
         
         function import_from_struct(self, Zimmer_struct)
