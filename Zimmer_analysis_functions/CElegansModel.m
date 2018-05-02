@@ -272,11 +272,11 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.AdaptiveDmdc_obj.dat = self.dat_old;
         end
         
-        function [signals, signal_mat, mean_signal] =...
+        function [signals, signal_mat, mean_signal, all_signal_ind] = ...
                 get_control_signal_during_label(self, ...
                     which_label, num_preceding_frames)
             if ~exist('num_preceding_frames','var')
-                num_preceding_frames = 1;
+                num_preceding_frames = 0;
             end
             assert(ismember(which_label, self.state_labels_key),...
                 'Invalid state label')
@@ -297,12 +297,14 @@ classdef CElegansModel < SettingsImportableFromStruct
             assert(length(start_ind)==length(end_ind))
             n = length(start_ind);
             
-            % Get the actual control signals for these indices
+            % Get the control signals for these indices
             signals = cell(n, 1);
             ctr = self.dat_sz(1)+1;
             min_signal_length = 0;
+            all_signal_ind = [];
             for i = 1:n
                 these_ind = start_ind(i):end_ind(i);
+                all_signal_ind = [all_signal_ind, these_ind]; %#ok<AGROW>
                 signals{i} = self.dat_with_control(ctr:end,these_ind);
                 if length(these_ind) < min_signal_length || i == 1
                     min_signal_length = length(these_ind);
@@ -365,10 +367,17 @@ classdef CElegansModel < SettingsImportableFromStruct
             plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), 'k*')
         end
         
-        function fig = plot_colored_fixed_point(self, fig)
+        function fig = plot_colored_fixed_point(self,...
+                which_label, use_centroid, fig)
             % Plots the fixed point on top of colored original dataset
             if ~exist('fig','var')
                 fig = self.plot_colored_data(false, '.');
+            end
+            if ~exist('use_centroid','var')
+                use_centroid = false;
+            end
+            if ~exist('which_label','var')
+                which_label = 'all';
             end
             
             % Get the dynamics and control matrices, and the control signal
@@ -377,13 +386,31 @@ classdef CElegansModel < SettingsImportableFromStruct
             x_ctr = (ad_obj.x_len+1):self.total_sz(1);
             A = ad_obj.A_original(x_dat, x_dat);
             B = ad_obj.A_original(x_dat, x_ctr);
-            u = self.dat_with_control(x_ctr, :);
+            if strcmp(which_label,'all')
+                u = self.dat_with_control(x_ctr, :);
+            else
+                [u_cell, ~, ~, ~] = ...
+                    self.get_control_signal_during_label(which_label);
+                u = [];
+                for j = 1:length(u_cell)
+                    u = [u, u_cell{j}]; %#ok<AGROW>
+                end
+            end
             % Reconstruct the attractor and project it into the same space
+            % Find x (fixed point) in:
+            %   x = A x + B u
             attractor_reconstruction = ((eye(length(A))-A)\B)*u;
             
             modes_3d = self.L_sparse_modes(:,1:3);
             proj_3d = (modes_3d.')*attractor_reconstruction;
-            plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), 'k*')
+            if use_centroid
+                proj_3d = mean(proj_3d,2);
+            end
+            plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), ...
+                'k*', 'LineWidth', 1.5)
+            title(sprintf(...
+                'Fixed points for control structure in %s behavior(s)',...
+                which_label))
         end
         
         function fig = plot_colored_control_arrow(self, ...

@@ -2154,11 +2154,39 @@ my_model.reset_user_control()
 
 % Compare this to the arrow of the control displacement
 my_model.plot_colored_control_arrow(ctr_ind, [], fig);
+%==========================================================================
 
-% Also plot fixed points
+
+%% Plot fixed points of various labeled behaviors
+% filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+% my_model = CElegansModel(filename);
+
+% Plot all fixed points
 my_model.plot_colored_fixed_point();
 
+% Plot all individually labeled behaviors (as clouds)
+my_model.plot_colored_fixed_point('FWD');
+my_model.plot_colored_fixed_point('REVSUS');
+my_model.plot_colored_fixed_point('DT');
+my_model.plot_colored_fixed_point('VT');
+my_model.plot_colored_fixed_point('REV1');
+my_model.plot_colored_fixed_point('REV2');
+my_model.plot_colored_fixed_point('SLOW');
+
+% Now as centroids
+my_model.plot_colored_fixed_point('REVSUS',true);
+my_model.plot_colored_fixed_point('SLOW', true);
+my_model.plot_colored_fixed_point('FWD', true);
+my_model.plot_colored_fixed_point('DT', true);
+my_model.plot_colored_fixed_point('VT', true);
+my_model.plot_colored_fixed_point('REV1', true);
+my_model.plot_colored_fixed_point('REV2', true);
+
+
+
 %==========================================================================
+
+
 
 
 
