@@ -379,7 +379,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             B = ad_obj.A_original(x_dat, x_ctr);
             u = self.dat_with_control(x_ctr, :);
             % Reconstruct the attractor and project it into the same space
-            attractor_reconstruction = (A\B)*u;
+            attractor_reconstruction = ((eye(length(A))-A)\B)*u;
             
             modes_3d = self.L_sparse_modes(:,1:3);
             proj_3d = (modes_3d.')*attractor_reconstruction;
@@ -400,9 +400,10 @@ classdef CElegansModel < SettingsImportableFromStruct
             ad_obj = self.AdaptiveDmdc_obj;
             x_dat = 1:ad_obj.x_len;
             x_ctr = (ad_obj.x_len+1):self.total_sz(1);
+            A = ad_obj.A_original(x_dat, x_dat);
             B = ad_obj.A_original(x_dat, x_ctr);
             % Reconstruct the attractor and project it into the same space
-            arrow_direction = B(:,which_ctr_modes);
+            arrow_direction = A\B(:,which_ctr_modes);
             
             modes_3d = self.L_sparse_modes(:,1:3);
             proj_3d = (modes_3d.')*arrow_direction;

@@ -2145,7 +2145,7 @@ ctr_ind = 131;
 custom_signal = 2*ones(length(ctr_ind),1000);
 t_start = 500;
 my_model.add_partial_original_control_signal(ctr_ind,...
-custom_signal, t_start)
+    custom_signal, t_start)
 % my_model.ablate_neuron(neurons_to_ablate);
 my_model.plot_reconstruction_user_control();
 fig = my_model.plot_colored_user_control();
@@ -2154,6 +2154,9 @@ my_model.reset_user_control()
 
 % Compare this to the arrow of the control displacement
 my_model.plot_colored_control_arrow(ctr_ind, [], fig);
+
+% Also plot fixed points
+my_model.plot_colored_fixed_point();
 
 %==========================================================================
 
