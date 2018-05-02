@@ -364,7 +364,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), 'k*')
         end
         
-        function plot_fixed_point(self)
+        function plot_colored_fixed_point(self)
             % Plots the fixed point on top of colored original dataset
             self.plot_colored_data(false, '.');
             
@@ -381,6 +381,32 @@ classdef CElegansModel < SettingsImportableFromStruct
             modes_3d = self.L_sparse_modes(:,1:3);
             proj_3d = (modes_3d.')*attractor_reconstruction;
             plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), 'k*')
+        end
+        
+        function plot_colored_control_arrow(self, ...
+                which_ctr_modes, arrow_base)
+            if ~exist('arrow_base','var')
+                arrow_base = [0, 0, 0];
+            end
+            % Plots a control direction on top of colored original dataset
+            self.plot_colored_data(false, '.');
+            
+            % Get control matrices and columns to project
+            ad_obj = self.AdaptiveDmdc_obj;
+            x_dat = 1:ad_obj.x_len;
+            x_ctr = (ad_obj.x_len+1):self.total_sz(1);
+            B = ad_obj.A_original(x_dat, x_ctr);
+            % Reconstruct the attractor and project it into the same space
+            arrow_direction = B(:,which_ctr_modes);
+            
+            modes_3d = self.L_sparse_modes(:,1:3);
+            proj_3d = (modes_3d.')*arrow_direction;
+            arrow_length = 1;
+            for j=1:size(proj_3d,2)
+                quiver3(arrow_base(1),arrow_base(2),arrow_base(3),...
+                    proj_3d(1,j),proj_3d(2,j),proj_3d(3,j), ...
+                    arrow_length, 'LineWidth', 2)
+            end
         end
         
         function plot_mean_transition_signals(self, ...
