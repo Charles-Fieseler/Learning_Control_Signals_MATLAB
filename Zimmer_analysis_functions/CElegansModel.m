@@ -589,11 +589,6 @@ classdef CElegansModel < SettingsImportableFromStruct
             aug = self.augment_data;
             self.original_sz = self.dat_sz;
             if aug>0
-                if strcmp(self.sort_mode,'user_set')
-                    this_sz = self.dat_sz;
-                else
-                    warning('Augmenting data works best when control signals are not replicated')
-                end
                 new_sz = [self.dat_sz(1)*aug, self.dat_sz(2)-aug];
                 new_dat = zeros(new_sz);
                 for j=1:aug

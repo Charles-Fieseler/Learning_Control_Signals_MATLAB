@@ -2356,7 +2356,7 @@ filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 lambda_global = 0.0055; % rank=3
 settings = struct('lambda_global',lambda_global);
 my_model = CElegansModel(filename, settings);
-% Get new "data set": reconstructed from sparse signals
+% Get new "data set": global modes... predict them with sparse signals
 S_sparse = my_model.S_sparse;
 L_global = my_model.L_global_modes.';
 dat = [L_global; S_sparse(:,1:size(L_global,2))];
