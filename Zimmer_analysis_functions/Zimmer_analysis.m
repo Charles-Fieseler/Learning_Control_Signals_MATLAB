@@ -2143,7 +2143,7 @@ end
 % Actuate a single mode for a long time to equilibrate
 ctr_ind = 131;
 num_neurons = 129;
-custom_signal = max(my_model.dat_with_control(num_neurons+ctr_ind,:)) *...
+custom_signal = max(max(my_model.dat_with_control(num_neurons+ctr_ind,:))) *...
     ones(length(ctr_ind),1000);
 t_start = 500;
 is_original_neuron = false;
@@ -2152,11 +2152,126 @@ my_model.add_partial_original_control_signal(ctr_ind,...
 % my_model.ablate_neuron(neurons_to_ablate);
 my_model.plot_reconstruction_user_control();
 fig = my_model.plot_colored_user_control();
-title('Global mode 131')
+title(sprintf('Global mode %d',ctr_ind))
 my_model.reset_user_control()
 
 % Compare this to the arrow of the control displacement
-my_model.plot_colored_control_arrow(ctr_ind, [], fig);
+my_model.plot_colored_control_arrow(ctr_ind, [], [], fig);
+
+% Also plot the original control signal
+figure;
+if ~is_original_neuron
+    original_ind = ctr_ind+num_neurons;
+else
+    original_ind = ctr_ind;
+end
+plot(my_model.dat_with_control(original_ind,:).')
+title(sprintf('Original control signal for mode %d',ctr_ind))
+%==========================================================================
+
+
+%% Actuate original neurons and look at the fixed point
+ctr_ind = 45;
+num_neurons = 129;
+custom_signal = 0.5*max(my_model.dat_with_control(num_neurons+ctr_ind,:)) *...
+ones(length(ctr_ind),1000);
+t_start = 500;
+is_original_neuron = true;
+my_model.add_partial_original_control_signal(ctr_ind,...
+custom_signal, t_start, is_original_neuron)
+% my_model.ablate_neuron(neurons_to_ablate);
+my_model.plot_reconstruction_user_control();
+fig = my_model.plot_colored_user_control();
+title(sprintf('Global mode %d',ctr_ind))
+my_model.reset_user_control()
+% Compare this to the arrow of the control displacement
+my_model.plot_colored_control_arrow(ctr_ind, [], 10, fig);
+% Also plot the original control signal
+figure;
+if ~is_original_neuron
+original_ind = ctr_ind+num_neurons;
+else
+original_ind = ctr_ind;
+end
+plot(my_model.dat_with_control(original_ind,:))
+title(sprintf('Original control signal for mode %d',ctr_ind))
+%==========================================================================
+
+
+%% Actuate original neurons and their control shadows; observe FP
+ctr_ind = 72;
+num_neurons = 129;
+custom_signal = 0.5*max(my_model.dat_with_control(num_neurons+ctr_ind,:)) *...
+    ones(length(ctr_ind),1000);
+t_start = 500;
+is_original_neuron = true;
+my_model.add_partial_original_control_signal(ctr_ind,...
+    custom_signal, t_start, is_original_neuron)
+% Also add control signal version
+is_original_neuron = false;
+my_model.add_partial_original_control_signal(ctr_ind,...
+    custom_signal, t_start, is_original_neuron)
+
+my_model.plot_reconstruction_user_control();
+fig = my_model.plot_colored_user_control();
+title(sprintf('Global mode %d',ctr_ind))
+my_model.reset_user_control()
+% Compare this to the arrow of the control displacement
+my_model.plot_colored_control_arrow(ctr_ind, [], 10, fig);
+% Also plot the original control signal
+figure;
+if ~is_original_neuron
+original_ind = ctr_ind+num_neurons;
+else
+original_ind = ctr_ind;
+end
+plot(my_model.dat_with_control(original_ind,:))
+title(sprintf('Original control signal for mode %d',ctr_ind))
+%==========================================================================
+
+
+%% Plot control fixed points over time for global modes
+% filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+% my_model = CElegansModel(filename);
+
+% Actuate a single mode for a long time to equilibrate
+num_neurons = my_model.dat_sz(1);
+ctr_ind = (num_neurons+1):(my_model.total_sz(1)-num_neurons);
+% custom_signal = max(max(my_model.dat_with_control(num_neurons+ctr_ind,:))) *...
+%     ones(length(ctr_ind),1000);
+% t_start = 500;
+is_original_neuron = false;
+my_model.add_partial_original_control_signal(ctr_ind,...
+    [], [], is_original_neuron)
+% my_model.ablate_neuron(neurons_to_ablate);
+my_model.plot_reconstruction_user_control();
+
+my_model.plot_user_control_fixed_points('FWD');
+my_model.plot_user_control_fixed_points('SLOW');
+my_model.plot_user_control_fixed_points('REVSUS');
+my_model.plot_user_control_fixed_points('DT');
+my_model.plot_user_control_fixed_points('VT');
+my_model.plot_user_control_fixed_points('REV1');
+my_model.plot_user_control_fixed_points('REV2');
+
+my_model.plot_user_control_fixed_points();
+% Plot multiple things on this next one
+fig = my_model.plot_colored_user_control();
+title(sprintf('Global mode %d',ctr_ind))
+my_model.reset_user_control()
+
+% Compare this to the arrow of the control displacement
+my_model.plot_colored_control_arrow(ctr_ind, [], [], fig);
+
+% Also plot the original control signal
+figure;
+if ~is_original_neuron
+    original_ind = ctr_ind+num_neurons;
+else
+    original_ind = ctr_ind;
+end
+plot(my_model.dat_with_control(original_ind,:).')
+title(sprintf('Original control signal for mode %d',ctr_ind))
 %==========================================================================
 
 
@@ -2184,12 +2299,82 @@ my_model.plot_colored_fixed_point('DT', true);
 my_model.plot_colored_fixed_point('VT', true);
 my_model.plot_colored_fixed_point('REV1', true);
 my_model.plot_colored_fixed_point('REV2', true);
+%==========================================================================
 
 
+%% Actuate unlabeled original neurons and look at the fixed point
+ctr_ind = 1;
+num_neurons = 129;
+custom_signal = 0.05*max(my_model.dat_with_control(num_neurons+ctr_ind,:)) *...
+ones(length(ctr_ind),1000);
+t_start = 500;
+is_original_neuron = true;
+my_model.add_partial_original_control_signal(ctr_ind,...
+custom_signal, t_start, is_original_neuron)
+% my_model.ablate_neuron(neurons_to_ablate);
+my_model.plot_reconstruction_user_control();
+fig = my_model.plot_colored_user_control();
+title(sprintf('Global mode %d',ctr_ind))
+my_model.reset_user_control()
+% Compare this to the arrow of the control displacement
+my_model.plot_colored_control_arrow(ctr_ind, [], 10, fig);
+% Also plot the original control signal
+figure;
+if ~is_original_neuron
+original_ind = ctr_ind+num_neurons;
+else
+original_ind = ctr_ind;
+end
+plot(my_model.dat_with_control(original_ind,:))
+title(sprintf('Original control signal for mode %d',ctr_ind))
+%==========================================================================
+
+
+%% Look at even lower rank "global modes"
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+lambda_global = 0.004; % rank=1
+% lambda_global = 0.005; % rank=2
+% lambda_global = 0.0055; % rank=3
+settings = struct('lambda_global',lambda_global);
+my_model2 = CElegansModel(filename, settings);
+
+my_model2.plot_colored_fixed_point();
+
+% Plot all individually labeled behaviors (as clouds)
+my_model2.plot_colored_fixed_point('FWD');
+my_model2.plot_colored_fixed_point('REVSUS');
 
 %==========================================================================
 
 
+%% Predict global signals using DMDc
+% I expect that I would really need a nonlinear function here, but why not
+% this first?
+
+% Original analysis
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+lambda_global = 0.0055; % rank=3
+settings = struct('lambda_global',lambda_global);
+my_model = CElegansModel(filename, settings);
+% Get new "data set": reconstructed from sparse signals
+S_sparse = my_model.S_sparse;
+L_global = my_model.L_global_modes.';
+dat = [L_global; S_sparse(:,1:size(L_global,2))];
+% Make new AdaptiveDmdc object
+augment_data = 1;
+x_indices = 1:(size(L_global,1)*augment_data);
+settings = struct(...
+    'sort_mode','user_set',...
+    'x_indices', x_indices,...
+    'augment_data', augment_data);
+predict_L_global = AdaptiveDmdc(dat, settings);
+
+predict_L_global.plot_reconstruction(true, false);
+
+for i=x_indices
+    predict_L_global.plot_reconstruction(true, true, true, i);
+end
+%==========================================================================
 
 
 

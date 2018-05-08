@@ -202,7 +202,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             if ~is_original_neuron
                 signal_ind = signal_ind + num_neurons;
             end
-            if ~exist('custom_signal','var')
+            if ~exist('custom_signal','var') || isempty(custom_signal)
                 custom_signal = self.AdaptiveDmdc_obj.dat;
             elseif size(custom_signal,1) < max(signal_ind)
                 % Then it doesn't include the original data, which is the
@@ -212,7 +212,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 tmp(signal_ind,:) = custom_signal;
                 custom_signal = tmp;
             end
-            if ~exist('signal_start','var')
+            if ~exist('signal_start','var') || isempty(signal_start)
                 assert(size(custom_signal,2) == self.total_sz(2),...
                     'Custom signal must be defined for the entire tspan')
             else
@@ -221,8 +221,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 tmp(:,signal_start:signal_end) = custom_signal;
                 custom_signal = tmp;
             end
-            assert(max(signal_ind) <= self.total_sz(1) && ...
-                min(signal_ind) > num_neurons,...
+            assert(max(signal_ind) <= self.total_sz(1),...
                 'Indices must be within the discovered control signal')
             
             A = self.AdaptiveDmdc_obj.A_separate(1:num_neurons,:);
@@ -426,11 +425,59 @@ classdef CElegansModel < SettingsImportableFromStruct
                 which_label))
         end
         
+        function fig = plot_user_control_fixed_points(self,...
+                which_label, use_centroid, fig)
+            % Plots fixed points for manually set control on top of colored
+            % original dataset
+            assert(~isempty(self.user_control_reconstruction),...
+                'No reconstructed data stored')
+            if ~exist('fig','var')
+                fig = self.plot_colored_data(false, '.');
+            end
+            if ~exist('use_centroid','var')
+                use_centroid = false;
+            end
+            if ~exist('which_label','var')
+                which_label = 'all';
+            end
+            
+            % Get the dynamics and control matrices, and the control signal
+            ad_obj = self.AdaptiveDmdc_obj;
+            x_dat = 1:ad_obj.x_len;
+%             x_ctr = (ad_obj.x_len+1):self.total_sz(1);
+            A = ad_obj.A_original(x_dat, x_dat);
+            B = self.user_control_matrix;
+            u = self.user_control_input;
+            if ~strcmp(which_label,'all')
+                [~, ~, ~, u_ind] = ...
+                    self.get_control_signal_during_label(which_label);
+                u = u(:, u_ind);
+            end
+            % Reconstruct the attractor and project it into the same space
+            % Find x (fixed point) in:
+            %   x = A x + B u
+            attractor_reconstruction = ((eye(length(A))-A)\B)*u;
+            
+            modes_3d = self.L_sparse_modes(:,1:3);
+            proj_3d = (modes_3d.')*attractor_reconstruction;
+            if use_centroid
+                proj_3d = mean(proj_3d,2);
+            end
+            plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), ...
+                'k*', 'LineWidth', 1.5)
+            title(sprintf(...
+                'Fixed points for control structure in %s behavior(s)',...
+                which_label))
+        end
+        
         function fig = plot_colored_control_arrow(self, ...
-                which_ctr_modes, arrow_base, fig)
+                which_ctr_modes, arrow_base, arrow_length, fig)
             % Plots a control direction on top of colored original dataset
             if ~exist('arrow_base','var') || isempty(arrow_base)
                 arrow_base = [0, 0, 0];
+            end
+            if ~exist('arrow_length','var') || isempty(arrow_length)
+                arrow_length = 1;
             end
             if ~exist('fig','var')
                 fig = self.plot_colored_data(false, '.');
@@ -446,7 +493,6 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             modes_3d = self.L_sparse_modes(:,1:3);
             proj_3d = (modes_3d.')*control_direction;
-            arrow_length = 1;
             for j=1:size(proj_3d,2)
                 quiver3(arrow_base(1),arrow_base(2),arrow_base(3),...
                     proj_3d(1,j),proj_3d(2,j),proj_3d(3,j), ...
@@ -543,15 +589,20 @@ classdef CElegansModel < SettingsImportableFromStruct
             aug = self.augment_data;
             self.original_sz = self.dat_sz;
             if aug>0
-                newSz = [self.dat_sz(1)*aug, self.dat_sz(2)-aug];
-                newDat = zeros(newSz);
-                for j=1:aug
-                    thisOldCols = j:(newSz(2)+j-1);
-                    thisNewRows = (1:self.dat_sz(1))+self.dat_sz(1)*(j-1);
-                    newDat(thisNewRows,:) = self.raw(:,thisOldCols);
+                if strcmp(self.sort_mode,'user_set')
+                    this_sz = self.dat_sz;
+                else
+                    warning('Augmenting data works best when control signals are not replicated')
                 end
-                self.dat_sz = newSz;
-                self.raw = newDat;
+                new_sz = [self.dat_sz(1)*aug, self.dat_sz(2)-aug];
+                new_dat = zeros(new_sz);
+                for j=1:aug
+                    old_cols = j:(new_sz(2)+j-1);
+                    new_rows = (1:self.dat_sz(1))+self.dat_sz(1)*(j-1);
+                    new_dat(new_rows,:) = self.raw(:,old_cols);
+                end
+                self.dat_sz = new_sz;
+                self.raw = new_dat;
             end
             
             self.dat = self.raw;
