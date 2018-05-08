@@ -50,6 +50,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         verbose
         % Getting the control signal
         lambda_global
+        max_rank_global
         lambda_sparse
         
         % Data processing
@@ -526,6 +527,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'verbose',true,...
                 ...% Getting the control signal
                 'lambda_global', 0.0065,...
+                'max_rank_global', 4,...
                 'lambda_sparse', 0.05,...
                 ...% Data processing
                 'filter_window_dat', 3,...
@@ -638,9 +640,21 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function calc_global_signal(self)
             % Gets VERY low-rank signal
-            [self.L_global_raw, self.S_global_raw] = ...
-                RobustPCA(self.dat, self.lambda_global);
-            
+            iter_max = 10;
+            this_lambda = self.lambda_global;
+            for i=1:iter_max
+                [self.L_global_raw, self.S_global_raw] = ...
+                    RobustPCA(self.dat, this_lambda);
+                if rank(self.L_global_raw) <= self.max_rank_global
+                    self.lambda_global = this_lambda;
+                    break
+                else
+                    % A smaller penalty means more data in the sparse
+                    % component, less in the low-rank
+                    this_lambda = this_lambda*0.95;
+                end
+            end
+            % Smooth the modes out
             self.L_global = self.flat_filter(...
                 self.L_global_raw, self.filter_window_global);
             tmp_dat = self.L_global - mean(self.L_global,2);
