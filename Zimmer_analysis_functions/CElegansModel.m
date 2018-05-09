@@ -600,6 +600,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 end
                 self.dat_sz = new_sz;
                 self.raw = new_dat;
+                self.AdaptiveDmdc_settings.x_indices = 1:size(new_dat,1);
             end
             
             self.dat = self.raw;
@@ -643,17 +644,33 @@ classdef CElegansModel < SettingsImportableFromStruct
             iter_max = 10;
             this_lambda = self.lambda_global;
             for i=1:iter_max
+                % Low number of iterations in the inner loop just to
+                % converge on the right rank
                 [self.L_global_raw, self.S_global_raw] = ...
-                    RobustPCA(self.dat, this_lambda);
+                    RobustPCA(self.dat, this_lambda, 10*this_lambda,...
+                    1e-6, 70);
                 if rank(self.L_global_raw) <= self.max_rank_global
+                    fprintf("Reached target rank (%d); restarting with more accuracy\n",...
+                            self.max_rank_global);
                     self.lambda_global = this_lambda;
                     break
                 else
                     % A smaller penalty means more data in the sparse
                     % component, less in the low-rank
-                    this_lambda = this_lambda*0.95;
+                    if self.verbose
+                        fprintf("Didn't reach target rank (%d); decreasing lambda\n",...
+                            self.max_rank_global);
+                    end
+                    if i==iter_max
+                        warning("Didn't converge on maximum rank")
+                    end
+                    this_lambda = this_lambda*0.9;
                 end
             end
+            % Get a more accurate decomposition (even if we didn't converge
+            % to the proper rank)
+            [self.L_global_raw, self.S_global_raw] = ...
+                RobustPCA(self.dat, self.lambda_global);
             % Smooth the modes out
             self.L_global = self.flat_filter(...
                 self.L_global_raw, self.filter_window_global);

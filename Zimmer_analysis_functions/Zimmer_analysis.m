@@ -2377,6 +2377,21 @@ end
 %==========================================================================
 
 
+%% Augment data and look at the fixed points
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+lambda_global = 0.0035;
+settings = struct('augment_data', 4, 'max_rank_global', 3, ...
+    'lambda_global', lambda_global);
+my_model_augment = CElegansModel(filename, settings);
+
+% Plot all fixed points
+my_model_augment.plot_colored_fixed_point();
+
+%==========================================================================
+
+
+
+
 
 
 
