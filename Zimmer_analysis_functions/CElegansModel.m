@@ -58,6 +58,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         filter_window_global
         augment_data
         to_subtract_mean
+        to_subtract_mean_sparse
         dmd_mode
         AdaptiveDmdc_settings
         % Data importing
@@ -535,6 +536,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'AdaptiveDmdc_settings', struct(),...
                 'augment_data', 0,...
                 'to_subtract_mean',false,...
+                'to_subtract_mean_sparse', true,...
                 'dmd_mode', 'naive',...
                 ...% Data importing
                 'use_deriv', false,...
@@ -695,7 +697,11 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             % Data to be reconstructed is everything EXCEPT the sparse
             % control signals
-            this_dat = self.L_sparse - mean(self.L_sparse,2);
+            if self.to_subtract_mean_sparse
+                this_dat = self.L_sparse - mean(self.L_sparse,2);
+            else
+                this_dat = self.L_sparse;
+            end
             % Sparse signal with thresholding
             sparse_signal = self.S_sparse - mean(self.S_sparse,2);
             tol = 1e-2;

@@ -2390,7 +2390,18 @@ my_model_augment.plot_colored_fixed_point();
 %==========================================================================
 
 
+%% Export data for use in tensorflow
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean_sparse',false,...
+    'lambda_sparse', 0.035);
+my_model = CElegansModel(filename, settings);
 
+dat_with_control = my_model.dat_with_control;
+target = 'C:\Users\charl\Documents\Current_work\Zimmer_nn_predict\dat_with_control';
+save(target, 'dat_with_control');
+
+%==========================================================================
 
 
 
