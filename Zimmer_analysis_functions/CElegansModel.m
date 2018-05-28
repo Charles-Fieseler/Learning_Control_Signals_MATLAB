@@ -132,6 +132,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                 end
             elseif isnumeric(file_or_dat)
                 self.raw = file_or_dat;
+            elseif isstruct(file_or_dat)
+                self.import_from_struct(file_or_dat);
             else
                 error('Must pass data matrix or filename')
             end
@@ -421,7 +423,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 proj_3d = mean(proj_3d,2);
             end
             plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), ...
-                'k*', 'LineWidth', 1.5)
+                'ko', 'LineWidth', 6)
             title(sprintf(...
                 'Fixed points for control structure in %s behavior(s)',...
                 which_label))
@@ -699,13 +701,14 @@ classdef CElegansModel < SettingsImportableFromStruct
             % control signals
             if self.to_subtract_mean_sparse
                 this_dat = self.L_sparse - mean(self.L_sparse,2);
+                sparse_signal = self.S_sparse - mean(self.S_sparse,2);
             else
                 this_dat = self.L_sparse;
+                sparse_signal = self.S_sparse;
             end
             % Sparse signal with thresholding
-            sparse_signal = self.S_sparse - mean(self.S_sparse,2);
-            tol = 1e-2;
-            sparse_signal = sparse_signal(max(abs(sparse_signal),[],2)>tol,:);
+%             tol = 1e-2;
+%             sparse_signal = sparse_signal(max(abs(sparse_signal),[],2)>tol,:);
             % Use top svd modes for the low-rank component
             L_low_rank = self.L_global_modes - mean(self.L_global_modes,1);
             % Create the augmented dataset (these might have different
