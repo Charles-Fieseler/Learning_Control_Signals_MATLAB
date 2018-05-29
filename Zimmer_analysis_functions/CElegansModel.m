@@ -108,6 +108,8 @@ classdef CElegansModel < SettingsImportableFromStruct
         user_control_input
         user_neuron_ablation
         user_control_reconstruction
+        
+        pareto_struct
     end
     
     methods
@@ -141,20 +143,57 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             self.preprocess();
             %==========================================================================
-            
 
             %% Robust PCA (get control signal) and DMD with that signal
             self.calc_all_control_signals();
             self.calc_AdaptiveDmdc();
             self.postprocess();
             %==========================================================================
-            
 
             %% Initialize user control structure
             self.reset_user_control();
             %==========================================================================
 
-
+        end
+        
+        function calc_pareto_front(self, lambda_vec, global_signal_mode,...
+                to_append)
+            % Calculates the errors as a function of the different lambda
+            % values
+            %   Currently only works with the sparse control signal
+            if ~exist('global_signal_mode','var')
+                global_signal_mode = 'ID';
+            end
+            if ~exist('to_append','var')
+                to_append = false;
+            end
+            self.global_signal_mode = global_signal_mode;
+            all_errors = zeros(size(lambda_vec));
+            
+            for i=1:length(lambda_vec)
+                self.lambda_sparse = lambda_vec(i);
+                self.calc_all_control_signals();
+                self.calc_AdaptiveDmdc();
+                self.postprocess();
+                all_errors(i) = ...
+                    self.AdaptiveDmdc_obj.calc_reconstruction_error();
+            end
+            
+            if to_append && ~isempty(self.pareto_struct.lambda_vec)
+                % Assume lambdas are the same
+                self.pareto_struct.all_errors = ...
+                    [self.pareto_struct.all_errors;...
+                    all_errors];
+                self.pareto_struct.global_signal_modes = ...
+                    [self.pareto_struct.global_signal_modes;
+                    global_signal_mode];
+            else
+                self.pareto_struct.lambda_vec = lambda_vec;
+                self.pareto_struct.all_errors = all_errors;
+                self.pareto_struct.global_signal_modes = ...
+                    {global_signal_mode};
+            end
+            
         end
         
     end
@@ -523,6 +562,21 @@ classdef CElegansModel < SettingsImportableFromStruct
                 mean_signal, std(signal_mat, [], 3), '1 2',...
                 title_str1, title_str2);
         end
+        
+        function plot_pareto_front(self)
+            assert(~isempty(self.pareto_struct.lambda_vec),...
+                'No pareto front data saved')
+            
+            figure;
+            plot(self.pareto_struct.lambda_vec,...
+                self.pareto_struct.all_errors)
+            xlabel('\lambda value for sparse signals')
+            ylabel('L2 error')
+            ylim([0, min(max(self.pareto_struct.all_errors,[],2))])
+            title('Pareto front')
+            legend(self.pareto_struct.global_signal_modes)
+            
+        end
     end
     
     methods (Access=private)
@@ -624,6 +678,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                 self.dat = ...
                     self.flat_filter(self.dat.',self.filter_window_dat).';
             end
+            
+            self.pareto_struct = struct();
         end
         
         function new_raw = preprocess_deriv(self)

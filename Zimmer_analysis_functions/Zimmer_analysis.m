@@ -2481,7 +2481,7 @@ filename3 = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
 % Get first model and error
 settings = struct('to_subtract_mean_sparse',false,...
     'to_subtract_mean_global',false);
-settings.global_signal_mode = 'RPCA';
+settings.global_signal_mode = 'ID';
 my_model5 = CElegansModel(filename5, settings);
 fprintf('Reconstruction error for worm 5: %f\n',...
     my_model5.AdaptiveDmdc_obj.calc_reconstruction_error());
@@ -2541,4 +2541,36 @@ title("Reconstruction using alternate dynamics")
 fprintf('Reconstruction error for worm 3 data and worm 5 A matrix: %f\n',...
     my_model3_truncate.AdaptiveDmdc_obj.calc_reconstruction_error());
 %==========================================================================
+
+%% Plot pareto fronts of the sparse signal
+% Note: learn the control signal from the worm though
+filename5 = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+% Get model and initial error
+settings = struct('to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false);
+settings.global_signal_mode = 'ID';
+my_model5 = CElegansModel(filename5, settings);
+fprintf('Reconstruction error for worm 5: %f\n',...
+    my_model5.AdaptiveDmdc_obj.calc_reconstruction_error());
+% my_model5.AdaptiveDmdc_obj.plot_reconstruction(true);
+
+% Calculate pareto front with different types of global mode calculations
+lambda_vec = linspace(0.03,0.07,50);
+global_signal_mode = {'ID_simple','ID_and_offset'};%'ID',
+for i = 1:length(global_signal_mode)
+    my_model5.calc_pareto_front(lambda_vec, global_signal_mode{i}, (i>1));
+end
+
+my_model5.plot_pareto_front();
+
+%==========================================================================
+
+
+
+
+
+
+
+
 
