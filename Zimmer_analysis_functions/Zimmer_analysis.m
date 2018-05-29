@@ -2466,13 +2466,79 @@ my_model3_truncate.AdaptiveDmdc_obj.A_original = ...
 my_model3_truncate.AdaptiveDmdc_obj.A_separate = ...
     my_model5_truncate.AdaptiveDmdc_obj.A_separate;
 my_model3_truncate.AdaptiveDmdc_obj.plot_reconstruction(true);
+title("Reconstruction using alternate dynamics")
 
 fprintf('Reconstruction error for worm 3 data and worm 5 A matrix: %f\n',...
-    my_model3_using_A5.AdaptiveDmdc_obj.calc_reconstruction_error());
+    my_model3_truncate.AdaptiveDmdc_obj.calc_reconstruction_error());
 %==========================================================================
 
 
+%% Use dynamics from worm5 on worm4, with ID as global modes
+% Note: learn the control signal from the worm though
+filename5 = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+filename3 = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
 
+% Get first model and error
+settings = struct('to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false);
+settings.global_signal_mode = 'RPCA';
+my_model5 = CElegansModel(filename5, settings);
+fprintf('Reconstruction error for worm 5: %f\n',...
+    my_model5.AdaptiveDmdc_obj.calc_reconstruction_error());
+my_model5.AdaptiveDmdc_obj.plot_reconstruction(true);
 
+% Get second model and initial error
+my_model3 = CElegansModel(filename3, settings);
+fprintf('Reconstruction error for worm 3: %f\n',...
+    my_model3.AdaptiveDmdc_obj.calc_reconstruction_error());
+my_model3.AdaptiveDmdc_obj.plot_reconstruction(true);
 
+% Get the overlapping neurons
+names5 = my_model5.AdaptiveDmdc_obj.get_names([], false, false);
+names3 = my_model3.AdaptiveDmdc_obj.get_names([], false, false);
+% Indices are different for worms 3 and 5
+[ind3] = ismember(names3, names5);
+ind3 = logical(ind3.*(~strcmp(names3, '')));
+[ind5] = ismember(names5, names3);
+ind5 = logical(ind5.*(~strcmp(names5, '')));
+
+% Truncate the data and redo the worms
+dat_struct5 = importdata(filename5);
+dat_struct5.traces(:,~ind5) = [];
+for i={'ID','ID2','ID3'}
+    tmp = dat_struct5.(i{1});
+    tmp(~ind5) = [];
+    dat_struct5.(i{1}) = tmp;
+end
+settings.lambda_global = 0.01;
+settings.lambda_sparse = 0.07;
+my_model5_truncate = CElegansModel(dat_struct5, settings);
+my_model5_truncate.AdaptiveDmdc_obj.plot_reconstruction(true);
+
+dat_struct3 = importdata(filename3);
+dat_struct3.traces(:,~ind3) = [];
+for i={'ID','ID2','ID3'}
+    tmp = dat_struct3.(i{1});
+    tmp(~ind3) = [];
+    dat_struct3.(i{1}) = tmp;
+end
+my_model3_truncate = CElegansModel(dat_struct3, settings);
+my_model3_truncate.AdaptiveDmdc_obj.plot_reconstruction(true);
+
+% Get errors and apply worm5 dynamics to worm3
+fprintf('Reconstruction error for truncated worm 3: %f\n',...
+    my_model3_truncate.AdaptiveDmdc_obj.calc_reconstruction_error());
+fprintf('Reconstruction error for truncated worm 5: %f\n',...
+    my_model5_truncate.AdaptiveDmdc_obj.calc_reconstruction_error());
+
+my_model3_truncate.AdaptiveDmdc_obj.A_original = ...
+    my_model5_truncate.AdaptiveDmdc_obj.A_original;
+my_model3_truncate.AdaptiveDmdc_obj.A_separate = ...
+    my_model5_truncate.AdaptiveDmdc_obj.A_separate;
+my_model3_truncate.AdaptiveDmdc_obj.plot_reconstruction(true);
+title("Reconstruction using alternate dynamics")
+
+fprintf('Reconstruction error for worm 3 data and worm 5 A matrix: %f\n',...
+    my_model3_truncate.AdaptiveDmdc_obj.calc_reconstruction_error());
+%==========================================================================
 

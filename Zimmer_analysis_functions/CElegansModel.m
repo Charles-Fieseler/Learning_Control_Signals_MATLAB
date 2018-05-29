@@ -51,6 +51,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         % Getting the control signal
         lambda_global
         max_rank_global
+        global_signal_mode
         lambda_sparse
         
         % Data processing
@@ -59,6 +60,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         augment_data
         to_subtract_mean
         to_subtract_mean_sparse
+        to_subtract_mean_global
         dmd_mode
         AdaptiveDmdc_settings
         % Data importing
@@ -532,6 +534,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'lambda_global', 0.0065,...
                 'max_rank_global', 4,...
                 'lambda_sparse', 0.05,...
+                'global_signal_mode', 'RPCA',...
                 ...% Data processing
                 'filter_window_dat', 3,...
                 'filter_window_global', 10,...
@@ -539,6 +542,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'augment_data', 0,...
                 'to_subtract_mean',false,...
                 'to_subtract_mean_sparse', true,...
+                'to_subtract_mean_global', true,...
                 'dmd_mode', 'naive',...
                 ...% Data importing
                 'use_deriv', false,...
@@ -576,6 +580,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                     'sort_mode','user_set',...
                     'x_indices',x_ind,...
                     'dmd_mode',self.dmd_mode);
+                self.AdaptiveDmdc_settings.to_plot_nothing = true;
             end
         end
         
@@ -644,46 +649,87 @@ classdef CElegansModel < SettingsImportableFromStruct
         end
         
         function calc_global_signal(self)
-            % Gets VERY low-rank signal
-            iter_max = 10;
-            this_lambda = self.lambda_global;
-            for i=1:iter_max
-                % Low number of iterations in the inner loop just to
-                % converge on the right rank
-                [self.L_global_raw, self.S_global_raw] = ...
-                    RobustPCA(self.dat, this_lambda, 10*this_lambda,...
-                    1e-6, 70);
-                if rank(self.L_global_raw) <= self.max_rank_global
-                    fprintf("Reached target rank (%d); restarting with more accuracy\n",...
-                            self.max_rank_global);
-                    self.lambda_global = this_lambda;
-                    break
-                else
-                    % A smaller penalty means more data in the sparse
-                    % component, less in the low-rank
-                    if self.verbose
-                        fprintf("Didn't reach target rank (%d); decreasing lambda\n",...
-                            self.max_rank_global);
-                    end
-                    if i==iter_max
-                        warning("Didn't converge on maximum rank")
-                    end
-                    this_lambda = this_lambda*0.9;
-                end
-            end
-            % Get a more accurate decomposition (even if we didn't converge
-            % to the proper rank)
-            [self.L_global_raw, self.S_global_raw] = ...
-                RobustPCA(self.dat, self.lambda_global);
-            % Smooth the modes out
-            self.L_global = self.flat_filter(...
-                self.L_global_raw, self.filter_window_global);
-            tmp_dat = self.L_global - mean(self.L_global,2);
-            [u, ~] = svd(tmp_dat(:,self.filter_window_global+5:end).');
-            x = 1:rank(self.L_global);
-            self.L_global_modes = u(:,x);
             
-            self.S_global = self.S_global_raw;
+            switch self.global_signal_mode
+                case 'RPCA'
+                    % Gets VERY low-rank signal
+                    iter_max = 10;
+                    this_lambda = self.lambda_global;
+                    for i=1:iter_max
+                        % Low number of iterations in the inner loop just to
+                        % converge on the right rank
+                        [self.L_global_raw, self.S_global_raw] = ...
+                            RobustPCA(self.dat, this_lambda, 10*this_lambda,...
+                            1e-6, 70);
+                        if rank(self.L_global_raw) <= self.max_rank_global
+                            fprintf("Reached target rank (%d); restarting with more accuracy\n",...
+                                    self.max_rank_global);
+                            self.lambda_global = this_lambda;
+                            break
+                        else
+                            % A smaller penalty means more data in the sparse
+                            % component, less in the low-rank
+                            if self.verbose
+                                fprintf("Didn't reach target rank (%d); decreasing lambda\n",...
+                                    self.max_rank_global);
+                            end
+                            if i==iter_max
+                                warning("Didn't converge on maximum rank")
+                            end
+                            this_lambda = this_lambda*0.9;
+                        end
+                    end
+                    % Get a more accurate decomposition (even if we didn't converge
+                    % to the proper rank)
+                    [self.L_global_raw, self.S_global_raw] = ...
+                        RobustPCA(self.dat, self.lambda_global);
+                    % Smooth the modes out
+                    self.L_global = self.flat_filter(...
+                        self.L_global_raw, self.filter_window_global);
+                    tmp_dat = self.L_global - mean(self.L_global,2);
+                    [u, ~] = svd(tmp_dat(:,self.filter_window_global+5:end).');
+                    x = 1:rank(self.L_global);
+                    self.L_global_modes = u(:,x);
+
+                    self.S_global = self.S_global_raw;
+                
+                case 'ID'
+                    self.L_global_modes = self.state_labels_ind_raw.';
+                    
+                case 'ID_simple'
+                    tmp = self.state_labels_ind_raw.';
+                    states_dict = containers.Map(...
+                        {1,2,3,4,5,6,7,8},...
+                        {-1,-1,0,0,0,0,1,0});
+                    for i=1:length(tmp)
+                        tmp(i) = states_dict(tmp(i));
+                    end
+                    self.L_global_modes = tmp;
+                    
+                case 'ID_and_ID_simple'
+                    tmp = self.state_labels_ind_raw.';
+                    states_dict = containers.Map(...
+                        {1,2,3,4,5,6,7,8},...
+                        {-1,-1,0,0,0,0,1,0});
+                    for i=1:length(tmp)
+                        tmp(i) = states_dict(tmp(i));
+                    end
+                    self.L_global_modes = ...
+                        [tmp;
+                        self.state_labels_ind_raw.'];
+                    
+                case 'ID_and_offset'
+                    tmp = self.state_labels_ind_raw.';
+                    self.L_global_modes = tmp;
+                    for i=1:length(unique(tmp))
+                        self.L_global_modes = ...
+                            [self.L_global_modes;
+                            tmp - i];
+                    end
+                    
+                otherwise
+                    error('Unrecognized method')
+            end
         end
         
         function calc_sparse_signal(self)
@@ -710,7 +756,11 @@ classdef CElegansModel < SettingsImportableFromStruct
 %             tol = 1e-2;
 %             sparse_signal = sparse_signal(max(abs(sparse_signal),[],2)>tol,:);
             % Use top svd modes for the low-rank component
-            L_low_rank = self.L_global_modes - mean(self.L_global_modes,1);
+            if self.to_subtract_mean_global
+                L_low_rank = self.L_global_modes - mean(self.L_global_modes,1);
+            else
+                L_low_rank = self.L_global_modes;
+            end
             % Create the augmented dataset (these might have different
             % amounts of filtering, therefore slightly different sizes)
             L_low_rank = L_low_rank';
