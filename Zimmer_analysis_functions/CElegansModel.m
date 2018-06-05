@@ -252,11 +252,9 @@ classdef CElegansModel < SettingsImportableFromStruct
             % matrix
             self.user_control_reconstruction = [];
             num_neurons = self.original_sz(1);
-            if ~exist('is_original_neuron','var')
-                is_original_neuron = (max(signal_ind)<num_neurons);
-            end
-            if ~is_original_neuron
-                signal_ind = signal_ind + num_neurons;
+            if ~exist('signal_ind','var')
+                signal_ind = (self.original_sz(1)+1):self.total_sz(1);
+                is_original_neuron = true;
             end
             if ~exist('custom_signal','var') || isempty(custom_signal)
                 custom_signal = self.AdaptiveDmdc_obj.dat;
@@ -276,6 +274,12 @@ classdef CElegansModel < SettingsImportableFromStruct
                 signal_end = signal_start+size(custom_signal, 2)-1;
                 tmp(:,signal_start:signal_end) = custom_signal;
                 custom_signal = tmp;
+            end
+            if ~exist('is_original_neuron','var')
+                is_original_neuron = (max(signal_ind)<num_neurons);
+            end
+            if ~is_original_neuron
+                signal_ind = signal_ind + num_neurons;
             end
             assert(max(signal_ind) <= self.total_sz(1),...
                 'Indices must be within the discovered control signal')
@@ -421,18 +425,33 @@ classdef CElegansModel < SettingsImportableFromStruct
             title('Dynamics of the low-rank component (data)')
         end
         
-        function fig = plot_colored_user_control(self, fig)
+        function fig = plot_colored_user_control(self, fig, use_same_fig)
             % Plots user control data on top of colored original dataset
             assert(~isempty(self.user_control_reconstruction),...
                 'No reconstructed data stored')
-            if ~exist('fig','var')
-                fig = self.plot_colored_data(false, '.');
+            if ~exist('use_same_fig','var')
+                use_same_fig = true;
+            end
+            if use_same_fig
+                plot_opt = '.';
+            else
+                plot_opt = 'o';
+            end
+            if ~exist('fig','var') || isempty(fig)
+                fig = self.plot_colored_data(false, plot_opt);
             end
             
             modes_3d = self.L_sparse_modes(:,1:3);
             x = 1:size(modes_3d,1);
             proj_3d = (modes_3d.')*self.user_control_reconstruction(x,:);
-            plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), 'k*')
+            if use_same_fig
+                plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), 'k*')
+            else
+                fig = plot_colored(proj_3d,...
+                    self.state_labels_ind_raw(end-size(proj_3d,2)+1:end),...
+                    self.state_labels_key);
+                title('Dynamics of the low-rank component (reconstruction)')
+            end
         end
         
         function fig = plot_colored_fixed_point(self,...
