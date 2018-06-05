@@ -2275,6 +2275,7 @@ title(sprintf('Original control signal for mode %d',ctr_ind))
 %==========================================================================
 
 
+% SHOWME
 %% Plot fixed points of various labeled behaviors
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 my_model = CElegansModel(filename);
@@ -2394,11 +2395,39 @@ my_model_augment.plot_colored_fixed_point();
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 settings = struct(...
     'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
     'lambda_sparse', 0.035);
-my_model = CElegansModel(filename, settings);
+my_model_export = CElegansModel(filename, settings);
 
-dat_with_control = my_model.dat_with_control;
+dat_with_control = my_model_export.dat_with_control;
 target = 'C:\Users\charl\Documents\Current_work\Zimmer_nn_predict\dat_with_control';
+save(target, 'dat_with_control');
+
+% Save another one with much simpler global modes
+settings = struct(...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'lambda_sparse', 0.05,...
+    'dmd_mode','func_DMDc',...
+    'global_signal_mode','ID');
+my_model_export2 = CElegansModel(filename, settings);
+
+dat_with_control = my_model_export2.dat_with_control;
+target = 'C:\Users\charl\Documents\Current_work\Zimmer_nn_predict\dat_with_control_ID';
+save(target, 'dat_with_control');
+
+% Save another one with much simpler global modes
+%   (modes are behavioralist identified signals)
+settings = struct(...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'lambda_sparse', 0.05,...
+    'dmd_mode','func_DMDc',...
+    'global_signal_mode','ID_simple');
+my_model_export3 = CElegansModel(filename, settings);
+
+dat_with_control = my_model_export3.dat_with_control;
+target = 'C:\Users\charl\Documents\Current_work\Zimmer_nn_predict\dat_with_control_ID_simple';
 save(target, 'dat_with_control');
 
 %==========================================================================
@@ -2528,8 +2557,12 @@ my_model3_truncate.AdaptiveDmdc_obj.plot_reconstruction(true);
 % Get errors and apply worm5 dynamics to worm3
 fprintf('Reconstruction error for truncated worm 3: %f\n',...
     my_model3_truncate.AdaptiveDmdc_obj.calc_reconstruction_error());
+fprintf('(Persistence model error for truncated worm 3: %f)\n',...
+    my_model3_truncate.AdaptiveDmdc_obj.calc_reconstruction_error([],true));
 fprintf('Reconstruction error for truncated worm 5: %f\n',...
     my_model5_truncate.AdaptiveDmdc_obj.calc_reconstruction_error());
+fprintf('(Persistence model error for truncated worm 5: %f)\n',...
+    my_model5_truncate.AdaptiveDmdc_obj.calc_reconstruction_error([],true));
 
 my_model3_truncate.AdaptiveDmdc_obj.A_original = ...
     my_model5_truncate.AdaptiveDmdc_obj.A_original;
@@ -2537,6 +2570,12 @@ my_model3_truncate.AdaptiveDmdc_obj.A_separate = ...
     my_model5_truncate.AdaptiveDmdc_obj.A_separate;
 my_model3_truncate.AdaptiveDmdc_obj.plot_reconstruction(true);
 title("Reconstruction using alternate dynamics")
+% my_model5_truncate.AdaptiveDmdc_obj.A_original = ...
+%     my_model3_truncate.AdaptiveDmdc_obj.A_original;
+% my_model5_truncate.AdaptiveDmdc_obj.A_separate = ...
+%     my_model3_truncate.AdaptiveDmdc_obj.A_separate;
+% my_model5_truncate.AdaptiveDmdc_obj.plot_reconstruction(true);
+% title("Reconstruction using alternate dynamics")
 
 fprintf('Reconstruction error for worm 3 data and worm 5 A matrix: %f\n',...
     my_model3_truncate.AdaptiveDmdc_obj.calc_reconstruction_error());
@@ -2547,26 +2586,60 @@ fprintf('Reconstruction error for worm 3 data and worm 5 A matrix: %f\n',...
 filename5 = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 
 % Get model and initial error
-settings = struct('to_subtract_mean_sparse',false,...
+settings = struct('to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
     'to_subtract_mean_global',false);
 settings.global_signal_mode = 'ID';
-my_model5 = CElegansModel(filename5, settings);
+my_model_pareto = CElegansModel(filename5, settings);
 fprintf('Reconstruction error for worm 5: %f\n',...
-    my_model5.AdaptiveDmdc_obj.calc_reconstruction_error());
-% my_model5.AdaptiveDmdc_obj.plot_reconstruction(true);
+    my_model_pareto.AdaptiveDmdc_obj.calc_reconstruction_error());
+% my_model_pareto.AdaptiveDmdc_obj.plot_reconstruction(true);
 
 % Calculate pareto front with different types of global mode calculations
-lambda_vec = linspace(0.03,0.07,50);
-global_signal_mode = {'ID_simple','ID_and_offset'};%'ID',
+% lambda_vec = linspace(0.04,0.06,50);
+lambda_vec = linspace(0.05,0.1,25);
+% global_signal_mode = {'ID_simple','ID_and_offset'};
+% global_signal_mode = {'ID','ID_simple','ID_and_offset','ID_binary'};
+global_signal_mode = {'ID_and_offset'};
+% global_signal_mode = {'RPCA','ID','ID_simple','ID_and_offset'};
 for i = 1:length(global_signal_mode)
-    my_model5.calc_pareto_front(lambda_vec, global_signal_mode{i}, (i>1));
+    my_model_pareto.calc_pareto_front(lambda_vec, global_signal_mode{i}, (i>1));
 end
 
-my_model5.plot_pareto_front();
+my_model_pareto.plot_pareto_front();
 
 %==========================================================================
 
 
+%% Plot pareto fronts with a better DMD backend
+% Note: learn the control signal from the worm though
+filename5 = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+% Get model and initial error
+settings = struct('to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc');
+settings.global_signal_mode = 'ID';
+my_model_pareto = CElegansModel(filename5, settings);
+fprintf('FULL reconstruction error for worm 5: %f\n',...
+    my_model_pareto.AdaptiveDmdc_obj.calc_reconstruction_error());
+% my_model_pareto.AdaptiveDmdc_obj.plot_reconstruction(true);
+
+% Calculate pareto front with different types of global mode calculations
+lambda_vec = linspace(0.03,0.07,40);
+% lambda_vec = linspace(0.05,0.1,2);
+% global_signal_mode = {'ID_simple','ID_and_offset'};
+global_signal_mode = {'ID','ID_simple','ID_and_offset','ID_binary'};
+% global_signal_mode = {'ID_binary'};
+% global_signal_mode = {'RPCA','ID','ID_simple','ID_and_offset'};
+for i = 1:length(global_signal_mode)
+    my_model_pareto.calc_pareto_front(lambda_vec, global_signal_mode{i}, (i>1));
+end
+
+my_model_pareto.plot_pareto_front();
+
+%==========================================================================
 
 
 

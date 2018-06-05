@@ -98,7 +98,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         state_labels_key
     end
     
-    properties (SetAccess=private)
+    properties (SetAccess=public)
         dat_with_control
         dat_without_control
         
@@ -157,7 +157,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         end
         
         function calc_pareto_front(self, lambda_vec, global_signal_mode,...
-                to_append)
+                to_append, max_val)
             % Calculates the errors as a function of the different lambda
             % values
             %   Currently only works with the sparse control signal
@@ -166,6 +166,9 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             if ~exist('to_append','var')
                 to_append = false;
+            end
+            if ~exist('max_val','var')
+                max_val = 0; % Do not truncate values
             end
             self.global_signal_mode = global_signal_mode;
             all_errors = zeros(size(lambda_vec));
@@ -179,6 +182,10 @@ classdef CElegansModel < SettingsImportableFromStruct
                     self.AdaptiveDmdc_obj.calc_reconstruction_error();
             end
             
+            if max_val>0
+                all_errors(all_errors>max_val) = NaN;
+            end
+            
             if to_append && ~isempty(self.pareto_struct.lambda_vec)
                 % Assume lambdas are the same
                 self.pareto_struct.all_errors = ...
@@ -189,9 +196,13 @@ classdef CElegansModel < SettingsImportableFromStruct
                     global_signal_mode];
             else
                 self.pareto_struct.lambda_vec = lambda_vec;
-                self.pareto_struct.all_errors = all_errors;
+                persistence_model_error = ...
+                    self.AdaptiveDmdc_obj.calc_reconstruction_error([],true);
+                self.pareto_struct.all_errors = ...
+                    [ones(size(all_errors))*persistence_model_error;...
+                    all_errors];
                 self.pareto_struct.global_signal_modes = ...
-                    {global_signal_mode};
+                    {'Persistence'; global_signal_mode};
             end
             
         end
@@ -568,13 +579,15 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'No pareto front data saved')
             
             figure;
-            plot(self.pareto_struct.lambda_vec,...
-                self.pareto_struct.all_errors)
+            y_val = self.pareto_struct.all_errors;
+            plot(self.pareto_struct.lambda_vec, y_val,...
+                'LineWidth',2)
             xlabel('\lambda value for sparse signals')
             ylabel('L2 error')
-            ylim([0, min(max(self.pareto_struct.all_errors,[],2))])
+            ylim([0, min(10*y_val(1,1),max(max(y_val)))])
             title('Pareto front')
-            legend(self.pareto_struct.global_signal_modes)
+            legend(self.pareto_struct.global_signal_modes,...
+                'Interpreter','None')
             
         end
     end
@@ -628,8 +641,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 id_struct = struct('ID',{Zimmer_struct.ID},...
                     'ID2',{Zimmer_struct.ID2},'ID3',{Zimmer_struct.ID3});
                 self.AdaptiveDmdc_settings =...
-                    struct('to_plot_cutoff',true,...
-                    'to_plot_data_and_outliers',true,...
+                    struct(...
                     'id_struct',id_struct,...
                     'sort_mode','user_set',...
                     'x_indices',x_ind,...
@@ -752,18 +764,29 @@ classdef CElegansModel < SettingsImportableFromStruct
                 case 'ID'
                     self.L_global_modes = self.state_labels_ind_raw.';
                     
+                case 'ID_binary'
+                    tmp = self.state_labels_ind_raw;
+                    all_states = unique(tmp);
+                    sz = [length(all_states), 1];
+                    binary_labels = zeros(sz(1),size(tmp,2));
+                    for i = 1:sz(1)
+                        binary_labels(i,:) = (tmp==all_states(i));
+                    end
+                    self.L_global_modes = [binary_labels;...
+                        ones(size(binary_labels))].'; 
+                    
                 case 'ID_simple'
-                    tmp = self.state_labels_ind_raw.';
+                    tmp = self.state_labels_ind_raw;
                     states_dict = containers.Map(...
                         {1,2,3,4,5,6,7,8},...
                         {-1,-1,0,0,0,0,1,0});
                     for i=1:length(tmp)
                         tmp(i) = states_dict(tmp(i));
                     end
-                    self.L_global_modes = tmp;
+                    self.L_global_modes = [tmp; ones(size(tmp))].';
                     
                 case 'ID_and_ID_simple'
-                    tmp = self.state_labels_ind_raw.';
+                    tmp = self.state_labels_ind_raw;
                     states_dict = containers.Map(...
                         {1,2,3,4,5,6,7,8},...
                         {-1,-1,0,0,0,0,1,0});
@@ -771,17 +794,20 @@ classdef CElegansModel < SettingsImportableFromStruct
                         tmp(i) = states_dict(tmp(i));
                     end
                     self.L_global_modes = ...
-                        [tmp;
-                        self.state_labels_ind_raw.'];
+                        [tmp,...
+                        self.state_labels_ind_raw];
+                    
+                    self.L_global_modes = self.L_global_modes.';
                     
                 case 'ID_and_offset'
-                    tmp = self.state_labels_ind_raw.';
+                    tmp = self.state_labels_ind_raw;
                     self.L_global_modes = tmp;
                     for i=1:length(unique(tmp))
                         self.L_global_modes = ...
                             [self.L_global_modes;
                             tmp - i];
                     end
+                    self.L_global_modes = self.L_global_modes.';
                     
                 otherwise
                     error('Unrecognized method')
