@@ -2333,9 +2333,10 @@ title(sprintf('Original control signal for mode %d',ctr_ind))
 
 %% Look at even lower rank "global modes"
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
-lambda_global = 0.004; % rank=1
+% lambda_global = 0.004; % rank=1
 % lambda_global = 0.005; % rank=2
 % lambda_global = 0.0055; % rank=3
+lambda_global = 0.0065; % rank=4; default
 settings = struct('lambda_global',lambda_global);
 my_model2 = CElegansModel(filename, settings);
 
@@ -2344,6 +2345,11 @@ my_model2.plot_colored_fixed_point();
 % Plot all individually labeled behaviors (as clouds)
 my_model2.plot_colored_fixed_point('FWD');
 my_model2.plot_colored_fixed_point('REVSUS');
+
+% 3d visualization
+my_model2.add_partial_original_control_signal();
+my_model2.plot_reconstruction_user_control();
+my_model2.plot_colored_user_control([],false);
 
 %==========================================================================
 
@@ -2581,6 +2587,7 @@ fprintf('Reconstruction error for worm 3 data and worm 5 A matrix: %f\n',...
     my_model3_truncate.AdaptiveDmdc_obj.calc_reconstruction_error());
 %==========================================================================
 
+
 %% Plot pareto fronts of the sparse signal
 % Note: learn the control signal from the worm though
 filename5 = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
@@ -2639,6 +2646,34 @@ end
 
 my_model_pareto.plot_pareto_front();
 
+%==========================================================================
+
+
+%% Figure 3 draft plots (reconstruction)
+filename5 = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+% Get first model and error
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'AdaptiveDmdc_settings',struct('what_to_do_dmd_explosion','project'));
+% settings.global_signal_mode = 'ID_and_offset';
+settings.global_signal_mode = 'ID_and_offset';
+my_model_fig3 = CElegansModel(filename5, settings);
+
+% Use original control; 3d pca plot
+% NOTE: reconstruction is not really that impressive here!
+my_model_fig3.add_partial_original_control_signal();
+my_model_fig3.plot_reconstruction_user_control();
+my_model_fig3.plot_colored_user_control([],false);
+
+% Reconstruct some individual neurons
+neur_id = [45, 77, 93];
+for i = neur_id
+    my_model_fig3.AdaptiveDmdc_obj.plot_reconstruction(true,false,true,i);
+end
 %==========================================================================
 
 

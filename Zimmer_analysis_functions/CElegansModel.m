@@ -223,6 +223,10 @@ classdef CElegansModel < SettingsImportableFromStruct
             % Adds a row to the control matrix (B) going from 
             assert(max(neuron_ind)<self.dat_sz(1),...
                 'Control target must be in the original data set')
+            if isempty(find(neuron_ind, 1))
+                warning('Attempt to add an unconnected controller; passing.')
+                return
+            end
             this_ctr_connectivity = ...
                 zeros(size(self.dat_without_control, 1), 1);
             if isscalar(neuron_amps)
@@ -251,9 +255,9 @@ classdef CElegansModel < SettingsImportableFromStruct
             % Adds some of the current control signals to the user control
             % matrix
             self.user_control_reconstruction = [];
-            num_neurons = self.original_sz(1);
+            num_neurons = size(self.dat_without_control,1);
             if ~exist('signal_ind','var')
-                signal_ind = (self.original_sz(1)+1):self.total_sz(1);
+                signal_ind = (num_neurons+1):self.total_sz(1);
                 is_original_neuron = true;
             end
             if ~exist('custom_signal','var') || isempty(custom_signal)
@@ -397,12 +401,12 @@ classdef CElegansModel < SettingsImportableFromStruct
     
     methods % Plotting
         
-        function plot_reconstruction_user_control(self)
+        function fig = plot_reconstruction_user_control(self)
             % Uses manually set control signals
             self.set_AdaptiveDmdc_controller();
             
             % [With manual control matrices]
-            self.user_control_reconstruction = ...
+            [self.user_control_reconstruction, fig] = ...
                 self.AdaptiveDmdc_obj.plot_reconstruction(true, true);
             title('Data reconstructed with user-defined control signal')
             
@@ -651,7 +655,9 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             self.state_labels_ind_raw = Zimmer_struct.SevenStates;
             self.state_labels_key = Zimmer_struct.SevenStatesKey;
-            if isempty(fieldnames(self.AdaptiveDmdc_settings))
+            if ~any(ismember(fieldnames(self.AdaptiveDmdc_settings),...
+                    {'id_struct','sort_mode','x_indices','dmd_mode',...
+                    'to_plot_nothing'}))
                 if ~self.use_deriv
                     x_ind = 1:size(self.raw,1);
                 else
@@ -659,12 +665,10 @@ classdef CElegansModel < SettingsImportableFromStruct
                 end
                 id_struct = struct('ID',{Zimmer_struct.ID},...
                     'ID2',{Zimmer_struct.ID2},'ID3',{Zimmer_struct.ID3});
-                self.AdaptiveDmdc_settings =...
-                    struct(...
-                    'id_struct',id_struct,...
-                    'sort_mode','user_set',...
-                    'x_indices',x_ind,...
-                    'dmd_mode',self.dmd_mode);
+                self.AdaptiveDmdc_settings.id_struct = id_struct;
+                self.AdaptiveDmdc_settings.sort_mode = 'user_set';
+                self.AdaptiveDmdc_settings.x_indices = x_ind;
+                self.AdaptiveDmdc_settings.dmd_mode = self.dmd_mode;
                 self.AdaptiveDmdc_settings.to_plot_nothing = true;
             end
         end
@@ -792,7 +796,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                         binary_labels(i,:) = (tmp==all_states(i));
                     end
                     self.L_global_modes = [binary_labels;...
-                        ones(size(binary_labels))].'; 
+                        ones(1,size(binary_labels,2));
+                        log(1:size(tmp,2))].'; 
                     
                 case 'ID_simple'
                     tmp = self.state_labels_ind_raw;
@@ -818,6 +823,13 @@ classdef CElegansModel < SettingsImportableFromStruct
                     
                     self.L_global_modes = self.L_global_modes.';
                     
+                case 'ID_and_binary'
+                    self.global_signal_mode = 'ID_binary';
+                    self.calc_global_signal();
+                    self.L_global_modes = [self.L_global_modes, ...
+                        self.state_labels_ind_raw.'];
+                    self.global_signal_mode = 'ID_and_binary';
+                    
                 case 'ID_and_offset'
                     tmp = self.state_labels_ind_raw;
                     self.L_global_modes = tmp;
@@ -826,7 +838,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                             [self.L_global_modes;
                             tmp - i];
                     end
-                    self.L_global_modes = self.L_global_modes.';
+                    self.L_global_modes = [self.L_global_modes; 
+                        log(1:size(tmp,2))].';
                     
                 otherwise
                     error('Unrecognized method')
