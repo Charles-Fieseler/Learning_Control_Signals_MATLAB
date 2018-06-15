@@ -422,6 +422,30 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.reset_AdaptiveDmdc_controller();
         end
         
+        function fig = plot_reconstruction_interactive(self,...
+                include_control_signal, neuron_ind)
+            if ~exist('include_control_signal','var')
+                include_control_signal = true;
+            end
+            if ~exist('neuron_ind','var')
+                neuron_ind = 0;
+            end
+            
+            % Plot
+            [self.user_control_reconstruction, fig] = ...
+                self.AdaptiveDmdc_obj.plot_reconstruction(true, ...
+                include_control_signal, true, neuron_ind);
+            title('Data reconstructed with user-defined control signal')
+            
+            % Setup interactivity
+            if neuron_ind == 0
+                [~, im1, ~, im2] = fig.Children.Children;
+                im1.ButtonDownFcn = @(x,y) self.callback_plotter(x,y);
+                im2.ButtonDownFcn = @(x,y) self.callback_plotter(x,y);
+            end
+            
+        end
+        
         function fig = plot_colored_data(self, plot_pca, plot_opt)
             if ~exist('plot_pca','var')
                 plot_pca = false;
@@ -911,6 +935,21 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.state_labels_ind = ...
                 self.state_labels_ind_raw(end-self.total_sz(2)+1:end);
         end
+        
+        function callback_plotter(self, ~, evt)
+            % On left click:
+            %   Plots the original data and the reconstruction
+            % On right click:
+            %   Prints neuron name
+            this_neuron = round(evt.IntersectionPoint(2));
+            if evt.Button==1
+                self.AdaptiveDmdc_obj.plot_reconstruction(true, ...
+                    true, true, this_neuron);
+            else
+                self.AdaptiveDmdc_obj.get_names(this_neuron);
+            end
+        end
+        
     end
     
     methods (Static)
