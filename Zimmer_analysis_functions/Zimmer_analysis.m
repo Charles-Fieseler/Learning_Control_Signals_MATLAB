@@ -2709,6 +2709,45 @@ my_model_ID_test.plot_user_control_fixed_points('REVSUS', true);
 %==========================================================================
 
 
+%% Export sparse control signals from all worms
+filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
+export_folder = '../../Zimmer_data/data_export/';
+export_template = 'dat_worm_%d';
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'to_plot_nothing',true);
+settings.global_signal_mode = 'ID_and_offset';
+
+my_models = cell(5,1);
+new_dat = cell(5,1);
+for i=1:5
+    filename = sprintf(filename_template, i);
+%     my_models{i} = CElegansModel(filename, settings);
+    
+%     my_models{i}.plot_reconstruction_interactive(false);
+    
+    num_neurons = my_models{i}.original_sz(1);
+    ind = (num_neurons+1):(2*num_neurons);
+    new_dat{i} = importdata(filename);
+    new_dat{i}.sparse_control = my_models{i}.dat_with_control(ind,:).';
+    new_dat{i}.user_control_reconstruction = ...
+        my_models{i}.user_control_reconstruction.';
+    
+    new_name = sprintf(export_template, i);
+    S = struct(new_name,new_dat{i});
+    export_filename = [export_folder new_name '.mat' ];
+    save(export_filename, '-struct', 'S')
+end
+
+
+%==========================================================================
+
+
+
+
 
 
 
