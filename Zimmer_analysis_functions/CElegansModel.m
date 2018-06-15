@@ -687,12 +687,54 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function import_from_struct(self, Zimmer_struct)
             warning('Assumes struct of Zimmer type')
+            % First, get data and maybe derivatives
             self.raw = Zimmer_struct.traces.';
             if self.use_deriv || self.use_only_deriv
                 self.raw_deriv = Zimmer_struct.tracesDif.';
             end
-            self.state_labels_ind_raw = Zimmer_struct.SevenStates;
-            self.state_labels_key = Zimmer_struct.SevenStatesKey;
+            % Get label vectors and names
+            %   Struct has field names like "SevenStates" or "FiveStates"
+            fnames = fieldnames(Zimmer_struct);
+            state_fields = fnames(contains(fnames, 'States'));
+            % These fields are either structs or the labels directly
+            % 	If they are structs, add their fields to the original data
+            % 	struct and parse as usual
+            %   Note that there may be more than one labeling; take the
+            %   last one if so
+            if isstruct(Zimmer_struct.(state_fields{end}))
+                labels_struct = Zimmer_struct.(state_fields{end});
+                fnames_labels = fieldnames(labels_struct);
+                assert(length(fnames_labels)==2,...
+                    'Unknown fields in data labels struct')
+                for this_fname = fnames_labels'
+                    n = this_fname{1};
+                    Zimmer_struct.(n) = labels_struct.(n);
+                end
+                state_fields = fnames_labels;
+            end
+            % Actually extract the labels (should be row vector)
+            tmp_states1 = Zimmer_struct.(state_fields{1});
+            tmp_states2 = Zimmer_struct.(state_fields{2});
+            if ismatrix(tmp_states1) && iscell(tmp_states2)
+                if size(tmp_states1,1)==1
+                    self.state_labels_ind_raw = tmp_states1;
+                else
+                    self.state_labels_ind_raw = tmp_states1';
+                end
+                self.state_labels_key = tmp_states2;
+            elseif ismatrix(tmp_states2) && iscell(tmp_states1)
+                if size(tmp_states2,1)==1
+                    self.state_labels_ind_raw = tmp_states2;
+                else
+                    self.state_labels_ind_raw = tmp_states2';
+                end
+                self.state_labels_key = tmp_states1;
+            else
+                error('Expected a cell array (legend) and vector of labels in %s and',...
+                    ['Zimmer_struct.' (state_fields{1})],...
+                    ['Zimmer_struct.' (state_fields{2})]);
+            end
+            % Add this information to the subobject
             if ~any(ismember(fieldnames(self.AdaptiveDmdc_settings),...
                     {'id_struct','sort_mode','x_indices','dmd_mode',...
                     'to_plot_nothing'}))
