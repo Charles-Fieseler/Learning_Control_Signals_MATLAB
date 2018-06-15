@@ -11,8 +11,11 @@ Uses Calcium imaging data, which is not included.
 * ./Zimmer_analysis_functions contains the current work:
 	* Zimmer_analysis.m is basically my lab manual (all the scripts I've run)
 	* Zimmer_paper_plots.m produces the plots in the paper
-	* Zimmer_interactive_plots.m produces a couple interactive plots for exploration
+		* Note: this will take a long time to run and may need external DMD files
 	* CElegansModel.m is a class with most of the analysis and plotting functions
+* ./examples contains one script for now:
+	* Zimmer_interactive_plots.m produces an interactive plot for data exploration
+	
 
 ### How do I get set up? ###
 
@@ -22,9 +25,15 @@ Uses Calcium imaging data, which is not included.
 	* Hopefully will include some more recent results soon!
 
 #### Requirements to run:
-* Get my utility functions, and run their setup script
 * Get data files from an amazing experimentalist
 * Praise the experimentalist
+* Get my utility functions (DMD_toolbox) 
+	* Run their setup script (setup_toolbox_dmd.m)
+	* Note: This repository private
+* Run the setup for this folder
+	* Example:
+	* >> filename = "FILENAME OF DATA STRUCT";
+	* >> my_model = Zimmer_interactive_plots(filename);
 
 ### Contribution guidelines ###
 

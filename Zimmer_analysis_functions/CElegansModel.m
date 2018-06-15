@@ -424,6 +424,21 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function fig = plot_reconstruction_interactive(self,...
                 include_control_signal, neuron_ind)
+            % Plots an interactive heatmap of the original data and the
+            % reconstruction
+            % Input (default in parentheses):
+            %   include_control_signal (true) - whether to also plot the
+            %       control signal; note that some control signals may have
+            %       different max/min than the data and may plot well
+            %   neuron_ind (0) - which neuron to plot; a value of 0 means
+            %       the entire heatmap is plotted
+            %
+            % GUI interactivity:
+            %   - Left click on a row to plot the trace of that neuron with
+            %   its name, if identified (a new figure will pop up)
+            %   - Right click to just show the name of the neuron
+            %
+            %   Note: You can use zoom without triggering the GUI
             if ~exist('include_control_signal','var')
                 include_control_signal = true;
             end
