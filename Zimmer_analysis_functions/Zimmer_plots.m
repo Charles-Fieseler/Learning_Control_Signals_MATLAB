@@ -1,58 +1,38 @@
 
 
+
+%% Define folder to save in
+foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\figures\';
+%==========================================================================
+
+
+%% Define colormap
+num_colors = 16;
+my_colormap = brewermap(num_colors,'OrRd');
+my_colormap(1,:) = ones(1,3);
+colormap(my_colormap)
+my_colormap(end,:) = zeros(1,3);
+set(0, 'DefaultFigureColormap', my_colormap)
+% caxis([-0.5,1.0])
+close all
+
+%==========================================================================
+
+
 %% Figure 1: intro to control
 % Maybe have a trace of some controller neurons?
+filename = 'C:\cygwin64\home\charl\GitWormSim\Model\simdata_original.csv';
+WormView(filename,struct('pauseAt',7.16,'startAtPause',true,'quitAtPause',true))
+error('Need to zoom by hand here')
+fig = prep_figure_no_axis();
+fname = sprintf('%sfigure_1_%d', foldername, 1);
+saveas(fig, fname, 'png');
 %==========================================================================
 
 
-%% Figure 2: Outlier detection
-all_figs = cell(3,1);
-
+%% Figure 2: Robust PCA
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
-dat_fig2 = importdata(filename);
-
-id_struct = struct(...
-    'ID',{dat_fig2.ID},'ID2',{dat_fig2.ID2},'ID3',{dat_fig2.ID3});
-settings = struct(...
-    'to_plot_cutoff',true,...
-    'sort_mode','DMD_error_outliers',...
-    'to_plot_data_and_outliers',false,...
-    'to_plot_A_matrix_svd',false,...
-    'to_plot_data',false,...
-    'id_struct',id_struct);
-ad_obj_fig2 = AdaptiveDmdc(dat_fig2.traces.',settings);
-all_figs{1} = gcf;
-
-% Plot individual neurons
-neurons = [2,46];
-for i = 1:length(neurons)
-    this_neuron = neurons(i);
-    this_name = ad_obj_fig2.get_names(this_neuron);
-    outlier_window = 2000;
-    filter_window = 10;
-    all_figs{i+1} = ad_obj_fig2.plot_data_and_filter(...
-        ad_obj_fig2.neuron_errors(this_neuron ,:)',...
-                        filter_window, outlier_window);
-    title(sprintf('Residual for neuron %d (name=%s)',...
-        this_neuron , this_name))
-    xlabel('Time')
-    ylabel('Error')
-    xlim([0,3000])
-end
-
-% Save figures
-for i = 1:length(all_figs)
-    fname = sprintf('../figures/figure_2_%d',i);
-    this_fig = all_figs{i};
-    set(this_fig, 'Position', get(0, 'Screensize'));
-    saveas(this_fig, fname, 'png');
-end
-%==========================================================================
-
-
-%% Figure 3: Robust PCA
-filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
-all_figs = cell(3,1);
+all_figs = cell(5,1);
 
 % Calculate double RPCA model
 settings = struct(...
@@ -69,34 +49,40 @@ ylabel('Neurons')
 xlabel('Time')
 colorbar
 title('Original data')
+caxis(all_figs{1}.CurrentAxes, [-0.0, 1.0])
 
 title2 = 'Large \lambda low-rank component';
 title1 = 'Large \lambda sparse component';
 dat2 = my_model_fig3.L_sparse;
 dat1 = my_model_fig3.S_sparse;
-plot_mode = '2 1';
-[ all_figs{2} ] = plot_2imagesc_colorbar( ...
+plot_mode = '2_figures';
+[ all_figs{2}, all_figs{3} ] = plot_2imagesc_colorbar( ...
     dat1, dat2, plot_mode, title1, title2 );
+caxis(all_figs{2}.CurrentAxes, [-0.0, 1.0])
+caxis(all_figs{3}.CurrentAxes, [-0.0, 1.0])
 
 title2 = 'Small \lambda low-rank component';
 title1 = 'Small \lambda sparse component';
-dat2 = my_model_fig3.L_global;
+dat2 = my_model_fig3.L_global_raw;
 dat1 = my_model_fig3.S_global;
-plot_mode = '2 1';
-[ all_figs{3} ] = plot_2imagesc_colorbar( ...
+plot_mode = '2_figures';
+[ all_figs{4}, all_figs{5} ] = plot_2imagesc_colorbar( ...
     dat1, dat2, plot_mode, title1, title2 );
+caxis(all_figs{4}.CurrentAxes, [-0.0, 1.0])
+caxis(all_figs{5}.CurrentAxes, [-0.0, 1.0])
 
 % Save figures
 for i = 1:length(all_figs)
-    fname = sprintf('../figures/figure_3_%d',i);
     this_fig = all_figs{i};
-    set(this_fig, 'Position', get(0, 'Screensize'));
+    prep_figure_no_axis(this_fig)
+    colorbar off;
+    fname = sprintf('%sfigure_3_%d', foldername, i);
     saveas(this_fig, fname, 'png');
 end
 %==========================================================================
 
 
-%% Figure 4: Reconstructions (multiple methods)
+%% Figure 3: Reconstructions (multiple methods)
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 all_figs = cell(9,1);
 
@@ -150,7 +136,8 @@ settings = struct(...
     'to_subtract_mean_sparse',false,...
     'to_subtract_mean_global',false,...
     'dmd_mode','func_DMDc',...
-    'to_plot_nothing',true);
+    'to_plot_nothing',true,...
+    'lambda_sparse', 0.04);
 my_model_fig4_b = CElegansModel(filename, settings);
 
 % Use original control; 3d pca plot
@@ -200,18 +187,21 @@ end
 % Save figures
 %---------------------------------------------
 for i = 1:length(all_figs)
-    fname = sprintf('../figures/figure_4_%d',i);
+    if isempty(all_figs{i})
+        continue;
+    end
+    fname = sprintf('%sfigure_4_%d', foldername, i);
     this_fig = all_figs{i};
-    set(this_fig, 'Position', get(0, 'Screensize'));
+    prep_figure_no_axis(this_fig)
     saveas(this_fig, fname, 'png');
 end
 
 %==========================================================================
 
 
-%% Figure 5: Fixed points
+%% Figure 4: Fixed points
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
-all_figs = cell(3,1);
+all_figs = cell(1,1);
 settings = struct(...
     'to_subtract_mean',true,...
     'to_subtract_mean_sparse',false,...
@@ -220,21 +210,74 @@ settings = struct(...
     'to_plot_nothing',true);
 my_model_fig5 = CElegansModel(filename, settings);
 
-all_figs{1} = my_model_fig5.plot_colored_fixed_point('REVSUS',true);
-all_figs{2} = my_model_fig5.plot_colored_fixed_point('SLOW', true);
-all_figs{3} = my_model_fig5.plot_colored_fixed_point('FWD', true);
+all_figs{1} = my_model_fig5.plot_colored_data(false, 'o');
+view(0,60)
+[~, b] = all_figs{1}.Children.Children;
+alpha(b, 0.3)
+my_model_fig5.plot_colored_fixed_point('REVSUS', true, all_figs{1});
+my_model_fig5.plot_colored_fixed_point('FWD', true, all_figs{1});
+% all_figs{2} = my_model_fig5.plot_colored_fixed_point('SLOW', true);
+% all_figs{2} = my_model_fig5.plot_colored_data(false, 'o');
+% view(10,40)
+% [~, b] = all_figs{2}.Children.Children;
+% alpha(b, 0.3)
+% my_model_fig5.plot_colored_fixed_point('FWD', true, all_figs{2});
 
 % Save figures
 for i = 1:length(all_figs)
-    fname = sprintf('../figures/figure_5_%d',i);
+    fname = sprintf('%sfigure_5_%d', foldername, i);
     this_fig = all_figs{i};
-    set(this_fig, 'Position', get(0, 'Screensize'));
+    prep_figure_no_axis(this_fig)
+    zoom(1.15) % Decided by hand
     saveas(this_fig, fname, 'png');
 end
 %==========================================================================
 
 
 
+%% Supplemental Figure 1: Outlier detection
+all_figs = cell(3,1);
+
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat_fig2 = importdata(filename);
+
+id_struct = struct(...
+    'ID',{dat_fig2.ID},'ID2',{dat_fig2.ID2},'ID3',{dat_fig2.ID3});
+settings = struct(...
+    'to_plot_cutoff',true,...
+    'sort_mode','DMD_error_outliers',...
+    'to_plot_data_and_outliers',false,...
+    'to_plot_A_matrix_svd',false,...
+    'to_plot_data',false,...
+    'id_struct',id_struct);
+ad_obj_fig2 = AdaptiveDmdc(dat_fig2.traces.',settings);
+all_figs{1} = gcf;
+
+% Plot individual neurons
+neurons = [2,46];
+for i = 1:length(neurons)
+    this_neuron = neurons(i);
+    this_name = ad_obj_fig2.get_names(this_neuron);
+    outlier_window = 2000;
+    filter_window = 10;
+    all_figs{i+1} = ad_obj_fig2.plot_data_and_filter(...
+        ad_obj_fig2.neuron_errors(this_neuron ,:)',...
+                        filter_window, outlier_window);
+    title(sprintf('Residual for neuron %d (name=%s)',...
+        this_neuron , this_name))
+    xlabel('Time')
+    ylabel('Error')
+    xlim([0,3000])
+end
+
+% Save figures
+for i = 1:length(all_figs)
+    fname = sprintf('../figures/figure_2_%d',i);
+    this_fig = all_figs{i};
+    set(this_fig, 'Position', get(0, 'Screensize'));
+    saveas(this_fig, fname, 'png');
+end
+%==========================================================================
 
 
 

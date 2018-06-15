@@ -2677,6 +2677,40 @@ end
 %==========================================================================
 
 
+%% Examine the neurons activated by global signals
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'to_plot_nothing',true);
+settings.global_signal_mode = 'ID_and_offset';
+my_model_ID_test = CElegansModel(filename, settings);
+
+% Add just the global signals as controls
+num_neurons = my_model_ID_test.dat_sz(1);
+ctr_ind = (num_neurons+1):(my_model_ID_test.total_sz(1)-num_neurons);
+% custom_signal = max(max(my_model.dat_with_control(num_neurons+ctr_ind,:))) *...
+%     ones(length(ctr_ind),1000);
+% t_start = 500;
+is_original_neuron = false;
+my_model_ID_test.add_partial_original_control_signal(ctr_ind,...
+    [], [], is_original_neuron)
+% my_model.ablate_neuron(neurons_to_ablate);
+my_model_ID_test.plot_reconstruction_user_control(false);
+
+my_model_ID_test.plot_reconstruction_user_control(true, 45);
+
+my_model_ID_test.plot_user_control_fixed_points('FWD', true);
+my_model_ID_test.plot_user_control_fixed_points('SLOW', true);
+my_model_ID_test.plot_user_control_fixed_points('REVSUS', true);
+
+%==========================================================================
+
+
+
+
 
 
 

@@ -362,7 +362,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 find(strcmp(self.state_labels_key, which_label));
             transition_ind = diff(self.state_labels_ind==which_label_num);
             start_ind = max(...
-                find(transition_ind==1) - num_preceding_frames, 1);
+                find(transition_ind==1) - num_preceding_frames + 1, 1);
             end_ind = find(transition_ind==-1);
             if self.state_labels_ind(end) == which_label_num
                 end_ind = [end_ind length(transition_ind)]; 
@@ -401,13 +401,21 @@ classdef CElegansModel < SettingsImportableFromStruct
     
     methods % Plotting
         
-        function fig = plot_reconstruction_user_control(self)
+        function fig = plot_reconstruction_user_control(self, ...
+                include_control_signal, neuron_ind)
+            if ~exist('include_control_signal','var')
+                include_control_signal = true;
+            end
+            if ~exist('neuron_ind','var')
+                neuron_ind = 0;
+            end
             % Uses manually set control signals
             self.set_AdaptiveDmdc_controller();
             
             % [With manual control matrices]
             [self.user_control_reconstruction, fig] = ...
-                self.AdaptiveDmdc_obj.plot_reconstruction(true, true);
+                self.AdaptiveDmdc_obj.plot_reconstruction(true, ...
+                include_control_signal, true, neuron_ind);
             title('Data reconstructed with user-defined control signal')
             
             % Reset AdaptiveDmdc object
@@ -497,8 +505,14 @@ classdef CElegansModel < SettingsImportableFromStruct
             if use_centroid
                 proj_3d = mean(proj_3d,2);
             end
-            plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), ...
-                'ko', 'LineWidth', 6)
+            if use_centroid
+                plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), ...
+                    'k*', 'LineWidth', 50)
+            else
+                plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), ...
+                    'ko', 'LineWidth', 6)
+            end
+                
             title(sprintf(...
                 'Fixed points for control structure in %s behavior(s)',...
                 which_label))
@@ -776,7 +790,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                         RobustPCA(self.dat, self.lambda_global);
                     % Smooth the modes out
                     self.L_global = self.flat_filter(...
-                        self.L_global_raw, self.filter_window_global);
+                        self.L_global_raw.', self.filter_window_global).';
                     tmp_dat = self.L_global - mean(self.L_global,2);
                     [u, ~] = svd(tmp_dat(:,self.filter_window_global+5:end).');
                     x = 1:rank(self.L_global);
