@@ -28,9 +28,11 @@ Uses Calcium imaging data, which is not included.
 * Get data files from an amazing experimentalist
 * Praise the experimentalist
 * Get my utility functions (DMD_toolbox) 
+	* Note that this connects up to my public GitHub for some general utility functions... these should automatically download but you may need to run "git clone --recursive <project url>"
+		* (you could also download those utilities separately)
 	* Run their setup script (setup_toolbox_dmd.m)
 	* Note: This repository private
-* Run the setup for this folder
+* Run the setup for this folder (setup_Zimmer_analysis.m)
 	* Example:
 	* >> filename = "FILENAME OF DATA STRUCT";
 	* >> my_model = Zimmer_interactive_plots(filename);
