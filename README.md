@@ -12,6 +12,7 @@ Uses Calcium imaging data, which is not included.
 	* Zimmer_analysis.m is basically my lab manual (all the scripts I've run)
 	* Zimmer_paper_plots.m produces the plots in the paper
 	* Zimmer_interactive_plots.m produces a couple interactive plots for exploration
+	* CElegansModel.m is a class with most of the analysis and plotting functions
 
 ### How do I get set up? ###
 
