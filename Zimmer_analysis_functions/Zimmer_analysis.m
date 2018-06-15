@@ -2725,9 +2725,9 @@ my_models = cell(5,1);
 new_dat = cell(5,1);
 for i=1:5
     filename = sprintf(filename_template, i);
-%     my_models{i} = CElegansModel(filename, settings);
+    my_models{i} = CElegansModel(filename, settings);
     
-%     my_models{i}.plot_reconstruction_interactive(false);
+    my_models{i}.plot_reconstruction_interactive(false);
     
     num_neurons = my_models{i}.original_sz(1);
     ind = (num_neurons+1):(2*num_neurons);
@@ -2741,9 +2741,28 @@ for i=1:5
     export_filename = [export_folder new_name '.mat' ];
     save(export_filename, '-struct', 'S')
 end
+%==========================================================================
 
+
+%% Get CElegansModel to work with alternate struct
+foldername = 'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\npr1_1_PreLet\';
+% filename = [foldername ...
+%     'AN20150917a_ZIM1027_1mMTF_O2_21_s_47um_1345_PreLet_\wbdataset.mat'];
+filename = [foldername ...
+    'AN20140807d_ZIM575_PreLet_6m_O2_21_s_1mMTF_47um_1540_\wbdataset.mat'];
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc');
+settings.global_signal_mode = 'ID_and_offset';
+my_model_other_struct = CElegansModel(filename, settings);
+
+my_model_other_struct.plot_reconstruction_interactive(false);
 
 %==========================================================================
+
+
 
 
 
