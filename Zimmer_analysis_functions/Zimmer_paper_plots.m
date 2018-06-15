@@ -21,12 +21,15 @@ close all
 
 %% Figure 1: intro to control
 % Maybe have a trace of some controller neurons?
-filename = 'C:\cygwin64\home\charl\GitWormSim\Model\simdata_original.csv';
-WormView(filename,struct('pauseAt',7.16,'startAtPause',true,'quitAtPause',true))
-error('Need to zoom by hand here')
-fig = prep_figure_no_axis();
-fname = sprintf('%sfigure_1_%d', foldername, 1);
-saveas(fig, fname, 'png');
+to_plot_figure_1 = false;
+if to_plot_figure_1
+    filename = 'C:\cygwin64\home\charl\GitWormSim\Model\simdata_original.csv';
+    WormView(filename,struct('pauseAt',7.16,'startAtPause',true,'quitAtPause',true))
+    error('Need to zoom by hand here')
+    fig = prep_figure_no_axis();
+    fname = sprintf('%sfigure_1_%d', foldername, 1);
+    saveas(fig, fname, 'png');
+end
 %==========================================================================
 
 
