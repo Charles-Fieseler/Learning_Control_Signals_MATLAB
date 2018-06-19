@@ -926,7 +926,8 @@ classdef CElegansModel < SettingsImportableFromStruct
         end
         
         function fig = plot_colored_control_arrow(self, ...
-                which_ctr_modes, arrow_base, arrow_length, fig)
+                which_ctr_modes, arrow_base, arrow_length, fig,...
+                use_original)
             % Plots a control direction on top of colored original dataset
             if ~exist('arrow_base','var') || isempty(arrow_base)
                 arrow_base = [0, 0, 0];
@@ -934,17 +935,26 @@ classdef CElegansModel < SettingsImportableFromStruct
             if ~exist('arrow_length','var') || isempty(arrow_length)
                 arrow_length = 1;
             end
-            if ~exist('fig','var')
-                fig = self.plot_colored_data(false, '.');
+            if ~exist('fig','var') || isempty(fig)
+                fig = self.plot_colored_data(false, 'o');
+            end
+            if ~exist('use_original', 'var')
+                use_original = false;
             end
             
             % Get control matrices and columns to project
             ad_obj = self.AdaptiveDmdc_obj;
             x_dat = 1:ad_obj.x_len;
-            x_ctr = (ad_obj.x_len+1):self.total_sz(1);
+            if use_original
+                % Query intrinsic dynamics
+                x_ctr = x_dat;
+            else
+                % Query control dynamics
+                x_ctr = (ad_obj.x_len+1):self.total_sz(1);
+            end
             B = ad_obj.A_original(x_dat, x_ctr);
             % Reconstruct the attractor and project it into the same space
-            control_direction = B(:,which_ctr_modes);
+            control_direction = B(:, which_ctr_modes);
             
             modes_3d = self.L_sparse_modes(:,1:3);
             proj_3d = (modes_3d.')*control_direction;
@@ -953,6 +963,14 @@ classdef CElegansModel < SettingsImportableFromStruct
                     proj_3d(1,j),proj_3d(2,j),proj_3d(3,j), ...
                     arrow_length, 'LineWidth', 2)
             end
+        end
+        
+        function fig = plot_colored_arrow_movie(self,...
+                pause_time)
+           % Plots a movie of the 3 different control signal directions:
+           %    Intrinsic dynamics
+           %    Sparse controller
+           %    Global mode
         end
         
         function plot_mean_transition_signals(self, ...
@@ -1203,7 +1221,9 @@ classdef CElegansModel < SettingsImportableFromStruct
                     self.S_global = self.S_global_raw;
                 
                 case 'ID'
-                    self.L_global_modes = self.state_labels_ind_raw.';
+                    self.L_global_modes = [self.state_labels_ind_raw;...
+                        ones(size(self.state_labels_ind_raw));
+                        log(1:length(self.state_labels_ind_raw))].';
                     
                 case 'ID_binary'
                     tmp = self.state_labels_ind_raw;
@@ -1215,7 +1235,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                     end
                     self.L_global_modes = [binary_labels;...
                         ones(1,size(binary_labels,2));
-                        log(1:size(tmp,2))].'; 
+                        log(1:size(tmp,2))].';
                     
                 case 'ID_simple'
                     tmp = self.state_labels_ind_raw;

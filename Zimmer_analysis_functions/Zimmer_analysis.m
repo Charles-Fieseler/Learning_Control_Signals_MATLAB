@@ -2677,7 +2677,7 @@ end
 %==========================================================================
 
 
-%% Examine the neurons activated by global signals
+%% Examine the FP activated by global signals
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 settings = struct(...
     'to_subtract_mean',true,...
@@ -2761,6 +2761,191 @@ my_model_other_struct = CElegansModel(filename, settings);
 my_model_other_struct.plot_reconstruction_interactive(false);
 
 %==========================================================================
+
+
+%% Look at which neurons are actuated by global signals
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'to_plot_nothing',true);
+settings.global_signal_mode = 'ID';
+my_model_ID_test = CElegansModel(filename, settings);
+
+% Baseline L2 error
+disp(my_model_ID_test.AdaptiveDmdc_obj.calc_reconstruction_error())
+
+%---------------------------------------------
+% Global signals
+%---------------------------------------------
+% Look at control matrix (B)
+figure;
+num_neurons = my_model_ID_test.original_sz(1);
+B_global_all = my_model_ID_test.AdaptiveDmdc_obj.A_original(1:num_neurons,...
+    (2*num_neurons+1):end);
+imagesc(B_global_all);
+title('B matrix')
+
+% Look at control matrix (B) without DC offset
+figure;
+num_neurons = my_model_ID_test.original_sz(1);
+B_global = my_model_ID_test.AdaptiveDmdc_obj.A_original(1:num_neurons,...
+    (2*num_neurons+1):end-2);
+imagesc(B_global);
+title('B matrix (only learned/IDed modes)')
+
+% Narrow these down to which neurons are important for which behaviors
+%   Assume a single control signal (ID); ignore offset
+tol = 0.003;
+group1 = find(B_global > tol);
+group2 = find(B_global < -tol);
+
+disp('Neurons important for group 1:')
+my_model_ID_test.AdaptiveDmdc_obj.get_names(group1);
+
+disp('Neurons important for group 2:')
+my_model_ID_test.AdaptiveDmdc_obj.get_names(group2);
+
+% Look at global control signals
+figure;
+u = my_model_ID_test.dat_with_control((2*num_neurons+1):end,:);
+plot(u.')
+title('Global control signals')
+
+%---------------------------------------------
+% Sparse signals
+%---------------------------------------------
+% Look at sparse control signals
+figure;
+u = my_model_ID_test.dat_with_control((num_neurons+1):(2*num_neurons),:);
+imagesc(u)
+title('Global control signals')
+
+% Look at which neurons are important based on how they actuate either
+% group1 or group2 of the global modes above
+%   TO DO: look at activity * eigenvalues or some other dynamic properties
+B = my_model_ID_test.AdaptiveDmdc_obj.A_original(1:num_neurons,...
+    (num_neurons+1):(2*num_neurons));
+tol = 0.001;
+group1_ind = B_global > tol;
+group2_ind = B_global < -tol;
+u_sum = sum(u,2);
+
+group1_scores = zeros(length(u_sum),1);
+group2_scores = zeros(length(u_sum),1);
+for i=1:length(group1)
+    % Do not want to sum the abs
+    group1_scores(i) = sum(u_sum(i) * B(group1_ind,i));
+    group2_scores(i) = sum(u_sum(i) * B(group2_ind,i));
+end
+
+figure;
+subplot(2,1,1)
+plot(group1_scores)
+title('group1 (probably revsus)')
+subplot(2,1,2)
+plot(group2_scores)
+title('group2 (probably fwd)')
+
+
+%==========================================================================
+
+
+%% Look at the eigenvalues for motor neurons
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'to_plot_nothing',true);
+settings.global_signal_mode = 'ID_and_offset';
+my_model_ID_test = CElegansModel(filename, settings);
+
+% Find motor neurons
+num_neurons = my_model_ID_test.original_sz(1);
+all_names = my_model_ID_test.AdaptiveDmdc_obj.get_names(1:num_neurons);
+class_A = contains(all_names, {'A0','A1'});
+class_B = contains(all_names, {'B0','B1'});
+
+% Get eigenvectors and eigenvalues of intrinsic dynamics
+A = my_model_ID_test.AdaptiveDmdc_obj.A_separate(1:num_neurons,1:num_neurons);
+[V, D] = eig(A, 'vector');
+actual_values = abs(D)>1e-5;
+V = V(:,actual_values);
+D = D(actual_values);
+
+% Get columns that have appreciable loading on motor neurons
+% tol = 0.1;
+% for i=1:length(D)
+%     A_loading = sum(real(V(class_A,i)));
+%     if abs(A_loading)>tol
+%         fprintf('Eigenvalue for class_A eigenvector: %f+%f (loading: %f)\n',...
+%             real(D(i)), imag(D(i)), A_loading)
+%     end
+%     B_loading = sum(real(V(class_B,i)));
+%     if abs(B_loading)>tol
+%         fprintf('Eigenvalue for class_B eigenvector: %f+%f (loading: %f)\n',...
+%             real(D(i)), imag(D(i)), B_loading)
+%     end
+% end
+
+% Scatterplots of absolute weighting
+figure;
+subplot(2,1,1)
+my_colormap = sum(real(V(class_A,:)).*abs(V(class_A,:)),1);
+scatter(real(D),imag(D),[],my_colormap,'filled')
+title('Colored by A-class loading')
+colorbar
+subplot(2,1,2)
+my_colormap = sum(real(V(class_B,:)).*abs(V(class_B,:)),1);
+scatter(real(D),imag(D),[],my_colormap,'filled')
+title('Colored by B-class loading')
+colorbar
+
+%==========================================================================
+
+
+%% Look transition kicks for all controllers
+filename = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'to_plot_nothing',true);
+settings.global_signal_mode = 'ID_and_offset';
+my_model_ID_test = CElegansModel(filename, settings);
+
+% Get neuron names
+num_neurons = my_model_ID_test.original_sz(1);
+all_names = my_model_ID_test.AdaptiveDmdc_obj.get_names(1:num_neurons);
+known_names = find(~cellfun(@isempty,all_names));
+
+% Plot all of them!
+for i=1:length(known_names)
+    this_neuron = known_names(i);
+    fig = my_model_ID_test.plot_colored_control_arrow(this_neuron,[],50);
+    title(sprintf('Control kick of neuron %d (%s)',...
+        this_neuron, all_names{this_neuron}));
+    [~, b] = fig.Children.Children;
+    alpha(b, 0.3)
+    
+    fig = my_model_ID_test.plot_colored_control_arrow(...
+        this_neuron,[],50, [], true);
+    title(sprintf('Intrinsic dynamics kick of neuron %d (%s)',...
+        this_neuron, all_names{this_neuron}));
+    [~, b] = fig.Children.Children;
+    alpha(b, 0.3)
+    pause
+end
+
+%==========================================================================
+
+
+
 
 
 
