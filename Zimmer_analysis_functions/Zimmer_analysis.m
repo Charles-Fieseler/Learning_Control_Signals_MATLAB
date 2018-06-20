@@ -2930,19 +2930,38 @@ for i=1:length(known_names)
     fig = my_model_ID_test.plot_colored_control_arrow(this_neuron,[],50);
     title(sprintf('Control kick of neuron %d (%s)',...
         this_neuron, all_names{this_neuron}));
-    [~, b] = fig.Children.Children;
-    alpha(b, 0.3)
+%     [~, b] = fig.Children.Children;
+%     alpha(b, 0.3)
     
     fig = my_model_ID_test.plot_colored_control_arrow(...
         this_neuron,[],50, [], true);
     title(sprintf('Intrinsic dynamics kick of neuron %d (%s)',...
         this_neuron, all_names{this_neuron}));
-    [~, b] = fig.Children.Children;
-    alpha(b, 0.3)
+%     [~, b] = fig.Children.Children;
+%     alpha(b, 0.3)
     pause
 end
 
 %==========================================================================
+
+
+%% Look at movie of control signals
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'to_plot_nothing',true);
+settings.global_signal_mode = 'ID_and_offset';
+my_model_ID_test = CElegansModel(filename, settings);
+
+
+my_model_ID_test.plot_colored_arrow_movie();
+
+%==========================================================================
+
+
 
 
 

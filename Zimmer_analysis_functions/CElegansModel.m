@@ -927,7 +927,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function fig = plot_colored_control_arrow(self, ...
                 which_ctr_modes, arrow_base, arrow_length, fig,...
-                use_original)
+                use_original, use_mean_vector, color)
             % Plots a control direction on top of colored original dataset
             if ~exist('arrow_base','var') || isempty(arrow_base)
                 arrow_base = [0, 0, 0];
@@ -937,10 +937,30 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             if ~exist('fig','var') || isempty(fig)
                 fig = self.plot_colored_data(false, 'o');
+                [~, b] = fig.Children.Children;
+                alpha(b, 0.2)
             end
             if ~exist('use_original', 'var')
                 use_original = false;
             end
+            if ~exist('use_mean_vector','var')
+                use_mean_vector = false;
+            end
+            if ~exist('color', 'var')
+                color = 'k';
+            end
+            
+            if isscalar(arrow_length)
+                arrow_length = arrow_length*ones(size(which_ctr_modes));
+            end
+            if length(color)==1
+                tmp = cell(size(which_ctr_modes));
+                for i=1:length(tmp)
+                    tmp{i} = color;
+                end
+                color = tmp;
+            end
+            
             
             % Get control matrices and columns to project
             ad_obj = self.AdaptiveDmdc_obj;
@@ -958,19 +978,104 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             modes_3d = self.L_sparse_modes(:,1:3);
             proj_3d = (modes_3d.')*control_direction;
+            if use_mean_vector
+                proj_3d = sum(arrow_length.*proj_3d,2);
+                arrow_length = ones(size(arrow_length));
+            end
             for j=1:size(proj_3d,2)
                 quiver3(arrow_base(1),arrow_base(2),arrow_base(3),...
                     proj_3d(1,j),proj_3d(2,j),proj_3d(3,j), ...
-                    arrow_length, 'LineWidth', 2)
+                    arrow_length(j), color{j}, 'LineWidth', 2)
             end
         end
         
         function fig = plot_colored_arrow_movie(self,...
-                pause_time)
-           % Plots a movie of the 3 different control signal directions:
-           %    Intrinsic dynamics
-           %    Sparse controller
-           %    Global mode
+                attractor_view, use_legend, movie_filename, pause_time)
+            % Plots a movie of the 3 different control signal directions:
+            %    Intrinsic dynamics
+            %    Sparse controller
+            %    Global mode
+            if ~exist('attractor_view','var')
+                attractor_view = true;
+            end
+            if ~exist('use_legend','var')
+                use_legend = false;
+            end
+            if ~exist('movie_filename','var')
+                movie_filename = '';
+            end
+            if ~exist('pause_time','var')
+                pause_time = 0.00;
+            end
+            fig = self.plot_colored_data(false, 'o');
+            [~, b] = fig.Children.Children;
+            alpha(b, 0.2)
+            if ~use_legend
+                legend off;
+            end
+            
+            if ~isempty(movie_filename)
+                video_obj = VideoWriter(movie_filename);
+                open(video_obj);
+            end
+            
+            num_neurons = self.original_sz(1);
+            neuron_ind = 1:num_neurons;
+            arrow_factor = 1;
+            global_ind = ((2*num_neurons+1):self.total_sz(1)) - ...
+                num_neurons;
+            this_dat = self.dat_without_control;
+            this_ctr_sparse = ...
+                self.dat_with_control((num_neurons+1):(2*num_neurons),:);
+            this_ctr_global = ...
+                self.dat_with_control((2*num_neurons+1):end,:);
+            modes_3d = self.L_sparse_modes(:,1:3);
+            
+            for i=1:self.original_sz(2)
+                arrow_base = (modes_3d.')*this_dat(:,i);
+                % Intrinsic
+                arrow_length_intrinsic = (this_dat(:,i)*arrow_factor).';
+                self.plot_colored_control_arrow(...
+                    neuron_ind, [], arrow_length_intrinsic, fig,...
+                    true, true, 'b');
+                % Sparse controller
+                arrow_length_sparse = (this_ctr_sparse(:,i)*arrow_factor).';
+                self.plot_colored_control_arrow(...
+                    neuron_ind, arrow_base, 20*arrow_length_sparse, fig,...
+                    false, true, 'r');
+                % Global controller
+                if attractor_view
+                    label_ind = this_ctr_global(1,i);
+                    label_str = self.state_labels_key{label_ind};
+                    self.plot_colored_fixed_point(label_str, true, fig);
+                else
+                    arrow_length_global = (this_ctr_global(:,i)*arrow_factor).';
+                    self.plot_colored_control_arrow(...
+                        global_ind, arrow_base, arrow_length_global, fig,...
+                        false, true, 'k');
+                end
+                % Current point
+                plot3(arrow_base(1), arrow_base(2), arrow_base(3),...
+                    'ok', 'LineWidth', 5)
+                
+                if use_legend
+                    leg = legend;
+                    leg.String(end-3:end) = ...
+                        {'Intrinsic','Sparse','Global','Current Point'};
+                end
+                if ~isempty(movie_filename)
+                    frame = getframe(fig);
+                    writeVideo(video_obj, frame);
+                end
+                pause(pause_time)
+                
+                c = get(gca,'children');
+                delete(c(1:4));
+            end
+            
+            if ~isempty(movie_filename)
+                close(video_obj);
+            end
         end
         
         function plot_mean_transition_signals(self, ...
