@@ -3044,6 +3044,136 @@ my_pareto_obj = ParetoFrontObj('CElegansModel', settings);
 %==========================================================================
 
 
+%% Look at the neuron "roles" vis a vis intrinsic kicks
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'to_plot_nothing',true);
+settings.global_signal_mode = 'ID';
+my_model_ID_test = CElegansModel(filename, settings);
+
+[attractor_overlap, all_ctr_directions] =...
+    my_model_ID_test.calc_attractor_overlap();
+all_norms = zeros(size(all_ctr_directions,2),1);
+for i=1:size(all_ctr_directions,2)
+    all_norms(i) = norm(all_ctr_directions(:,i));
+end
+% Don't plot the "no-state" stuff
+figure;
+plot(attractor_overlap(:,1:end-1), 'o', 'LineWidth',2);
+legend(my_model_ID_test.state_labels_key(1:1:end-1))
+
+prox_overlap = attractor_overlap;
+tol = 0.1;
+prox_overlap(abs(prox_overlap)<tol) = 0;
+figure;
+plot(prox_overlap(:,1:end-1), 'o', 'LineWidth',2);
+hold on;
+plot(all_norms,'ok','LineWidth',2)
+legend([my_model_ID_test.state_labels_key(1:1:end-1), {'Kick strength'}])
+title('Large instrinsic kicks compared to overall neuron kick strength')
+
+figure;
+normalized_overlap = attractor_overlap./all_norms;
+tol = 0.2;
+normalized_overlap(abs(normalized_overlap)<tol) = 0;
+plot(normalized_overlap(:,1:end-1), 'o', 'LineWidth',2);
+legend(my_model_ID_test.state_labels_key(1:1:end-1)) 
+title('Intrinsic kicks normalized by overall kick strength')
+
+% Now show just the identified neurons
+all_names = my_model_ID_test.AdaptiveDmdc_obj.get_names();
+known_ind = ~strcmp(all_names,'');
+known_names = all_names(known_ind);
+
+figure
+normalized_overlap = attractor_overlap./all_norms;
+tol = 0.15;
+normalized_overlap(abs(normalized_overlap)<tol) = 0;
+plot(normalized_overlap(known_ind,1:end-1), 'o', 'LineWidth',2);
+xticks(1:length(known_ind));
+xticklabels(known_names)
+legend(my_model_ID_test.state_labels_key(1:1:end-1)) 
+title('Intrinsic kicks normalized by overall kick strength')
+
+% Now do simplified groups of behaviors
+simplified_labels_cell = {{'FWD','SLOW'},{'REVSUS','REV1','REV2'}};
+all_labels = my_model_ID_test.state_labels_key;
+simplified_labels_ind = cell(size(simplified_labels_cell));
+simplified_overlap = zeros(...
+    size(attractor_overlap,1), length(simplified_labels_cell));
+for i=1:length(simplified_labels_cell)
+    simplified_labels_ind(i) = ...
+        { contains(all_labels,simplified_labels_cell{i}) };
+    simplified_overlap(:,i) = mean(...
+        attractor_overlap(:,simplified_labels_ind{i}),2);
+end
+
+all_norms = zeros(size(all_ctr_directions,2),1);
+for i=1:size(all_ctr_directions,2)
+    all_norms(i) = norm(all_ctr_directions(:,i));
+end
+normalized_overlap = simplified_overlap./all_norms;
+tol = 0.1;
+normalized_overlap(abs(normalized_overlap)<tol) = 0;
+
+all_names = my_model_ID_test.AdaptiveDmdc_obj.get_names();
+known_ind = ~strcmp(all_names,'');
+known_names = all_names(known_ind);
+
+figure
+% plot(normalized_overlap, 'o', 'LineWidth',2);
+plot(normalized_overlap(known_ind,:), 'o', 'LineWidth',2);
+xticks(1:length(known_ind));
+xticklabels(known_names)
+legend({'simple FWD','simple REVSUS'}) 
+title('Intrinsic kicks normalized by overall kick strength')
+
+% Also plot a baseline for random matrix connectivity
+[attractor_overlap, all_ctr_directions,...
+    attractor_reconstruction] =...
+    my_model_ID_test.calc_attractor_overlap();
+rand_ctr_directions = 2*rand(129)-1;
+for i=1:size(rand_ctr_directions,2)
+    all_norms(i) = norm(rand_ctr_directions(:,i));
+end
+baseline = (rand_ctr_directions.'./all_norms)*attractor_reconstruction;
+figure;
+plot(baseline,'LineWidth',2)
+
+%==========================================================================
+
+
+%% Neuron roles across worms
+filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc');
+settings.global_signal_mode = 'ID';
+
+all_models = cell(5,1);
+all_roles = cell(5,2);
+for i=1:5
+    filename = sprintf(filename_template,i);
+    all_models{i} = CElegansModel(filename,settings);
+    [all_roles{i,1}, all_roles{i,2}] = ...
+        all_models{i}.calc_neuron_roles();
+end
+
+
+
+%==========================================================================
+
+
+
+
+
+
 
 
 

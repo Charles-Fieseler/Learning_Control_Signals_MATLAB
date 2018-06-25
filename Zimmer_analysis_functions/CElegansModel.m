@@ -720,6 +720,140 @@ classdef CElegansModel < SettingsImportableFromStruct
             mean_signal = mean(signal_mat, 3);
         end
         
+        function control_direction = calc_control_direction(self,...
+                which_ctr_modes, use_original)
+            % Get control matrices and columns to project
+            ad_obj = self.AdaptiveDmdc_obj;
+            x_dat = 1:ad_obj.x_len;
+            if use_original
+                % Query intrinsic dynamics
+                x_ctr = x_dat;
+            else
+                % Query control dynamics
+                x_ctr = (ad_obj.x_len+1):self.total_sz(1);
+            end
+            dynamic_matrix = ad_obj.A_original(x_dat, x_ctr);
+            % Reconstruct the attractor and project it into the same space
+            control_direction = dynamic_matrix(:, which_ctr_modes);
+        end
+        
+        function attractor_reconstruction = calc_attractor(self, ...
+                which_label)
+            % Get the dynamics and control matrices, and the control signal
+            ad_obj = self.AdaptiveDmdc_obj;
+            x_dat = 1:ad_obj.x_len;
+            x_ctr = (ad_obj.x_len+1):self.total_sz(1);
+            A = ad_obj.A_original(x_dat, x_dat);
+            B = ad_obj.A_original(x_dat, x_ctr);
+            if strcmp(which_label,'all')
+                u = self.dat_with_control(x_ctr, :);
+            else
+                [u_cell, ~, ~, ~] = ...
+                    self.get_control_signal_during_label(which_label);
+                u = [];
+                for j = 1:length(u_cell)
+                    u = [u, u_cell{j}]; %#ok<AGROW>
+                end
+            end
+            % Reconstruct the attractor and project it into the same space
+            % Find x (fixed point) in:
+            %   x = A x + B u
+            attractor_reconstruction = ((eye(length(A))-A)\B)*u;
+        end
+        
+        function [attractor_overlap, all_ctr_directions,...
+                attractor_reconstruction] =...
+                calc_attractor_overlap(self)
+            % Assign "roles" to the neurons by calculating the overlap
+            % between their intrinsic dynamic kick and the direction of the
+            % different attractors
+            %   Note: particularly for similar attractors like FWD and
+            %   SLOW, overlap scores will be very similar
+            %
+            %   TO DO: how does the the location of the origin affect this?
+            
+            which_neurons = 1:self.original_sz(1);
+            use_original = true;
+            
+            % Get intrinsic control kicks (matrix)
+            all_ctr_directions = self.calc_control_direction(...
+                which_neurons, use_original);
+            % Get attractor positions (mean vector for each label)
+            %   Note: normalize the length of these vectors
+            all_labels = self.state_labels_key;
+            attractor_reconstruction = zeros(...
+                length(which_neurons), length(all_labels));
+            for i = 1:length(all_labels)
+                this_attractor = mean(self.calc_attractor(all_labels{i}), 2);
+                attractor_reconstruction(:,i) = ...
+                    this_attractor/norm(this_attractor);
+            end
+            % Calculate overlap
+            attractor_overlap = ...
+                all_ctr_directions * attractor_reconstruction;
+        end
+        
+        function [neuron_roles, neuron_names] = calc_neuron_roles(self,...
+                use_only_known_neurons, abs_tol)
+            % Assigns neuron roles based on direction of intrinsic dynamic
+            % push overlap with various attractors
+            %   By default, averages together FWD+SLOW and the reversals;
+            %   ignores turning states because they don't seem to act as
+            %   true attractors
+            %   Also by default only returns known neuron names
+            if ~exist('use_only_known_neurons','var')
+                use_only_known_neurons = true;
+            end
+            if ~exist('abs_tol','var')
+                abs_tol = 0.15;
+            end
+            
+            % Get attractor overlap and normalize
+            [attractor_overlap, all_ctr_directions] =...
+                self.calc_attractor_overlap();
+            all_norms = zeros(size(all_ctr_directions,2),1);
+            for i=1:size(all_ctr_directions,2)
+                all_norms(i) = norm(all_ctr_directions(:,i));
+            end
+            attractor_overlap = attractor_overlap./all_norms;
+            % Get names and sort if required
+            neuron_names = self.AdaptiveDmdc_obj.get_names();
+            if use_only_known_neurons
+                neuron_ind = ~strcmp(neuron_names,'');
+                neuron_names = neuron_names(neuron_ind);
+            else
+                neuron_ind = 1:self.original_sz(1);
+            end
+            neuron_ind = find(neuron_ind);
+            % Simplify the behavioral categories
+            simplified_labels_cell = {{'FWD','SLOW'},{'REVSUS','REV1','REV2'}};
+            all_labels = self.state_labels_key;
+            simplified_labels_ind = cell(size(simplified_labels_cell));
+            simplified_overlap = zeros(...
+                size(attractor_overlap,1), length(simplified_labels_cell));
+            for i=1:length(simplified_labels_cell)
+                simplified_labels_ind(i) = ...
+                    { contains(all_labels,simplified_labels_cell{i}) };
+                simplified_overlap(:,i) = mean(...
+                    attractor_overlap(:,simplified_labels_ind{i}),2);
+            end
+            % Use a hard threshold and determine the neuron roles
+            simplified_overlap(abs(simplified_overlap)<abs_tol) = 0;
+            neuron_roles = cell(size(neuron_ind));
+            for i = 1:length(neuron_ind)
+                this_neuron = neuron_ind(i);
+                this_kick = simplified_overlap(this_neuron,:);
+                if this_kick(1)>0 && this_kick(2)>0
+                    neuron_roles{i} = 'both';
+                elseif this_kick(1)>0
+                    neuron_roles{i} = 'simple FWD';
+                elseif this_kick(2)>0
+                    neuron_roles{i} = 'simple REVSUS';
+                else
+                    neuron_roles{i} = 'other';
+                end
+            end
+        end
     end
     
     methods % Plotting
@@ -841,33 +975,12 @@ classdef CElegansModel < SettingsImportableFromStruct
                 which_label = 'all';
             end
             
-            % Get the dynamics and control matrices, and the control signal
-            ad_obj = self.AdaptiveDmdc_obj;
-            x_dat = 1:ad_obj.x_len;
-            x_ctr = (ad_obj.x_len+1):self.total_sz(1);
-            A = ad_obj.A_original(x_dat, x_dat);
-            B = ad_obj.A_original(x_dat, x_ctr);
-            if strcmp(which_label,'all')
-                u = self.dat_with_control(x_ctr, :);
-            else
-                [u_cell, ~, ~, ~] = ...
-                    self.get_control_signal_during_label(which_label);
-                u = [];
-                for j = 1:length(u_cell)
-                    u = [u, u_cell{j}]; %#ok<AGROW>
-                end
-            end
-            % Reconstruct the attractor and project it into the same space
-            % Find x (fixed point) in:
-            %   x = A x + B u
-            attractor_reconstruction = ((eye(length(A))-A)\B)*u;
+            attractor_reconstruction = self.calc_attractor(which_label);
             
             modes_3d = self.L_sparse_modes(:,1:3);
             proj_3d = (modes_3d.')*attractor_reconstruction;
             if use_centroid
                 proj_3d = mean(proj_3d,2);
-            end
-            if use_centroid
                 plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), ...
                     'k*', 'LineWidth', 50)
             else
@@ -961,19 +1074,9 @@ classdef CElegansModel < SettingsImportableFromStruct
                 color = tmp;
             end
             
-            % Get control matrices and columns to project
-            ad_obj = self.AdaptiveDmdc_obj;
-            x_dat = 1:ad_obj.x_len;
-            if use_original
-                % Query intrinsic dynamics
-                x_ctr = x_dat;
-            else
-                % Query control dynamics
-                x_ctr = (ad_obj.x_len+1):self.total_sz(1);
-            end
-            dynamic_matrix = ad_obj.A_original(x_dat, x_ctr);
-            % Reconstruct the attractor and project it into the same space
-            control_direction = dynamic_matrix(:, which_ctr_modes);
+            % One vector per ctr_mode 
+            control_direction = ...
+                self.calc_control_direction(which_ctr_modes, use_original);
             
             modes_3d = self.L_sparse_modes(:,1:3);
             proj_3d = (modes_3d.')*control_direction;
