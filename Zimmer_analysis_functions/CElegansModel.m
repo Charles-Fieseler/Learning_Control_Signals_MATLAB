@@ -927,7 +927,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function fig = plot_colored_control_arrow(self, ...
                 which_ctr_modes, arrow_base, arrow_length, fig,...
-                use_original, use_mean_vector, color)
+                use_original, arrow_mode, color)
             % Plots a control direction on top of colored original dataset
             if ~exist('arrow_base','var') || isempty(arrow_base)
                 arrow_base = [0, 0, 0];
@@ -943,8 +943,8 @@ classdef CElegansModel < SettingsImportableFromStruct
             if ~exist('use_original', 'var')
                 use_original = false;
             end
-            if ~exist('use_mean_vector','var')
-                use_mean_vector = false;
+            if ~exist('arrow_mode','var')
+                arrow_mode = 'separate';
             end
             if ~exist('color', 'var')
                 color = 'k';
@@ -961,7 +961,6 @@ classdef CElegansModel < SettingsImportableFromStruct
                 color = tmp;
             end
             
-            
             % Get control matrices and columns to project
             ad_obj = self.AdaptiveDmdc_obj;
             x_dat = 1:ad_obj.x_len;
@@ -972,16 +971,29 @@ classdef CElegansModel < SettingsImportableFromStruct
                 % Query control dynamics
                 x_ctr = (ad_obj.x_len+1):self.total_sz(1);
             end
-            B = ad_obj.A_original(x_dat, x_ctr);
+            dynamic_matrix = ad_obj.A_original(x_dat, x_ctr);
             % Reconstruct the attractor and project it into the same space
-            control_direction = B(:, which_ctr_modes);
+            control_direction = dynamic_matrix(:, which_ctr_modes);
             
             modes_3d = self.L_sparse_modes(:,1:3);
             proj_3d = (modes_3d.')*control_direction;
-            if use_mean_vector
-                proj_3d = sum(arrow_length.*proj_3d,2);
-                arrow_length = ones(size(arrow_length));
+            switch arrow_mode
+                case 'separate'
+                    % show separate arrows
+                    
+                case 'mean'
+                    proj_3d = sum(arrow_length.*proj_3d,2);
+                    arrow_length = ones(size(arrow_length));
+                    
+                case 'mean_and_difference'
+                    proj_3d = sum(arrow_length.*proj_3d,2);
+                    proj_3d = proj_3d - arrow_base;
+                    arrow_length = 20*ones(size(arrow_length));
+                    
+                otherwise
+                    error('Unrecognized arrow_mode')
             end
+            
             for j=1:size(proj_3d,2)
                 quiver3(arrow_base(1),arrow_base(2),arrow_base(3),...
                     proj_3d(1,j),proj_3d(2,j),proj_3d(3,j), ...
@@ -990,19 +1002,26 @@ classdef CElegansModel < SettingsImportableFromStruct
         end
         
         function fig = plot_colored_arrow_movie(self,...
-                attractor_view, use_legend, movie_filename, pause_time)
+                attractor_view, use_legend, movie_filename,...
+                intrinsic_arrow_mode, show_reconstruction, pause_time)
             % Plots a movie of the 3 different control signal directions:
             %    Intrinsic dynamics
             %    Sparse controller
             %    Global mode
-            if ~exist('attractor_view','var')
+            if ~exist('attractor_view','var') || isempty(attractor_view)
                 attractor_view = true;
             end
-            if ~exist('use_legend','var')
+            if ~exist('use_legend','var') || isempty(use_legend)
                 use_legend = false;
             end
-            if ~exist('movie_filename','var')
+            if ~exist('movie_filename','var') || isempty(movie_filename)
                 movie_filename = '';
+            end
+            if ~exist('intrinsic_arrow_mode', 'var') || isempty(intrinsic_arrow_mode)
+                intrinsic_arrow_mode = 'mean_and_difference';
+            end
+            if ~exist('show_reconstruction','var') || isempty(show_reconstruction)
+                show_reconstruction = true;
             end
             if ~exist('pause_time','var')
                 pause_time = 0.00;
@@ -1024,25 +1043,41 @@ classdef CElegansModel < SettingsImportableFromStruct
             arrow_factor = 1;
             global_ind = ((2*num_neurons+1):self.total_sz(1)) - ...
                 num_neurons;
-            this_dat = self.dat_without_control;
+            this_dat = self.dat_without_control - ...
+                mean(self.dat_without_control,2);
             this_ctr_sparse = ...
                 self.dat_with_control((num_neurons+1):(2*num_neurons),:);
             this_ctr_global = ...
                 self.dat_with_control((2*num_neurons+1):end,:);
-            modes_3d = self.L_sparse_modes(:,1:3);
+            modes_3d = self.L_sparse_modes(:,1:3).';
+            if show_reconstruction
+                this_reconstruction = ...
+                    self.AdaptiveDmdc_obj.calc_reconstruction_control(...
+                    [], [], true);
+                this_reconstruction = this_reconstruction(neuron_ind,:);
+                all_arrow_bases = modes_3d * this_reconstruction;
+                all_dat_projected = modes_3d * this_dat;
+            else
+                all_arrow_bases = modes_3d * this_dat;
+            end
             
             for i=1:self.original_sz(2)
-                arrow_base = (modes_3d.')*this_dat(:,i);
+                arrow_base = all_arrow_bases(:,i);
                 % Intrinsic
-                arrow_length_intrinsic = (this_dat(:,i)*arrow_factor).';
+                if show_reconstruction
+                    arrow_length_intrinsic = ...    
+                        (this_reconstruction(:,i)*arrow_factor).';
+                else
+                    arrow_length_intrinsic = (this_dat(:,i)*arrow_factor).';
+                end
                 self.plot_colored_control_arrow(...
-                    neuron_ind, [], arrow_length_intrinsic, fig,...
-                    true, true, 'b');
+                    neuron_ind, arrow_base, arrow_length_intrinsic, fig,...
+                    true, intrinsic_arrow_mode, 'b');
                 % Sparse controller
                 arrow_length_sparse = (this_ctr_sparse(:,i)*arrow_factor).';
                 self.plot_colored_control_arrow(...
                     neuron_ind, arrow_base, 20*arrow_length_sparse, fig,...
-                    false, true, 'r');
+                    false, 'mean', 'r');
                 % Global controller
                 if attractor_view
                     label_ind = this_ctr_global(1,i);
@@ -1057,6 +1092,14 @@ classdef CElegansModel < SettingsImportableFromStruct
                 % Current point
                 plot3(arrow_base(1), arrow_base(2), arrow_base(3),...
                     'ok', 'LineWidth', 5)
+                if show_reconstruction
+                    % Then the above command plots the reconstruction, and
+                    % we need to add the original point
+                    plot3(all_dat_projected(1,i),...
+                        all_dat_projected(2,i),...
+                        all_dat_projected(3,i),...
+                        'k*', 'LineWidth',5)
+                end
                 
                 if use_legend
                     leg = legend;
@@ -1070,7 +1113,11 @@ classdef CElegansModel < SettingsImportableFromStruct
                 pause(pause_time)
                 
                 c = get(gca,'children');
-                delete(c(1:4));
+                if show_reconstruction
+                    delete(c(1:5));
+                else
+                    delete(c(1:4));
+                end
             end
             
             if ~isempty(movie_filename)
@@ -1100,7 +1147,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             assert(~isempty(self.pareto_struct.lambda_vec),...
                 'No pareto front data saved')
             
-            figure;
+            figure('DefaultAxesFontSize',14);
             y_val = self.pareto_struct.all_errors;
             plot(self.pareto_struct.lambda_vec, y_val,...
                 'LineWidth',2)
