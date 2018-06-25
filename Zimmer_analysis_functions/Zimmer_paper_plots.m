@@ -35,7 +35,7 @@ end
 
 %% Figure 2: Robust PCA
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
-all_figs = cell(5,1);
+all_figs = cell(9,1);
 
 % Calculate double RPCA model
 settings = struct(...
@@ -53,7 +53,7 @@ xlabel('Time')
 colorbar
 title('Original data')
 caxis(all_figs{1}.CurrentAxes, [-0.0, 1.0])
-
+% Large lambda (very sparse)
 title2 = 'Large \lambda low-rank component';
 title1 = 'Large \lambda sparse component';
 dat2 = my_model_fig3.L_sparse;
@@ -63,7 +63,16 @@ plot_mode = '2_figures';
     dat1, dat2, plot_mode, title1, title2 );
 caxis(all_figs{2}.CurrentAxes, [-0.0, 1.0])
 caxis(all_figs{3}.CurrentAxes, [-0.0, 1.0])
+% Also plot a shorter time period
+ind = 1000:1500;
+dat2 = my_model_fig3.L_sparse(:,ind);
+dat1 = my_model_fig3.S_sparse(:,ind);
+[ all_figs{6}, all_figs{7} ] = plot_2imagesc_colorbar( ...
+    dat1, dat2, plot_mode, title1, title2 );
+caxis(all_figs{6}.CurrentAxes, [-0.0, 1.0])
+caxis(all_figs{7}.CurrentAxes, [-0.0, 1.0])
 
+% Small lambda (low-rank)
 title2 = 'Small \lambda low-rank component';
 title1 = 'Small \lambda sparse component';
 dat2 = my_model_fig3.L_global_raw;
@@ -73,6 +82,14 @@ plot_mode = '2_figures';
     dat1, dat2, plot_mode, title1, title2 );
 caxis(all_figs{4}.CurrentAxes, [-0.0, 1.0])
 caxis(all_figs{5}.CurrentAxes, [-0.0, 1.0])
+% Also plot a shorter time period
+ind = 1000:1500;
+dat2 = my_model_fig3.L_global_raw(:,ind);
+dat1 = my_model_fig3.S_global(:,ind);
+[ all_figs{8}, all_figs{9} ] = plot_2imagesc_colorbar( ...
+    dat1, dat2, plot_mode, title1, title2 );
+caxis(all_figs{8}.CurrentAxes, [-0.0, 1.0])
+caxis(all_figs{9}.CurrentAxes, [-0.0, 1.0])
 
 % Save figures
 for i = 1:length(all_figs)
