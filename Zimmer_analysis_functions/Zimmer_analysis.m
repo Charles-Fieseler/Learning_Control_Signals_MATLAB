@@ -2942,6 +2942,20 @@ for i=1:length(known_names)
     pause
 end
 
+% Plot only some interesting ones
+interesting_ones = [46, 84, 90];
+for i=1:length(interesting_ones)
+    this_neuron = interesting_ones(i);
+%     fig = my_model_ID_test.plot_colored_control_arrow(this_neuron,[],50);
+%     title(sprintf('Control kick of neuron %d (%s)',...
+%         this_neuron, all_names{this_neuron}));
+
+    fig = my_model_ID_test.plot_colored_control_arrow(...
+        this_neuron,[],10, [], true);
+    title(sprintf('Intrinsic dynamics kick of neuron %d (%s)',...
+        this_neuron, all_names{this_neuron}));
+end
+
 %==========================================================================
 
 
@@ -2956,15 +2970,78 @@ settings = struct(...
 settings.global_signal_mode = 'ID_and_offset';
 my_model_ID_test = CElegansModel(filename, settings);
 
+% my_model_ID_test.plot_colored_arrow_movie();
 
-my_model_ID_test.plot_colored_arrow_movie();
+% Save a movie
+my_model_ID_test.plot_colored_arrow_movie(...
+    true, false, '../scratch/worm1.avi', 'mean');
+
+% Save another movie; the default is to plot both arrows from the data
+my_model_ID_test.plot_colored_arrow_movie(...
+    true, false, '../scratch/worm1_diff.avi');
+
+% Save a movie with the reconstruction
+my_model_ID_test.plot_colored_arrow_movie(...
+    true, false, '../scratch/worm1_reconstruct.avi')
 
 %==========================================================================
 
 
+%% Plot pareto fronts with a better backend and projection of explosive modes
+% Also now has automatic dimensionality reduction
+filename5 = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+
+% Get model and initial error
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc');
+settings.global_signal_mode = 'ID'; % Not what is used
+my_model_pareto = CElegansModel(filename5, settings);
+fprintf('FULL reconstruction error for worm 5: %f\n',...
+    my_model_pareto.AdaptiveDmdc_obj.calc_reconstruction_error());
+% my_model_pareto.AdaptiveDmdc_obj.plot_reconstruction(true);
+
+% Calculate pareto front with different types of global mode calculations
+lambda_vec = linspace(0.03,0.07,40);
+% lambda_vec = linspace(0.05,0.1,2);
+% global_signal_mode = {'ID_simple','ID_and_offset'};
+global_signal_mode = {'ID','ID_simple','ID_and_offset','ID_binary'};
+% global_signal_mode = {'ID_binary'};
+% global_signal_mode = {'RPCA','ID','ID_simple','ID_and_offset'};
+for i = 1:length(global_signal_mode)
+    my_model_pareto.calc_pareto_front(lambda_vec, global_signal_mode{i}, (i>1));
+end
+
+my_model_pareto.plot_pareto_front();
+
+%==========================================================================
 
 
+%% Use external pareto front object
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 
+model_settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc');
+% global_signal_modes = {{'ID'}};
+global_signal_modes = {{'ID','ID_binary'}};
+% global_signal_modes = {{'ID','ID_simple','ID_binary'}};
+lambda_vec = linspace(0.02,0.1,40);
+settings = struct(...
+    'file_or_dat', filename,...
+    'base_settings', model_settings,...
+    'iterate_settings',struct('global_signal_mode',global_signal_modes),...
+    'x_vector', lambda_vec,...
+    'x_fieldname', 'lambda_sparse',...
+    'fields_to_plot',{{{'AdaptiveDmdc_obj','calc_reconstruction_error'}}});
+    
+my_pareto_obj = ParetoFrontObj('CElegansModel', settings);
+
+%==========================================================================
 
 
 
