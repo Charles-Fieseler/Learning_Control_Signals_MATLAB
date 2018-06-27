@@ -738,22 +738,42 @@ classdef CElegansModel < SettingsImportableFromStruct
         end
         
         function attractor_reconstruction = calc_attractor(self, ...
-                which_label)
+                which_label, use_only_global)
             % Get the dynamics and control matrices, and the control signal
+            % Input:
+            %   use_only_global (false) - will only the control signal from
+            %           global modes to determine the attractor. Only
+            %           implemented for ID global modes for now
+            if ~exist('use_only_global','var')
+                use_only_global = false;
+            end
+            
             ad_obj = self.AdaptiveDmdc_obj;
             x_dat = 1:ad_obj.x_len;
             x_ctr = (ad_obj.x_len+1):self.total_sz(1);
             A = ad_obj.A_original(x_dat, x_dat);
             B = ad_obj.A_original(x_dat, x_ctr);
             if strcmp(which_label,'all')
+                if use_only_global
+                    error('use_only_global not defined for all modes')
+                end
                 u = self.dat_with_control(x_ctr, :);
-            else
+            elseif ~use_only_global
                 [u_cell, ~, ~, ~] = ...
                     self.get_control_signal_during_label(which_label);
                 u = [];
                 for j = 1:length(u_cell)
                     u = [u, u_cell{j}]; %#ok<AGROW>
                 end
+            elseif strcmp(self.global_signal_mode, 'ID')
+                u = zeros(length(x_ctr), 1);
+                % The input is just the index directly
+                u(end-2) = find(strcmp(...
+                    which_label, self.state_labels_key));
+                u(end-1) = 1; % This channel is just constant
+                u(end) = mean(self.dat_with_control(end,:)); % time signal
+            else
+                error('use_only_global only implemented for global_signal_mode=ID')
             end
             % Reconstruct the attractor and project it into the same space
             % Find x (fixed point) in:
@@ -763,15 +783,22 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function [attractor_overlap, all_ctr_directions,...
                 attractor_reconstruction] =...
-                calc_attractor_overlap(self)
+                calc_attractor_overlap(self, use_dynamics)
             % Assign "roles" to the neurons by calculating the overlap
             % between their intrinsic dynamic kick and the direction of the
             % different attractors
             %   Note: particularly for similar attractors like FWD and
             %   SLOW, overlap scores will be very similar
             %
+            % Input:
+            %   use_dynamics (true) - whether to calculate the attractor
+            %               dynamically or just use the centroid of that
+            %               behavior
+            %
             %   TO DO: how does the the location of the origin affect this?
-            
+            if ~exist('use_dynamics','var')
+                use_dynamics = true;
+            end
             which_neurons = 1:self.original_sz(1);
             use_original = true;
             
@@ -784,7 +811,15 @@ classdef CElegansModel < SettingsImportableFromStruct
             attractor_reconstruction = zeros(...
                 length(which_neurons), length(all_labels));
             for i = 1:length(all_labels)
-                this_attractor = mean(self.calc_attractor(all_labels{i}), 2);
+                if use_dynamics
+                    this_attractor = mean(...
+                        self.calc_attractor(all_labels{i}), 2);
+                else
+                    [~, ~, ~, this_ind] =...
+                        self.get_control_signal_during_label(all_labels{i});
+                    this_attractor = mean(self.dat_without_control(...
+                        which_neurons, this_ind),2);
+                end
                 attractor_reconstruction(:,i) = ...
                     this_attractor/norm(this_attractor);
             end
@@ -793,8 +828,9 @@ classdef CElegansModel < SettingsImportableFromStruct
                 all_ctr_directions * attractor_reconstruction;
         end
         
-        function [neuron_roles, neuron_names] = calc_neuron_roles(self,...
-                use_only_known_neurons, abs_tol)
+        function [neuron_roles, neuron_names] = ...
+                calc_neuron_roles_in_transition(self,...
+                use_only_known_neurons, abs_tol, use_dynamics)
             % Assigns neuron roles based on direction of intrinsic dynamic
             % push overlap with various attractors
             %   By default, averages together FWD+SLOW and the reversals;
@@ -807,10 +843,13 @@ classdef CElegansModel < SettingsImportableFromStruct
             if ~exist('abs_tol','var')
                 abs_tol = 0.15;
             end
+            if ~exist('use_dynamics','var')
+                use_dynamics = true;
+            end
             
             % Get attractor overlap and normalize
             [attractor_overlap, all_ctr_directions] =...
-                self.calc_attractor_overlap();
+                self.calc_attractor_overlap(use_dynamics);
             all_norms = zeros(size(all_ctr_directions,2),1);
             for i=1:size(all_ctr_directions,2)
                 all_norms(i) = norm(all_ctr_directions(:,i));
@@ -849,6 +888,47 @@ classdef CElegansModel < SettingsImportableFromStruct
                     neuron_roles{i} = 'simple FWD';
                 elseif this_kick(2)>0
                     neuron_roles{i} = 'simple REVSUS';
+                else
+                    neuron_roles{i} = 'other';
+                end
+            end
+        end
+        
+        
+        function [neuron_roles, neuron_names] = ...
+                calc_neuron_roles_in_global_modes(self,...
+                use_only_known_neurons, abs_tol)
+            if ~exist('use_only_known_neurons','var')
+                use_only_known_neurons = true;
+            end
+            if ~exist('abs_tol','var')
+                abs_tol = 0.001;
+            end
+            
+            num_neurons = self.original_sz(1);
+            B_global = self.AdaptiveDmdc_obj.A_original(1:num_neurons,...
+                            (2*num_neurons+1):end-2);
+            % Narrow these down to which neurons are important for which behaviors
+            %   Assume a single control signal (ID); ignore offset
+            group1 = (B_global > abs_tol);
+            group2 = (B_global < -abs_tol);
+            % Get names and sort if required
+            neuron_names = self.AdaptiveDmdc_obj.get_names();
+            if use_only_known_neurons
+                neuron_ind = ~strcmp(neuron_names,'');
+                neuron_names = neuron_names(neuron_ind);
+            else
+                neuron_ind = 1:self.original_sz(1);
+            end
+            neuron_ind = find(neuron_ind);
+            % Cast into strings
+            neuron_roles = cell(size(neuron_ind));
+            for i = 1:length(neuron_ind)
+                this_neuron = neuron_ind(i);
+                if group1(this_neuron)
+                    neuron_roles{i} = 'group 1';
+                elseif group2(this_neuron)
+                    neuron_roles{i} = 'group 2';
                 else
                     neuron_roles{i} = 'other';
                 end
@@ -963,19 +1043,23 @@ classdef CElegansModel < SettingsImportableFromStruct
         end
         
         function fig = plot_colored_fixed_point(self,...
-                which_label, use_centroid, fig)
+                which_label, use_centroid, fig, use_only_global)
             % Plots the fixed point on top of colored original dataset
-            if ~exist('fig','var')
+            if ~exist('fig','var') || isempty(fig)
                 fig = self.plot_colored_data(false, '.');
             end
-            if ~exist('use_centroid','var')
+            if ~exist('use_centroid','var') || isempty(use_centroid)
                 use_centroid = false;
             end
-            if ~exist('which_label','var')
+            if ~exist('which_label','var') || isempty('which_label')
                 which_label = 'all';
             end
+            if ~exist('use_only_global','var')
+                use_only_global = false;
+            end
             
-            attractor_reconstruction = self.calc_attractor(which_label);
+            attractor_reconstruction = self.calc_attractor(...
+                which_label, use_only_global);
             
             modes_3d = self.L_sparse_modes(:,1:3);
             proj_3d = (modes_3d.')*attractor_reconstruction;
@@ -1042,6 +1126,21 @@ classdef CElegansModel < SettingsImportableFromStruct
                 which_ctr_modes, arrow_base, arrow_length, fig,...
                 use_original, arrow_mode, color)
             % Plots a control direction on top of colored original dataset
+            % Input:
+            %   which_ctr_modes - which neurons/channels to plot
+            %   arrow_base (origin) - location of the arrow base
+            %   arrow_length (1) - factor multiplying the arrow length
+            %   fig (self.plot_colored_data) - plot on a user's figure
+            %   use_original (false) - to plot the control signal from the
+            %               original neuron (intrinsic dynamics, A matrix)
+            %               or the controller (B matrix)
+            %   arrow_mode ('separate') - plotting mode if multiple arrows.
+            %               Other options: 
+            %               'mean' = average the arrows
+            %               'mean_and_difference' = average the arrows and
+            %               plot the difference between that and the
+            %               'arrow_base'
+            %   color ('k') - color of the arrow
             if ~exist('arrow_base','var') || isempty(arrow_base)
                 arrow_base = [0, 0, 0];
             end
@@ -1064,7 +1163,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             
             if isscalar(arrow_length)
-                arrow_length = arrow_length*ones(size(which_ctr_modes));
+                    arrow_length = arrow_length*ones(size(which_ctr_modes));
             end
             if length(color)==1
                 tmp = cell(size(which_ctr_modes));
