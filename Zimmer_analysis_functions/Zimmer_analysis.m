@@ -3157,16 +3157,126 @@ settings = struct(...
 settings.global_signal_mode = 'ID';
 
 all_models = cell(5,1);
-all_roles = cell(5,2);
+all_roles_dynamics = cell(5,2);
+all_roles_centroid = cell(5,2);
+all_roles_global = cell(5,2);
 for i=1:5
     filename = sprintf(filename_template,i);
+    if i==4
+        settings.lambda_sparse = 0.035;
+    else
+        settings.lambda_sparse = 0.05;
+    end
     all_models{i} = CElegansModel(filename,settings);
-    [all_roles{i,1}, all_roles{i,2}] = ...
-        all_models{i}.calc_neuron_roles();
+end
+for i=1:5
+    % Use the dynamic attractor
+    [all_roles_dynamics{i,1}, all_roles_dynamics{i,2}] = ...
+        all_models{i}.calc_neuron_roles_in_transition(true);
+    % Just use centroid of a behavior
+    [all_roles_centroid{i,1}, all_roles_centroid{i,2}] = ...
+        all_models{i}.calc_neuron_roles_in_transition(false);
+    % Global mode actuation
+    [all_roles_global{i,1}, all_roles_global{i,2}] = ...
+        all_models{i}.calc_neuron_roles_in_global_modes(false);
 end
 
+[ combined_dat_dynamic, all_labels_dynamic ] =...
+    combine_different_trials( all_roles_dynamics );
+[ combined_dat_centroid, all_labels_centroid ] =...
+    combine_different_trials( all_roles_centroid );
+[ combined_dat_global, all_labels_global ] =...
+    combine_different_trials( all_roles_global );
+
+% Some histograms of how many times a neuron is identified as what role
+possible_roles = unique(combined_dat_dynamic);
+possible_roles(cellfun(@isempty,possible_roles)) = [];
+num_neurons = size(combined_dat_dynamic,1);
+role_counts = zeros(num_neurons,length(possible_roles));
+for i=1:length(possible_roles)
+    role_counts(:,i) = sum(...
+        strcmp(combined_dat_dynamic, possible_roles{i}),2);
+end
+% num_runs = size(combined_dat_dynamic,2);
+% times_identified = num_runs - sum(strcmp(combined_dat_dynamic, ''),2);
+figure('DefaultAxesFontSize',14)
+% bar(times_identified, 'k')
+% hold on
+bar(role_counts, 'stacked')
+% legend([{'Number of times identified'};possible_roles])
+legend(possible_roles)
+xticks(1:num_neurons);
+xticklabels(all_labels_dynamic)
+xtickangle(90)
+title('Neuron roles using similarity to dynamic attractors')
+
+% Some histograms of how many times a neuron is identified as what role
+possible_roles = unique(combined_dat_centroid);
+possible_roles(cellfun(@isempty,possible_roles)) = [];
+num_neurons = size(combined_dat_centroid,1);
+role_counts = zeros(num_neurons,length(possible_roles));
+for i=1:length(possible_roles)
+    role_counts(:,i) = sum(...
+        strcmp(combined_dat_centroid, possible_roles{i}),2);
+end
+figure('DefaultAxesFontSize',14)
+bar(role_counts, 'stacked')
+legend(possible_roles)
+xticks(1:num_neurons);
+xticklabels(all_labels_centroid)
+xtickangle(90)
+title('Neuron roles using similarity to data centroids')
+% Same but only with neurons ID'ed more than once
+this_ind = find(sum(role_counts,2)>1);
+figure('DefaultAxesFontSize',14)
+bar(role_counts(this_ind,:), 'stacked')
+legend(possible_roles)
+xticks(1:length(this_ind));
+xticklabels(all_labels_centroid(this_ind))
+xtickangle(90)
+title('Neuron roles using similarity to data centroids (IDed >=2 times)')
+% Same but without the fourth worm
+these_worms = [1, 2, 3, 5];
+for i=1:length(possible_roles)
+    role_counts(:,i) = sum(...
+        strcmp(combined_dat_centroid(:,these_worms), possible_roles{i}),2);
+end
+this_ind = find(sum(role_counts,2)>1);
+figure('DefaultAxesFontSize',14)
+bar(role_counts(this_ind,:), 'stacked')
+legend(possible_roles)
+xticks(1:length(this_ind));
+xticklabels(all_labels_centroid(this_ind))
+xtickangle(90)
+title('Neuron roles using similarity to data centroids (no 4th worm)')
 
 
+% Some histograms of how many times a neuron is identified as what role
+% (GLOBAL)
+possible_roles = unique(combined_dat_global);
+possible_roles(cellfun(@isempty,possible_roles)) = [];
+num_neurons = size(combined_dat_global,1);
+role_counts = zeros(num_neurons,length(possible_roles));
+for i=1:length(possible_roles)
+    role_counts(:,i) = sum(...
+        strcmp(combined_dat_global, possible_roles{i}),2);
+end
+figure('DefaultAxesFontSize',14)
+bar(role_counts, 'stacked')
+legend(possible_roles)
+xticks(1:num_neurons);
+xticklabels(all_labels_global)
+xtickangle(90)
+title('Neuron roles using similarity to global mode activation')
+% Same but ID'ed >=2 times
+this_ind = find(sum(role_counts,2)>1);
+figure('DefaultAxesFontSize',14)
+bar(role_counts(this_ind,:), 'stacked')
+legend(possible_roles)
+xticks(1:length(this_ind));
+xticklabels(all_labels_global(this_ind))
+xtickangle(90)
+title('Neuron roles using similarity to global mode activation')
 %==========================================================================
 
 
