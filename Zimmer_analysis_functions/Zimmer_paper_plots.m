@@ -292,7 +292,7 @@ end
 
 % Save figures
 for i = 1:length(all_figs)
-    fname = sprintf('../figures/figure_2_%d',i);
+    fname = sprintf('%sfigure_5_%d', foldername, i);
     this_fig = all_figs{i};
     set(this_fig, 'Position', get(0, 'Screensize'));
     saveas(this_fig, fname, 'png');
@@ -301,10 +301,202 @@ end
 
 
 %% Supplementary Figure 2: Neuron classifications
+all_figs = cell(3,1);
+
+filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc');
+settings.global_signal_mode = 'ID';
+
+%---------------------------------------------
+% Calculate 5 worms and get roles
+%---------------------------------------------
+all_models = cell(5,1);
+all_roles_dynamics = cell(5,2);
+all_roles_centroid = cell(5,2);
+all_roles_global = cell(5,2);
+for i=1:5
+    filename = sprintf(filename_template,i);
+    if i==4
+        settings.lambda_sparse = 0.035; % Decided by looking at pareto front
+    else
+        settings.lambda_sparse = 0.05;
+    end
+    all_models{i} = CElegansModel(filename,settings);
+end
+for i=1:5
+    % Use the dynamic attractor
+    [all_roles_dynamics{i,1}, all_roles_dynamics{i,2}] = ...
+        all_models{i}.calc_neuron_roles_in_transition(true, [], true);
+    % Just use centroid of a behavior
+    [all_roles_centroid{i,1}, all_roles_centroid{i,2}] = ...
+        all_models{i}.calc_neuron_roles_in_transition(true, [], false);
+    % Global mode actuation
+    [all_roles_global{i,1}, all_roles_global{i,2}] = ...
+        all_models{i}.calc_neuron_roles_in_global_modes(true);
+end
+
+%---------------------------------------------
+% Data preprocessing
+%---------------------------------------------
+[ combined_dat_dynamic, all_labels_dynamic ] =...
+    combine_different_trials( all_roles_dynamics );
+[ combined_dat_centroid, all_labels_centroid ] =...
+    combine_different_trials( all_roles_centroid );
+[ combined_dat_global, all_labels_global ] =...
+    combine_different_trials( all_roles_global );
 
 
+%---------------------------------------------
+% Bar graph of transition kicks (dynamics, no worm 4)
+%---------------------------------------------
+possible_roles = unique(combined_dat_dynamic);
+possible_roles(cellfun(@isempty,possible_roles)) = [];
+num_neurons = size(combined_dat_dynamic,1);
+these_worms = [1, 2, 3, 5];
+role_counts = zeros(num_neurons,length(possible_roles));
+
+for i=1:length(possible_roles)
+    role_counts(:,i) = sum(...
+        strcmp(combined_dat_dynamic(:,these_worms), possible_roles{i}),2);
+end
+this_ind = find(sum(role_counts,2)>1);
+all_figs{1} = figure('DefaultAxesFontSize',14);
+bar(role_counts(this_ind,:), 'stacked')
+legend(possible_roles)
+xticks(1:length(this_ind));
+xticklabels(all_labels_dynamic(this_ind))
+xtickangle(90)
+title('Neuron roles using similarity to attractors (no 4th worm)')
+
+%---------------------------------------------
+% Bar graph of transition kicks (centroids, no worm 4)
+%---------------------------------------------
+these_worms = [1, 2, 3, 5];
+role_counts = zeros(num_neurons,length(possible_roles));
+for i=1:length(possible_roles)
+    role_counts(:,i) = sum(...
+        strcmp(combined_dat_centroid(:,these_worms), possible_roles{i}),2);
+end
+this_ind = find(sum(role_counts,2)>1);
+all_figs{2} = figure('DefaultAxesFontSize',14);
+bar(role_counts(this_ind,:), 'stacked')
+legend(possible_roles)
+xticks(1:length(this_ind));
+xticklabels(all_labels_centroid(this_ind))
+xtickangle(90)
+title('Neuron roles using similarity to attractors (no 4th worm)')
+
+%---------------------------------------------
+% Roles for global neurons
+%---------------------------------------------
+possible_roles = unique(combined_dat_global);
+possible_roles(cellfun(@isempty,possible_roles)) = [];
+role_counts = zeros(num_neurons,length(possible_roles));
+for i=1:length(possible_roles)
+    role_counts(:,i) = sum(...
+        strcmp(combined_dat_global, possible_roles{i}),2);
+end
+this_ind = find(sum(role_counts,2)>1);
+all_figs{3} = figure('DefaultAxesFontSize',14);
+bar(role_counts(this_ind,:), 'stacked')
+legend(possible_roles)
+xticks(1:length(this_ind));
+xticklabels(all_labels_global(this_ind))
+xtickangle(90)
+title('Neuron roles using similarity to global mode activation')
+
+%---------------------------------------------
+% Save figures
+%---------------------------------------------
+for i = 1:length(all_figs)
+    fname = sprintf('%sfigure_s2_%d', foldername, i);
+    this_fig = all_figs{i};
+    set(this_fig, 'Position', get(0, 'Screensize'));
+    saveas(this_fig, fname, 'png');
+end
+%==========================================================================
 
 
+%% Supplementary Figure 3: sparse lambda errors for all worms (ID signal)
+all_figs = cell(5,1);
+
+filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
+
+model_settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc');
+% global_signal_modes = {{'ID'}};
+global_signal_modes = {{'ID','ID_binary'}};
+% global_signal_modes = {{'ID','ID_simple','ID_binary'}};
+lambda_vec = linspace(0.02,0.1,100);
+settings = struct(...
+    'base_settings', model_settings,...
+    'iterate_settings',struct('global_signal_mode',global_signal_modes),...
+    'x_vector', lambda_vec,...
+    'x_fieldname', 'lambda_sparse',...
+    'fields_to_plot',{{{'AdaptiveDmdc_obj','calc_reconstruction_error'}}});
+
+all_pareto_objs = cell(5,1);
+for i=1:5
+    settings.file_or_dat = sprintf(filename_template, i);
+    all_pareto_objs{i} = ParetoFrontObj('CElegansModel', settings);
+    all_figs{i} = all_pareto_objs{i}.plot_pareto_front();
+end
+
+%---------------------------------------------
+% Save figures
+%---------------------------------------------
+for i = 1:length(all_figs)
+    fname = sprintf('%sfigure_s3_%d', foldername, i);
+    this_fig = all_figs{i};
+    set(this_fig, 'Position', get(0, 'Screensize'));
+    saveas(this_fig, fname, 'png');
+end
+%==========================================================================
+
+
+%% Supplementary Figure 4: global lambda errors for all worms
+all_figs = cell(5,1);
+
+filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
+
+model_settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'global_signal_mode', 'RPCA');
+sparse_lambda_vals = {{0.025,0.04,0.055}};
+global_lambda_vec = linspace(0.02,0.1,10);
+settings = struct(...
+    'base_settings', model_settings,...
+    'iterate_settings',struct('lambda_sparse',sparse_lambda_vals),...
+    'x_vector', global_lambda_vec,...
+    'x_fieldname', 'lambda_sparse',...
+    'fields_to_plot',{{{'AdaptiveDmdc_obj','calc_reconstruction_error'}}});
+
+all_pareto_objs = cell(5,1);
+for i=1:5
+    settings.file_or_dat = sprintf(filename_template, i);
+    all_pareto_objs{i} = ParetoFrontObj('CElegansModel', settings);
+    all_figs{i} = all_pareto_objs{i}.plot_pareto_front();
+end
+
+%---------------------------------------------
+% Save figures
+%---------------------------------------------
+for i = 1:length(all_figs)
+    fname = sprintf('%sfigure_s3_%d', foldername, i);
+    this_fig = all_figs{i};
+    set(this_fig, 'Position', get(0, 'Screensize'));
+    saveas(this_fig, fname, 'png');
+end
 %==========================================================================
 
 

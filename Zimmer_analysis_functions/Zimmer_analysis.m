@@ -3172,13 +3172,13 @@ end
 for i=1:5
     % Use the dynamic attractor
     [all_roles_dynamics{i,1}, all_roles_dynamics{i,2}] = ...
-        all_models{i}.calc_neuron_roles_in_transition(true);
+        all_models{i}.calc_neuron_roles_in_transition(true, [], true);
     % Just use centroid of a behavior
     [all_roles_centroid{i,1}, all_roles_centroid{i,2}] = ...
-        all_models{i}.calc_neuron_roles_in_transition(false);
+        all_models{i}.calc_neuron_roles_in_transition(true, [], false);
     % Global mode actuation
     [all_roles_global{i,1}, all_roles_global{i,2}] = ...
-        all_models{i}.calc_neuron_roles_in_global_modes(false);
+        all_models{i}.calc_neuron_roles_in_global_modes(true);
 end
 
 [ combined_dat_dynamic, all_labels_dynamic ] =...

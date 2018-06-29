@@ -837,10 +837,11 @@ classdef CElegansModel < SettingsImportableFromStruct
             %   ignores turning states because they don't seem to act as
             %   true attractors
             %   Also by default only returns known neuron names
-            if ~exist('use_only_known_neurons','var')
+            if ~exist('use_only_known_neurons','var') ...
+                    || isempty(use_only_known_neurons)
                 use_only_known_neurons = true;
             end
-            if ~exist('abs_tol','var')
+            if ~exist('abs_tol','var') || isempty(abs_tol)
                 abs_tol = 0.15;
             end
             if ~exist('use_dynamics','var')
@@ -1534,11 +1535,14 @@ classdef CElegansModel < SettingsImportableFromStruct
             switch self.global_signal_mode
                 case 'RPCA'
                     % Gets VERY low-rank signal
+                    %   Loop to check for rank convergence if 
+                    %   self.max_rank_global > 0
                     iter_max = 10;
                     this_lambda = self.lambda_global;
                     for i=1:iter_max
-                        % Low number of iterations in the inner loop just to
-                        % converge on the right rank
+                        if self.max_rank_global==0
+                            break;
+                        end
                         [self.L_global_raw, self.S_global_raw] = ...
                             RobustPCA(self.dat, this_lambda, 10*this_lambda,...
                             1e-6, 70);
