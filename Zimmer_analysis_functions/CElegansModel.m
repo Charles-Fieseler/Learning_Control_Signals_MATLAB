@@ -409,12 +409,16 @@ classdef CElegansModel < SettingsImportableFromStruct
         L_global
         S_global
         L_global_modes
+        S_global_nnz
+        L_global_rank
         
         L_sparse_raw
         S_sparse_raw
         L_sparse
         S_sparse
         L_sparse_modes
+        S_sparse_nnz
+        L_sparse_rank
         
         state_labels_ind
         state_labels_ind_raw
@@ -1543,10 +1547,11 @@ classdef CElegansModel < SettingsImportableFromStruct
                         if self.max_rank_global==0
                             break;
                         end
-                        [self.L_global_raw, self.S_global_raw] = ...
+                        [~, ~,...
+                            self.L_global_rank, ~] = ...
                             RobustPCA(self.dat, this_lambda, 10*this_lambda,...
                             1e-6, 70);
-                        if rank(self.L_global_raw) <= self.max_rank_global
+                        if self.L_global_rank <= self.max_rank_global
                             fprintf("Reached target rank (%d); restarting with more accuracy\n",...
                                     self.max_rank_global);
                             self.lambda_global = this_lambda;
@@ -1566,7 +1571,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                     end
                     % Get a more accurate decomposition (even if we didn't converge
                     % to the proper rank)
-                    [self.L_global_raw, self.S_global_raw] = ...
+                    [self.L_global_raw, self.S_global_raw,...
+                        self.L_global_rank, self.S_global_nnz] = ...
                         RobustPCA(self.dat, self.lambda_global);
                     % Smooth the modes out
                     self.L_global = self.flat_filter(...
@@ -1644,8 +1650,10 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function calc_sparse_signal(self)
             % Calculates very sparse signal
-            [self.L_sparse_raw, self.S_sparse_raw] = ...
+            [self.L_sparse_raw, self.S_sparse_raw,...
+                self.L_sparse_rank, self.S_sparse_nnz] = ...
                 RobustPCA(self.dat, self.lambda_sparse);
+            % For now, no processing
             self.L_sparse = self.L_sparse_raw;
             self.S_sparse = self.S_sparse_raw;
         end
