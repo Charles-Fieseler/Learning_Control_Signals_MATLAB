@@ -1,1 +1,11 @@
 # Add any directories, files, or patterns you don't want to be tracked by version control
+
+# Matlab figures
+*.fig
+
+# Other pictures and movies (from MATLAB)
+*.png
+*.avi
+
+# Documentation folder
+html/
