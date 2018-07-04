@@ -675,6 +675,53 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.dat_old = [];
         end
         
+        function out = run_with_only_global_control(self, func)
+            % Sets the model to only use global control, then performs the
+            % function on the object.
+            % Input:
+            %   func - function that only accepts this object as an
+            %       argument, e.g. a method of this function, or something 
+            %       that uses a property directly
+            %
+            % Output:
+            %   out - the FIRST (if more than one) output of the function
+            
+            num_neurons = self.dat_sz(1);
+            ctr_ind = (num_neurons+1):(self.total_sz(1)-num_neurons);
+            is_original_neuron = false;
+            self.add_partial_original_control_signal(ctr_ind,...
+                [], [], is_original_neuron)
+            
+            out = func(self);
+            
+            self.reset_user_control();
+        end
+        
+        function out = run_with_only_sparse_control(self, func)
+            % Sets the model to only use sparse control, then performs the
+            % function on the object.
+            % Input:
+            %   func - function that only accepts this object as an
+            %       argument, e.g. a method of this function, or something 
+            %       that uses a property directly
+            %
+            % Output:
+            %   out - the FIRST (if more than one) output of the function
+            
+            ctr_ind = 1:self.dat_sz(1);
+            is_original_neuron = false;
+            self.add_partial_original_control_signal(ctr_ind,...
+                [], [], is_original_neuron)
+            
+            out = func(self);
+            
+            self.reset_user_control();
+        end
+        
+    end
+    
+    methods % Interpreting control signals
+        
         function [signals, signal_mat, mean_signal, all_signal_ind] = ...
                 get_control_signal_during_label(self, ...
                     which_label, num_preceding_frames)
@@ -898,7 +945,6 @@ classdef CElegansModel < SettingsImportableFromStruct
                 end
             end
         end
-        
         
         function [neuron_roles, neuron_names] = ...
                 calc_neuron_roles_in_global_modes(self,...
