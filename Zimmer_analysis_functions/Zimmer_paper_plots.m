@@ -19,7 +19,7 @@ close all
 %==========================================================================
 
 
-%% Figure 1: intro to control
+%% Figure 1: Intro to control
 % Maybe have a trace of some controller neurons?
 to_plot_figure_1 = false;
 if to_plot_figure_1
@@ -104,7 +104,7 @@ end
 
 %% Figure 3: Reconstructions (multiple methods)
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
-all_figs = cell(9,1);
+all_figs = cell(10,1);
 
 %---------------------------------------------
 % Get neuron removal model
@@ -130,7 +130,7 @@ ad_obj_fig4 = AdaptiveDmdc(this_dat, settings);
 
 % Use this object to reconstruct the data. First, plot it in comparison to
 % the original data:
-approx_data = ad_obj_fig4.plot_reconstruction(true, true).';
+approx_data = ad_obj_fig4.plot_reconstruction(true, false).';
 
 % Now use robust PCA and visualize this using the same algorithm as above
 lambda = 0.05;
@@ -140,13 +140,17 @@ filter_window = 10;
 L_filter2 = my_filter(L_reconstruct,filter_window)';
 [u,s,v,proj3d] = plotSVD(L_filter2(:,filter_window:end),...
     struct('PCA3d',false,'sigma',false));
-all_figs{2} = plot_colored(proj3d,...
+all_figs{1} = plot_colored(proj3d,...
     dat_struct.SevenStates(filter_window:end),dat_struct.SevenStatesKey,'o');
 title('Dynamics of the low-rank component (reconstructed)')
 
 % Now a single neuron reconstruction
-neur_id = [59];
-[~, all_figs{3}] = ad_obj_fig4.plot_reconstruction(true, [], true, neur_id);
+neur_id = [38, 59];
+fig_dict = containers.Map({neur_id(1), neur_id(2)}, {2, 3});
+for i = neur_id
+    [~, all_figs{fig_dict(i)}] = ...
+        ad_obj_fig4.plot_reconstruction(true,false,true,i);
+end
 
 %---------------------------------------------
 % Get double RPCA model
@@ -167,7 +171,7 @@ my_model_fig4_b.plot_reconstruction_user_control();
 all_figs{4} = my_model_fig4_b.plot_colored_user_control([],false);
 
 % Reconstruct some individual neurons
-neur_id = [45, 59];
+neur_id = [38, 59];
 fig_dict = containers.Map({neur_id(1), neur_id(2)}, {5, 6});
 for i = neur_id
     [~, all_figs{fig_dict(i)}] = ...
@@ -193,10 +197,10 @@ my_model_fig4_c.plot_reconstruction_user_control();
 all_figs{7} = my_model_fig4_c.plot_colored_user_control([],false);
 
 % Also original data; same for all models
-all_figs{1} = my_model_fig4_c.plot_colored_data(false, 'o');
+all_figs{10} = my_model_fig4_c.plot_colored_data(false, 'o');
 
 % Reconstruct some individual neurons
-neur_id = [45, 59];
+neur_id = [38, 59];
 fig_dict = containers.Map({neur_id(1), neur_id(2)}, {8, 9});
 for i = neur_id
     [~, all_figs{fig_dict(i)}] = ...
@@ -440,13 +444,16 @@ settings = struct(...
     'iterate_settings',struct('global_signal_mode',global_signal_modes),...
     'x_vector', lambda_vec,...
     'x_fieldname', 'lambda_sparse',...
-    'fields_to_plot',{{{'AdaptiveDmdc_obj','calc_reconstruction_error'}}});
+    'fields_to_plot',{{{'AdaptiveDmdc_obj','calc_reconstruction_error'},...
+                        {'S_sparse_nnz'}}});
 
 all_pareto_objs = cell(5,1);
 for i=1:5
     settings.file_or_dat = sprintf(filename_template, i);
     all_pareto_objs{i} = ParetoFrontObj('CElegansModel', settings);
-    all_figs{i} = all_pareto_objs{i}.plot_pareto_front();
+    all_pareto_objs{i}.save_combined_y_val(...
+        'ID_AdaptiveDmdc_objcalc_reconstruction_error', 'ID_S_sparse_nnz');
+    all_figs{i} = all_pareto_objs{i}.plot_pareto_front('combine');
 end
 
 %---------------------------------------------
