@@ -353,6 +353,11 @@ end
 [ combined_dat_global, all_labels_global ] =...
     combine_different_trials( all_roles_global );
 
+%---------------------------------------------
+% Set up colormap
+%---------------------------------------------
+num_possible_roles = 4;
+cmap = colormap(parula(num_possible_roles));
 
 %---------------------------------------------
 % Bar graph of transition kicks (dynamics, no worm 4)
@@ -370,6 +375,7 @@ end
 this_ind = find(sum(role_counts,2)>1);
 all_figs{1} = figure('DefaultAxesFontSize',14);
 bar(role_counts(this_ind,:), 'stacked')
+colormap parula % Use default for 4-color bar charts
 legend(possible_roles)
 xticks(1:length(this_ind));
 xticklabels(all_labels_dynamic(this_ind))
@@ -388,15 +394,22 @@ end
 this_ind = find(sum(role_counts,2)>1);
 all_figs{2} = figure('DefaultAxesFontSize',14);
 bar(role_counts(this_ind,:), 'stacked')
+colormap parula % Use default for 4-color bar charts
 legend(possible_roles)
 xticks(1:length(this_ind));
 xticklabels(all_labels_centroid(this_ind))
 xtickangle(90)
-title('Neuron roles using similarity to attractors (no 4th worm)')
+title('Neuron roles using similarity to centroids (no 4th worm)')
 
 %---------------------------------------------
 % Roles for global neurons
 %---------------------------------------------
+% First make the field names the same
+d = containers.Map(...
+    {'group 1', 'group 2', 'other', ''},...
+    {'simple REVSUS', 'simple FWD', 'other', ''});
+combined_dat_global = cellfun(@(x) d(x), combined_dat_global,...
+    'UniformOutput', false);
 possible_roles = unique(combined_dat_global);
 possible_roles(cellfun(@isempty,possible_roles)) = [];
 role_counts = zeros(num_neurons,length(possible_roles));
@@ -406,7 +419,11 @@ for i=1:length(possible_roles)
 end
 this_ind = find(sum(role_counts,2)>1);
 all_figs{3} = figure('DefaultAxesFontSize',14);
-bar(role_counts(this_ind,:), 'stacked')
+b = bar(role_counts(this_ind,:), 'stacked');
+for i=1:length(b)
+    % Skip the first color (dark blue
+    b(i).FaceColor = cmap(i+1,:);
+end
 legend(possible_roles)
 xticks(1:length(this_ind));
 xticklabels(all_labels_global(this_ind))
@@ -434,11 +451,12 @@ model_settings = struct(...
     'to_subtract_mean',false,...
     'to_subtract_mean_sparse',false,...
     'to_subtract_mean_global',false,...
-    'dmd_mode','func_DMDc');
+    'dmd_mode','func_DMDc',...
+    'to_save_raw_data',false);
 % global_signal_modes = {{'ID'}};
 global_signal_modes = {{'ID','ID_binary'}};
 % global_signal_modes = {{'ID','ID_simple','ID_binary'}};
-lambda_vec = linspace(0.02,0.1,100);
+lambda_vec = linspace(0.02, 0.1, 100);
 settings = struct(...
     'base_settings', model_settings,...
     'iterate_settings',struct('global_signal_mode',global_signal_modes),...
@@ -451,8 +469,12 @@ all_pareto_objs = cell(5,1);
 for i=1:5
     settings.file_or_dat = sprintf(filename_template, i);
     all_pareto_objs{i} = ParetoFrontObj('CElegansModel', settings);
-    all_pareto_objs{i}.save_combined_y_val(...
-        'ID_AdaptiveDmdc_objcalc_reconstruction_error', 'ID_S_sparse_nnz');
+    for i2=1:length(global_signal_modes{1})
+        tmp = global_signal_modes{1}{i2};
+        all_pareto_objs{i}.save_combined_y_val(...
+            sprintf('%s_AdaptiveDmdc_obj_calc_reconstruction_error',tmp),...
+            sprintf('%s_S_sparse_nnz',tmp) );
+    end
     all_figs{i} = all_pareto_objs{i}.plot_pareto_front('combine');
 end
 
@@ -460,7 +482,7 @@ end
 % Save figures
 %---------------------------------------------
 for i = 1:length(all_figs)
-    fname = sprintf('%sfigure_s3_%d', foldername, i);
+    fname = sprintf('%sfigure_s3_%d_combine', foldername, i);
     this_fig = all_figs{i};
     set(this_fig, 'Position', get(0, 'Screensize'));
     saveas(this_fig, fname, 'png');
@@ -483,18 +505,25 @@ model_settings = struct(...
 % sparse_lambda_vals = {{0.05}};
 % global_lambda_vec = linspace(0.0018,0.01,1);
 sparse_lambda_vals = {{0.025, 0.04, 0.055}};
-global_lambda_vec = linspace(0.0018, 0.01, 20);
+global_lambda_vec = linspace(0.0018, 0.01, 100);
 settings = struct(...
     'base_settings', model_settings,...
     'iterate_settings',struct('lambda_sparse',sparse_lambda_vals),...
     'x_vector', global_lambda_vec,...
     'x_fieldname', 'lambda_global',...
-    'fields_to_plot',{{{'AdaptiveDmdc_obj','calc_reconstruction_error'}}});
+    'fields_to_plot',{{{'AdaptiveDmdc_obj','calc_reconstruction_error'},...
+                        {'L_global_rank'}}});
 
 all_pareto_objs = cell(5,1);
 for i=1:5
     settings.file_or_dat = sprintf(filename_template, i);
     all_pareto_objs{i} = ParetoFrontObj('CElegansModel', settings);
+%     for i2=1:length(global_signal_modes{1})
+%         tmp = global_signal_modes{1}{i2};
+%         all_pareto_objs{i}.save_combined_y_val(...
+%             sprintf('%s_AdaptiveDmdc_obj_calc_reconstruction_error',tmp),...
+%             sprintf('%s_S_sparse_nnz',tmp) );
+%     end
     all_figs{i} = all_pareto_objs{i}.plot_pareto_front();
 end
 

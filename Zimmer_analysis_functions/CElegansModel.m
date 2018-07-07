@@ -390,11 +390,22 @@ classdef CElegansModel < SettingsImportableFromStruct
         use_deriv
         use_only_deriv
         to_normalize_deriv
+        to_save_raw_data
+    end
+    
+    properties (Access=private, Transient=true)
+        raw
+        raw_deriv
+        
+        L_global_raw
+        S_global_raw
+        L_sparse_raw
+        S_sparse_raw
+        
+        state_labels_ind_raw
     end
         
     properties (Hidden=true, SetAccess=private)
-        raw
-        raw_deriv
         dat
         original_sz
         dat_sz
@@ -404,16 +415,12 @@ classdef CElegansModel < SettingsImportableFromStruct
         dat_old
         
         % Robust PCA matrices
-        L_global_raw
-        S_global_raw
         L_global
         S_global
         L_global_modes
         S_global_nnz
         L_global_rank
         
-        L_sparse_raw
-        S_sparse_raw
         L_sparse
         S_sparse
         L_sparse_modes
@@ -421,7 +428,6 @@ classdef CElegansModel < SettingsImportableFromStruct
         L_sparse_rank
         
         state_labels_ind
-        state_labels_ind_raw
         state_labels_key
     end
     
@@ -1414,7 +1420,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         end
     end
     
-    methods (Access=private)
+    methods %(Access=private)
         
         function set_defaults(self)
             defaults = struct(...
@@ -1436,7 +1442,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                 ...% Data importing
                 'use_deriv', false,...
                 'use_only_deriv', false,...
-                'to_normalize_deriv', false);
+                'to_normalize_deriv', false,...
+                'to_save_raw_data', true);
             for key = fieldnames(defaults).'
                 k = key{1};
                 self.(k) = defaults.(k);
@@ -1746,6 +1753,19 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.total_sz = size(self.dat_with_control);
             self.state_labels_ind = ...
                 self.state_labels_ind_raw(end-self.total_sz(2)+1:end);
+            
+            if ~self.to_save_raw_data
+                for f=fieldnames(struct(self))'
+                    fname = f{1};
+                    if ~contains(fname,'_raw') && ~strcmp(fname,'raw')
+                        continue
+                    elseif strcmp(fname, 'to_save_raw_data')
+                        self.(fname) = false;
+                    else
+                        self.(fname) = [];
+                    end
+                end
+            end
         end
         
         function callback_plotter(self, ~, evt)
