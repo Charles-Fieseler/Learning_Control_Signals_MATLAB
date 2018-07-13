@@ -405,11 +405,12 @@ classdef CElegansModel < SettingsImportableFromStruct
         state_labels_ind_raw
     end
         
-    properties (Hidden=true, SetAccess=private)
+    properties (Hidden=false, SetAccess=private)
         dat
         original_sz
         dat_sz
         total_sz
+        num_data_pts
         
         A_old
         dat_old
@@ -428,12 +429,13 @@ classdef CElegansModel < SettingsImportableFromStruct
         L_sparse_rank
         
         state_labels_ind
+        state_labels_ind_old
         state_labels_key
+        state_labels_key_old
     end
     
-    properties (SetAccess=public)
-        dat_with_control
-        dat_without_control
+    properties (SetAccess=private)
+        control_signal
         
         AdaptiveDmdc_obj
         % Changing the control signals and/or matrix
@@ -443,6 +445,11 @@ classdef CElegansModel < SettingsImportableFromStruct
         user_control_reconstruction
         
         pareto_struct
+    end
+    
+    properties (Dependent)
+        dat_without_control
+        dat_with_control
     end
     
     methods
@@ -540,6 +547,39 @@ classdef CElegansModel < SettingsImportableFromStruct
             
         end
         
+        function set_simple_labels(self, label_dict, new_labels_key)
+            if ~exist('label_dict','var')
+                label_dict = containers.Map(...
+                    {1,2,3,4,5,6,7,8},...
+                    {1,1,2,3,4,4,4,5});
+            end
+            if ~exist('new_labels_key','var')
+                new_labels_key = ...
+                    {'Simple Forward',...
+                    'Dorsal Turn',...
+                    'Ventral Turn',...
+                    'Simple Reverse',...
+                    'NOSTATE'};
+            end
+            if isempty(label_dict) && isempty(new_labels_key)
+                % Just reset
+                self.state_labels_key = self.state_labels_key_old;
+                self.state_labels_ind = self.state_labels_ind_old;
+                return
+            else
+                assert(...
+                    length(unique(cell2mat(label_dict.values))) ==...
+                    length(new_labels_key),...
+                    'New behavioral indices must all have labels')
+            end
+            
+            self.state_labels_ind_old = self.state_labels_ind;
+            self.state_labels_key_old = self.state_labels_key;
+            
+            f = @(x) label_dict(x);
+            self.state_labels_ind = arrayfun(f, self.state_labels_ind);
+            self.state_labels_key = new_labels_key;
+        end
     end
     
     methods % Adding control signals
@@ -1065,7 +1105,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             [self.L_sparse_modes,~,~,proj3d] = plotSVD(self.L_sparse,...
                 struct('PCA3d',plot_pca,'sigma',false));
             fig = plot_colored(proj3d,...
-                self.state_labels_ind_raw(end-size(proj3d,2)+1:end),...
+                self.state_labels_ind(end-size(proj3d,2)+1:end),...
                 self.state_labels_key, plot_opt);
             title('Dynamics of the low-rank component (data)')
         end
@@ -1093,7 +1133,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), 'k*')
             else
                 fig = plot_colored(proj_3d,...
-                    self.state_labels_ind_raw(end-size(proj_3d,2)+1:end),...
+                    self.state_labels_ind(end-size(proj_3d,2)+1:end),...
                     self.state_labels_key);
                 title('Dynamics of the low-rank component (reconstruction)')
             end
@@ -1736,11 +1776,13 @@ classdef CElegansModel < SettingsImportableFromStruct
             % amounts of filtering, therefore slightly different sizes)
             L_low_rank = L_low_rank';
             num_pts = min([size(L_low_rank,2) size(sparse_signal,2) size(this_dat,2)]);
-            self.dat_with_control = ...
-                [this_dat(:,1:num_pts);...
-                sparse_signal(:,1:num_pts);...
+
+            self.control_signal = ...
+                [sparse_signal(:,1:num_pts);...
                 L_low_rank(:,1:num_pts)];
-            self.dat_without_control = this_dat(:,1:num_pts);
+            self.num_data_pts = num_pts;
+            self.dat = this_dat;
+%             self.dat_without_control = this_dat(:,1:num_pts);
         end
         
         function calc_AdaptiveDmdc(self)
@@ -1782,6 +1824,18 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
         end
         
+    end
+    
+    methods % For dependent variables
+        function out = get.dat_without_control(self)
+            out = self.dat(:,1:self.num_data_pts);
+        end
+        
+        function out = get.dat_with_control(self)
+            out = ...
+                [self.dat(:,1:self.num_data_pts);...
+                self.control_signal];
+        end
     end
     
     methods (Static)
