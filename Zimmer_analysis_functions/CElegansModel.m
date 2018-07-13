@@ -1545,7 +1545,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             % Add this information to the subobject
             if ~any(ismember(fieldnames(self.AdaptiveDmdc_settings),...
                     {'id_struct','sort_mode','x_indices','dmd_mode',...
-                    'to_plot_nothing'}))
+                    'to_plot_nothing','to_save_raw_data'}))
                 if ~self.use_deriv
                     x_ind = 1:size(self.raw,1);
                 else
@@ -1558,6 +1558,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 self.AdaptiveDmdc_settings.x_indices = x_ind;
                 self.AdaptiveDmdc_settings.dmd_mode = self.dmd_mode;
                 self.AdaptiveDmdc_settings.to_plot_nothing = true;
+                self.AdaptiveDmdc_settings.to_save_raw_data = false;
             end
         end
         
