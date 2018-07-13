@@ -3288,10 +3288,10 @@ model_settings = struct(...
     'to_subtract_mean_sparse',false,...
     'to_subtract_mean_global',false,...
     'dmd_mode','func_DMDc');
-global_signal_modes = {{'ID'}};
-% global_signal_modes = {{'ID','ID_binary'}};
+% global_signal_modes = {{'ID'}};
+global_signal_modes = {{'ID','ID_binary'}};
 % global_signal_modes = {{'ID','ID_simple','ID_binary'}};
-lambda_vec = linspace(0.02,0.1,20);
+lambda_vec = linspace(0.02,0.1,4);
 settings = struct(...
     'file_or_dat', filename,...
     'base_settings', model_settings,...
@@ -3303,8 +3303,39 @@ settings = struct(...
     
 my_pareto_obj = ParetoFrontObj('CElegansModel', settings);
 
-my_pareto_obj.save_combined_y_val(...
-    'ID_AdaptiveDmdc_objcalc_reconstruction_error', 'ID_S_sparse_nnz')
+%---------------------------------------------
+% Save baselines and combined values
+%---------------------------------------------
+f = @(x, use_persistence) ...
+    x.AdaptiveDmdc_obj.calc_reconstruction_error([],use_persistence);
+
+baseline_funcs = ...
+    {@(x) f(x,true),...
+    @(x) x.run_with_only_global_control(@(x2)f(x2,false))};
+baseline_names = {'persistence',...
+    'global_modes_only'};
+for i=1:length(global_signal_modes{1})
+    fname = global_signal_modes{1}{i};
+    % First get a pareto front; no longer units of L2 error 
+    val1 = sprintf('%s_AdaptiveDmdc_obj_calc_reconstruction_error',fname);
+    val2 = sprintf('%s_S_sparse_nnz',fname);
+    my_pareto_obj.save_combined_y_val(val1, val2);
+    % Second calculate the 2 baselines and put them in the same "units"
+    for i2=1:length(baseline_funcs)
+        b_name = sprintf('%s_%s',fname, baseline_names{i2});
+        my_pareto_obj.save_baseline(fname, baseline_funcs{i2}, b_name);
+        my_pareto_obj.save_combined_y_val(['baseline__' b_name], 1);
+    end
+end
+
+%---------------------------------------------
+% Plot
+%---------------------------------------------
+
+fig = my_pareto_obj.plot_pareto_front('combine');
+fig = my_pareto_obj.plot_pareto_front('baseline', true, fig);
+
+
 %==========================================================================
 
 

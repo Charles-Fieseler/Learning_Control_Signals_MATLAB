@@ -231,15 +231,20 @@ settings = struct(...
     'to_subtract_mean_sparse',false,...
     'to_subtract_mean_global',false,...
     'dmd_mode','func_DMDc',...
-    'to_plot_nothing',true);
+    'to_plot_nothing',true,...
+    'global_signal_mode', 'ID');
 my_model_fig5 = CElegansModel(filename, settings);
 
 all_figs{1} = my_model_fig5.plot_colored_data(false, 'o');
 view(0,60)
 [~, b] = all_figs{1}.Children.Children;
 alpha(b, 0.3)
-my_model_fig5.plot_colored_fixed_point('REVSUS', true, all_figs{1});
-my_model_fig5.plot_colored_fixed_point('FWD', true, all_figs{1});
+my_model_fig5.run_with_only_global_control(@(x)...
+    plot_colored_fixed_point(x,'REVSUS', true, all_figs{1}) );
+my_model_fig5.run_with_only_global_control(@(x)...
+    plot_colored_fixed_point(x,'FWD', true, all_figs{1}) );
+% my_model_fig5.plot_colored_fixed_point('REVSUS', true, all_figs{1});
+% my_model_fig5.plot_colored_fixed_point('FWD', true, all_figs{1});
 % all_figs{2} = my_model_fig5.plot_colored_fixed_point('SLOW', true);
 % all_figs{2} = my_model_fig5.plot_colored_data(false, 'o');
 % view(10,40)
@@ -305,7 +310,7 @@ end
 
 
 %% Supplementary Figure 2: Neuron classifications
-all_figs = cell(3,1);
+all_figs = cell(5,1);
 
 filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
 settings = struct(...
@@ -373,6 +378,30 @@ for i=1:length(possible_roles)
         strcmp(combined_dat_dynamic(:,these_worms), possible_roles{i}),2);
 end
 this_ind = find(sum(role_counts,2)>1);
+all_figs{4} = figure('DefaultAxesFontSize',14);
+bar(role_counts(this_ind,:), 'stacked')
+colormap parula % Use default for 4-color bar charts
+legend(possible_roles)
+xticks(1:length(this_ind));
+xticklabels(all_labels_dynamic(this_ind))
+xtickangle(90)
+yticks(1:length(possible_roles))
+title('Neuron roles using similarity to attractors (no 4th worm)')
+
+%---------------------------------------------
+% Bar graph of transition kicks (dynamics, WITH worm 4)
+%---------------------------------------------
+possible_roles = unique(combined_dat_dynamic);
+possible_roles(cellfun(@isempty,possible_roles)) = [];
+num_neurons = size(combined_dat_dynamic,1);
+these_worms = 1:5; %DIFFERENT
+role_counts = zeros(num_neurons,length(possible_roles));
+
+for i=1:length(possible_roles)
+    role_counts(:,i) = sum(...
+        strcmp(combined_dat_dynamic(:,these_worms), possible_roles{i}),2);
+end
+this_ind = find(sum(role_counts,2)>1);
 all_figs{1} = figure('DefaultAxesFontSize',14);
 bar(role_counts(this_ind,:), 'stacked')
 colormap parula % Use default for 4-color bar charts
@@ -380,12 +409,33 @@ legend(possible_roles)
 xticks(1:length(this_ind));
 xticklabels(all_labels_dynamic(this_ind))
 xtickangle(90)
-title('Neuron roles using similarity to attractors (no 4th worm)')
+yticks(1:length(possible_roles))
+title('Neuron roles using similarity to attractors')
 
 %---------------------------------------------
 % Bar graph of transition kicks (centroids, no worm 4)
 %---------------------------------------------
 these_worms = [1, 2, 3, 5];
+role_counts = zeros(num_neurons,length(possible_roles));
+for i=1:length(possible_roles)
+    role_counts(:,i) = sum(...
+        strcmp(combined_dat_centroid(:,these_worms), possible_roles{i}),2);
+end
+this_ind = find(sum(role_counts,2)>1);
+all_figs{5} = figure('DefaultAxesFontSize',14);
+bar(role_counts(this_ind,:), 'stacked')
+colormap parula % Use default for 4-color bar charts
+legend(possible_roles)
+xticks(1:length(this_ind));
+xticklabels(all_labels_centroid(this_ind))
+xtickangle(90)
+yticks(1:length(possible_roles))
+title('Neuron roles using similarity to centroids (no 4th worm)')
+
+%---------------------------------------------
+% Bar graph of transition kicks (centroids, WITH worm 4)
+%---------------------------------------------
+these_worms = 1:5;
 role_counts = zeros(num_neurons,length(possible_roles));
 for i=1:length(possible_roles)
     role_counts(:,i) = sum(...
@@ -399,7 +449,8 @@ legend(possible_roles)
 xticks(1:length(this_ind));
 xticklabels(all_labels_centroid(this_ind))
 xtickangle(90)
-title('Neuron roles using similarity to centroids (no 4th worm)')
+yticks(1:length(possible_roles))
+title('Neuron roles using similarity to centroids')
 
 %---------------------------------------------
 % Roles for global neurons
@@ -454,8 +505,8 @@ model_settings = struct(...
     'dmd_mode','func_DMDc',...
     'to_save_raw_data',false);
 % global_signal_modes = {{'ID'}};
-global_signal_modes = {{'ID','ID_binary'}};
-% global_signal_modes = {{'ID','ID_simple','ID_binary'}};
+% global_signal_modes = {{'ID','ID_binary'}};
+global_signal_modes = {{'ID','ID_simple','ID_binary'}};
 lambda_vec = linspace(0.02, 0.1, 100);
 settings = struct(...
     'base_settings', model_settings,...
@@ -465,17 +516,24 @@ settings = struct(...
     'fields_to_plot',{{{'AdaptiveDmdc_obj','calc_reconstruction_error'},...
                         {'S_sparse_nnz'}}});
 
-all_pareto_objs = cell(5,1);
+this_pareto_obj = cell(5,1);
 for i=1:5
     settings.file_or_dat = sprintf(filename_template, i);
-    all_pareto_objs{i} = ParetoFrontObj('CElegansModel', settings);
+%     this_pareto_obj = ParetoFrontObj('CElegansModel', settings);
+    this_pareto_obj{i} = ParetoFrontObj('CElegansModel', settings);
     for i2=1:length(global_signal_modes{1})
         tmp = global_signal_modes{1}{i2};
-        all_pareto_objs{i}.save_combined_y_val(...
+%         this_pareto_obj.save_combined_y_val(...
+        this_pareto_obj{i}.save_combined_y_val(...
             sprintf('%s_AdaptiveDmdc_obj_calc_reconstruction_error',tmp),...
             sprintf('%s_S_sparse_nnz',tmp) );
     end
-    all_figs{i} = all_pareto_objs{i}.plot_pareto_front('combine');
+%     all_figs{i} = this_pareto_obj.plot_pareto_front('combine');
+    all_figs{i} = this_pareto_obj{i}.plot_pareto_front('combine');
+    % Have been running into huge problems with memory...
+%     save(sprintf('%spareto_obj_%d',foldername,i),...
+%         this_pareto_obj);
+%     clear this_pareto_obj
 end
 
 %---------------------------------------------
@@ -514,17 +572,17 @@ settings = struct(...
     'fields_to_plot',{{{'AdaptiveDmdc_obj','calc_reconstruction_error'},...
                         {'L_global_rank'}}});
 
-all_pareto_objs = cell(5,1);
+this_pareto_obj = cell(5,1);
 for i=1:5
     settings.file_or_dat = sprintf(filename_template, i);
-    all_pareto_objs{i} = ParetoFrontObj('CElegansModel', settings);
+    this_pareto_obj{i} = ParetoFrontObj('CElegansModel', settings);
 %     for i2=1:length(global_signal_modes{1})
 %         tmp = global_signal_modes{1}{i2};
 %         all_pareto_objs{i}.save_combined_y_val(...
 %             sprintf('%s_AdaptiveDmdc_obj_calc_reconstruction_error',tmp),...
 %             sprintf('%s_S_sparse_nnz',tmp) );
 %     end
-    all_figs{i} = all_pareto_objs{i}.plot_pareto_front();
+    all_figs{i} = this_pareto_obj{i}.plot_pareto_front();
 end
 
 %---------------------------------------------
