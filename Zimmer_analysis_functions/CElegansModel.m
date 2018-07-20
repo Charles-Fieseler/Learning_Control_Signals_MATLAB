@@ -661,7 +661,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             assert(max(signal_ind) <= self.total_sz(1),...
                 'Indices must be within the discovered control signal')
             
-            A = self.AdaptiveDmdc_obj.A_separate(1:num_neurons,:);
+            A = self.AdaptiveDmdc_obj.A_original(1:num_neurons,:);
             for i = 1:length(signal_ind)
                 this_ind = signal_ind(i);
                 this_connectivity = abs(A(:,this_ind))>0;
@@ -737,10 +737,12 @@ classdef CElegansModel < SettingsImportableFromStruct
             is_original_neuron = false;
             self.add_partial_original_control_signal(ctr_ind,...
                 [], [], is_original_neuron)
+            self.set_AdaptiveDmdc_controller();
             
             out = func(self);
             
             self.reset_user_control();
+            self.reset_AdaptiveDmdc_controller();
         end
         
         function out = run_with_only_sparse_control(self, func)
@@ -758,10 +760,12 @@ classdef CElegansModel < SettingsImportableFromStruct
             is_original_neuron = false;
             self.add_partial_original_control_signal(ctr_ind,...
                 [], [], is_original_neuron)
+            self.set_AdaptiveDmdc_controller();
             
             out = func(self);
             
             self.reset_user_control();
+            self.reset_AdaptiveDmdc_controller();
         end
         
     end
