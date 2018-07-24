@@ -405,7 +405,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         state_labels_ind_raw
     end
         
-    properties (Hidden=true, SetAccess=private)
+    properties (Hidden=true)%, SetAccess=private)
         dat
         original_sz
         dat_sz
@@ -1073,17 +1073,43 @@ classdef CElegansModel < SettingsImportableFromStruct
             % Uses the trained classifier to predict the category of the
             % input brain state
             % Note: input should be one or more column vectors
-            num_neurons = size(self.original_sz,1);
             ctr_signal = self.control_signal(:, t_ind);
+            
+            % The model might have been trained with derivatives
+            if size(self.cecoc_model.X,2) == 2*length(time_slice)
+                time_slice = [time_slice, gradient(time_slice)];
+            end
             
             % Only change the single entry that is the ID (any later
             % entries are constant)
-            category = predict(self.cecoc_model, time_slice);
-            ctr_signal(num_neurons+1) = category;
+            ctr_signal(self.original_sz(1)+1) = ...
+                predict(self.cecoc_model, time_slice);
         end
         
-        function next_time_slice = calc_next_step_state(self, ctr_signal)
+        function [time_series, ctr_signal] = ...
+                generate_time_series(self, num_tsteps, x0)
+            % Generates a time series using the saved AdaptiveDmdc object
+            % This means that user-set ablations and additional control
+            % signals can be incorporated
+            if ~exist('x0','var')
+                x0 = self.dat(:,1);
+            end
+            if ~exist('num_tsteps','var')
+                num_tsteps = self.original_sz(2);
+            end
             
+            time_series = zeros(self.original_sz(1), num_tsteps);
+            time_series(:,1) = x0;
+            ctr_signal = zeros(size(self.control_signal,1), num_tsteps);
+            ctr_signal(:,1) = self.control_signal(:,1);
+            for i=2:num_tsteps
+                ctr_signal(:,i) = self.calc_next_step_controller(...
+                        time_series(:,i-1)', i-1);
+                time_series(:,i) = ...
+                    self.AdaptiveDmdc_obj.calc_reconstruction_manual(...
+                        time_series(:,i-1),...
+                        ctr_signal(:,i-1));
+            end
         end
     end
     
