@@ -6,16 +6,32 @@ foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\figures\'
 %==========================================================================
 
 
-%% Define colormap
-num_colors = 16;
-my_colormap = brewermap(num_colors,'OrRd');
-my_colormap(1,:) = ones(1,3);
-colormap(my_colormap)
-my_colormap(end,:) = zeros(1,3);
-set(0, 'DefaultFigureColormap', my_colormap)
-% caxis([-0.5,1.0])
+%% Define colormaps
 close all
+%---------------------------------------------
+% Set up colormap for RPCA visualizations
+%---------------------------------------------
+num_colors = 16;
+my_cmap_RPCA = brewermap(num_colors,'OrRd');
+my_cmap_RPCA(1,:) = ones(1,3);
+colormap(my_cmap_RPCA)
+my_cmap_RPCA(end,:) = zeros(1,3);
+set(0, 'DefaultFigureColormap', my_cmap_RPCA)
+% caxis([-0.5,1.0])
 
+%---------------------------------------------
+% Set up colormap for 3d visualizations
+%---------------------------------------------
+num_possible_roles = 4;
+my_cmap_3d = colormap(parula(num_possible_roles));
+my_cmap_3d = [my_cmap_3d; zeros(1,3)];
+my_cmap_3d(4,:) = [249, 222, 12]./256; % Make yellow more visible
+
+% Dict for switching between simple label plots and bar-graph-matching
+% colors
+my_cmap_dict = containers.Map(...
+    {1, 2, 3, 4, 5},... %original: NOSTATE, REV, VT, DT, FWD
+    {5, 4, 1, 2, 3}); %Want: VT, DT, FWD, REV, NOSTATE
 %==========================================================================
 
 
@@ -140,9 +156,27 @@ filter_window = 10;
 L_filter2 = my_filter(L_reconstruct,filter_window)';
 [u,s,v,proj3d] = plotSVD(L_filter2(:,filter_window:end),...
     struct('PCA3d',false,'sigma',false));
+% Simplify the labeling for better visualization
+label_dict = containers.Map(...
+    {1,2,3,4,5,6,7,8},...
+    {1,1,2,3,4,4,4,5});
+new_labels_key = ...
+    {'Simple Forward',...
+    'Dorsal Turn',...
+    'Ventral Turn',...
+    'Simple Reverse',...
+    'NOSTATE'};
+f = @(x) label_dict(x);
+new_labels_ind = arrayfun(f, dat_struct.SevenStates(filter_window:end));
+% Actually plot
 all_figs{1} = plot_colored(proj3d,...
-    dat_struct.SevenStates(filter_window:end),dat_struct.SevenStatesKey,'o');
+    new_labels_ind, new_labels_key, 'o');
 title('Dynamics of the low-rank component (reconstructed)')
+% Now make the colormap match the bar graphs
+for i=1:length(new_labels_key)
+    all_figs{1}.Children(2).Children(i).CData = ...
+        my_cmap_3d(my_cmap_dict(i),:);
+end
 
 % Now a single neuron reconstruction
 neur_id = [38, 59];
@@ -160,7 +194,6 @@ settings = struct(...
     'to_subtract_mean_sparse',false,...
     'to_subtract_mean_global',false,...
     'dmd_mode','func_DMDc',...
-    'to_plot_nothing',true,...
     'lambda_sparse', 0.04);
 my_model_fig4_b = CElegansModel(filename, settings);
 
@@ -168,7 +201,13 @@ my_model_fig4_b = CElegansModel(filename, settings);
 % NOTE: reconstruction is not really that impressive here!
 my_model_fig4_b.add_partial_original_control_signal();
 my_model_fig4_b.plot_reconstruction_user_control();
+my_model_fig4_b.set_simple_labels();
 all_figs{4} = my_model_fig4_b.plot_colored_user_control([],false);
+% Now make the colormap match the bar graphs
+for i=1:length(new_labels_key)
+    all_figs{4}.Children(2).Children(i).CData = ...
+        my_cmap_3d(my_cmap_dict(i),:);
+end
 
 % Reconstruct some individual neurons
 neur_id = [38, 59];
@@ -185,8 +224,7 @@ settings = struct(...
     'to_subtract_mean',true,...
     'to_subtract_mean_sparse',false,...
     'to_subtract_mean_global',false,...
-    'dmd_mode','func_DMDc',...
-    'to_plot_nothing',true);
+    'dmd_mode','func_DMDc');
 settings.global_signal_mode = 'ID_and_offset';
 my_model_fig4_c = CElegansModel(filename, settings);
 
@@ -194,10 +232,20 @@ my_model_fig4_c = CElegansModel(filename, settings);
 % NOTE: reconstruction is not really that impressive here!
 my_model_fig4_c.add_partial_original_control_signal();
 my_model_fig4_c.plot_reconstruction_user_control();
+my_model_fig4_c.set_simple_labels();
 all_figs{7} = my_model_fig4_c.plot_colored_user_control([],false);
+% Now make the colormap match the bar graphs
+for i=1:length(new_labels_key)
+    all_figs{7}.Children(2).Children(i).CData = ...
+        my_cmap_3d(my_cmap_dict(i),:);
+end
 
 % Also original data; same for all models
 all_figs{10} = my_model_fig4_c.plot_colored_data(false, 'o');
+for i=1:length(new_labels_key)
+    all_figs{10}.Children(2).Children(i).CData = ...
+        my_cmap_3d(my_cmap_dict(i),:);
+end
 
 % Reconstruct some individual neurons
 neur_id = [38, 59];
@@ -224,6 +272,7 @@ end
 
 
 %% Figure 4: Fixed points
+
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 all_figs = cell(1,1);
 settings = struct(...
@@ -234,24 +283,26 @@ settings = struct(...
     'to_plot_nothing',true,...
     'global_signal_mode', 'ID');
 my_model_fig5 = CElegansModel(filename, settings);
+my_model_fig5.set_simple_labels();
 
 all_figs{1} = my_model_fig5.plot_colored_data(false, 'o');
+for i=1:length(my_model_fig5.state_labels_key)
+    all_figs{1}.Children(2).Children(i).CData = ...
+        my_cmap_3d(my_cmap_dict(i),:);
+end
 view(0,60)
 [~, b] = all_figs{1}.Children.Children;
 alpha(b, 0.3)
 my_model_fig5.run_with_only_global_control(@(x)...
-    plot_colored_fixed_point(x,'REVSUS', true, all_figs{1}) );
+    plot_colored_fixed_point(x,'Simple Reverse', true, all_figs{1}) );
 my_model_fig5.run_with_only_global_control(@(x)...
-    plot_colored_fixed_point(x,'FWD', true, all_figs{1}) );
+    plot_colored_fixed_point(x,'Simple Forward', true, all_figs{1}) );
 % my_model_fig5.plot_colored_fixed_point('REVSUS', true, all_figs{1});
 % my_model_fig5.plot_colored_fixed_point('FWD', true, all_figs{1});
 % all_figs{2} = my_model_fig5.plot_colored_fixed_point('SLOW', true);
 % all_figs{2} = my_model_fig5.plot_colored_data(false, 'o');
 % view(10,40)
-% [~, b] = all_figs{2}.Children.Children;
-% alpha(b, 0.3)
-% my_model_fig5.plot_colored_fixed_point('FWD', true, all_figs{2});
-
+% Now make the colormap match the bar graphs
 % Save figures
 for i = 1:length(all_figs)
     fname = sprintf('%sfigure_5_%d', foldername, i);
@@ -359,12 +410,6 @@ end
     combine_different_trials( all_roles_global );
 
 %---------------------------------------------
-% Set up colormap
-%---------------------------------------------
-num_possible_roles = 4;
-cmap = colormap(parula(num_possible_roles));
-
-%---------------------------------------------
 % Bar graph of transition kicks (dynamics, no worm 4)
 %---------------------------------------------
 possible_roles = unique(combined_dat_dynamic);
@@ -377,11 +422,18 @@ for i=1:length(possible_roles)
     role_counts(:,i) = sum(...
         strcmp(combined_dat_dynamic(:,these_worms), possible_roles{i}),2);
 end
-this_ind = find(sum(role_counts,2)>1);
+% Long names mean it was an ambiguous identification
+name_lengths = cellfun(@(x) length(x)<6, all_labels_dynamic)';
+this_ind = find((sum(role_counts,2)>3).*name_lengths);
 all_figs{4} = figure('DefaultAxesFontSize',14);
-bar(role_counts(this_ind,:), 'stacked')
-colormap parula % Use default for 4-color bar charts
+b = bar(role_counts(this_ind,:), 'stacked');
+for i=1:length(b)
+    % Skip the first color (dark blue)
+    b(i).FaceColor = my_cmap_3d(i,:);
+end
 legend(possible_roles)
+yticks(1:max(role_counts))
+ylabel('Number of times identified')
 xticks(1:length(this_ind));
 xticklabels(all_labels_dynamic(this_ind))
 xtickangle(90)
@@ -401,11 +453,18 @@ for i=1:length(possible_roles)
     role_counts(:,i) = sum(...
         strcmp(combined_dat_dynamic(:,these_worms), possible_roles{i}),2);
 end
-this_ind = find(sum(role_counts,2)>1);
+% Long names mean it was an ambiguous identification
+name_lengths = cellfun(@(x) length(x)<6, all_labels_dynamic)';
+this_ind = find((sum(role_counts,2)>3).*name_lengths);
 all_figs{1} = figure('DefaultAxesFontSize',14);
-bar(role_counts(this_ind,:), 'stacked')
-colormap parula % Use default for 4-color bar charts
+b = bar(role_counts(this_ind,:), 'stacked');
+for i=1:length(b)
+    % Skip the first color (dark blue)
+    b(i).FaceColor = my_cmap_3d(i,:);
+end
 legend(possible_roles)
+yticks(1:max(role_counts))
+ylabel('Number of times identified')
 xticks(1:length(this_ind));
 xticklabels(all_labels_dynamic(this_ind))
 xtickangle(90)
@@ -421,11 +480,18 @@ for i=1:length(possible_roles)
     role_counts(:,i) = sum(...
         strcmp(combined_dat_centroid(:,these_worms), possible_roles{i}),2);
 end
-this_ind = find(sum(role_counts,2)>1);
+% Long names mean it was an ambiguous identification
+name_lengths = cellfun(@(x) length(x)<6, all_labels_centroid)';
+this_ind = find((sum(role_counts,2)>3).*name_lengths);
 all_figs{5} = figure('DefaultAxesFontSize',14);
-bar(role_counts(this_ind,:), 'stacked')
-colormap parula % Use default for 4-color bar charts
+b = bar(role_counts(this_ind,:), 'stacked');
+for i=1:length(b)
+    % Skip the first color (dark blue)
+    b(i).FaceColor = my_cmap_3d(i,:);
+end
 legend(possible_roles)
+yticks(1:max(role_counts))
+ylabel('Number of times identified')
 xticks(1:length(this_ind));
 xticklabels(all_labels_centroid(this_ind))
 xtickangle(90)
@@ -441,11 +507,18 @@ for i=1:length(possible_roles)
     role_counts(:,i) = sum(...
         strcmp(combined_dat_centroid(:,these_worms), possible_roles{i}),2);
 end
-this_ind = find(sum(role_counts,2)>1);
+% Long names mean it was an ambiguous identification
+name_lengths = cellfun(@(x) length(x)<6, all_labels_centroid)';
+this_ind = find((sum(role_counts,2)>3).*name_lengths);
 all_figs{2} = figure('DefaultAxesFontSize',14);
-bar(role_counts(this_ind,:), 'stacked')
-colormap parula % Use default for 4-color bar charts
+b = bar(role_counts(this_ind,:), 'stacked');
+for i=1:length(b)
+    % Skip the first color (dark blue)
+    b(i).FaceColor = my_cmap_3d(i,:);
+end
 legend(possible_roles)
+yticks(1:max(role_counts))
+ylabel('Number of times identified')
 xticks(1:length(this_ind));
 xticklabels(all_labels_centroid(this_ind))
 xtickangle(90)
@@ -468,14 +541,18 @@ for i=1:length(possible_roles)
     role_counts(:,i) = sum(...
         strcmp(combined_dat_global, possible_roles{i}),2);
 end
-this_ind = find(sum(role_counts,2)>1);
+% Long names mean it was an ambiguous identification
+name_lengths = cellfun(@(x) length(x)<6, all_labels_global)';
+this_ind = find((sum(role_counts,2)>3).*name_lengths);
 all_figs{3} = figure('DefaultAxesFontSize',14);
 b = bar(role_counts(this_ind,:), 'stacked');
 for i=1:length(b)
-    % Skip the first color (dark blue
-    b(i).FaceColor = cmap(i+1,:);
+    % Skip the first color (dark blue)
+    b(i).FaceColor = my_cmap_3d(i+1,:);
 end
 legend(possible_roles)
+yticks(1:max(role_counts))
+ylabel('Number of times identified')
 xticks(1:length(this_ind));
 xticklabels(all_labels_global(this_ind))
 xtickangle(90)
@@ -489,6 +566,7 @@ for i = 1:length(all_figs)
     this_fig = all_figs{i};
     set(this_fig, 'Position', get(0, 'Screensize'));
     saveas(this_fig, fname, 'png');
+    matlab2tikz('figurehandle',this_fig,'filename',[fname '.tex']);
 end
 %==========================================================================
 
@@ -498,6 +576,8 @@ num_figures = 1;
 all_figs = cell(num_figures,1);
 
 filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
+
+to_plot_global_only = false;
 
 model_settings = struct(...
     'to_subtract_mean',false,...
@@ -510,7 +590,8 @@ model_settings = struct(...
 global_signal_modes = {{'ID','ID_simple'}};
 % global_signal_modes = {{'ID','ID_simple','ID_binary'}};
 iterate_setting = 'global_signal_mode';
-lambda_vec = linspace(0.03, 0.1, 200);
+% lambda_vec = linspace(0.0185, 0.08, 400);
+lambda_vec = linspace(0.03, 0.08, 400);
 % lambda_vec = linspace(0.02, 0.1, 20);
 settings = struct(...
     'base_settings', model_settings,...
@@ -522,7 +603,7 @@ settings = struct(...
 
 this_pareto_obj = cell(num_figures,1);
 % this_scale_factor = 1e-9;
-this_scale_factor = 0.5e-9;
+this_scale_factor = 2e-10;
 baseline_func_persistence = ...
     @(x) x.AdaptiveDmdc_obj.calc_reconstruction_error([],true);
 y_func_global = ...
@@ -530,13 +611,11 @@ y_func_global = ...
     @(x2)x2.AdaptiveDmdc_obj.calc_reconstruction_error() );
 for i=1:num_figures
     settings.file_or_dat = sprintf(filename_template, i);
-%     this_pareto_obj = ParetoFrontObj('CElegansModel', settings);
     this_pareto_obj{i} = ParetoFrontObj('CElegansModel', settings);
     
     for i2=1:length(global_signal_modes{1})
         this_global_mode = global_signal_modes{1}{i2};
         % Combine error data and number of nonzeros
-%         this_pareto_obj.save_combined_y_val(...
         this_pareto_obj{i}.save_combined_y_val(...
             sprintf('%s_AdaptiveDmdc_obj_calc_reconstruction_error',this_global_mode),...
             sprintf('%s_S_sparse_nnz',this_global_mode),...
@@ -552,20 +631,17 @@ for i=1:num_figures
         this_scale_factor);
     
     % Calculate the error with only the global control signal, and combine
-    y_global_str = sprintf('global_only_%s',this_global_mode);
-    this_pareto_obj{i}.save_y_vals(...
-        iterate_setting, [], y_func_global);
-    this_pareto_obj{i}.save_combined_y_val(...
-        sprintf('%s_custom_func', this_global_mode),...
-        sprintf('%s_S_sparse_nnz',this_global_mode),...
-        this_scale_factor);
+    if to_plot_global_only
+        y_global_str = sprintf('global_only_%s',this_global_mode);
+        this_pareto_obj{i}.save_y_vals(...
+            iterate_setting, [], y_func_global);
+        this_pareto_obj{i}.save_combined_y_val(...
+            sprintf('%s_custom_func', this_global_mode),...
+            sprintf('%s_S_sparse_nnz',this_global_mode),...
+            this_scale_factor);
+    end
     
-%     all_figs{i} = this_pareto_obj.plot_pareto_front('combine');
     all_figs{i} = this_pareto_obj{i}.plot_pareto_front('combine');
-    % Have been running into huge problems with memory...
-%     save(sprintf('%spareto_obj_%d',foldername,i),...
-%         this_pareto_obj);
-%     clear this_pareto_obj
 end
 
 %---------------------------------------------
@@ -575,15 +651,19 @@ for i = 1:length(all_figs)
     fname = sprintf('%sfigure_s3_%d_combine', foldername, i);
     this_fig = all_figs{i};
     set(this_fig, 'Position', get(0, 'Screensize'));
+    this_fig = prep_figure_no_axis();
     saveas(this_fig, fname, 'png');
 end
 %==========================================================================
 
 
 %% Supplementary Figure 4: global lambda errors for all worms
-all_figs = cell(5,1);
+num_figures = 1;
+all_figs = cell(num_figures,1);
 
 filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
+
+to_plot_global_only = false;
 
 model_settings = struct(...
     'to_subtract_mean',false,...
@@ -593,9 +673,10 @@ model_settings = struct(...
     'global_signal_mode', 'RPCA',...
     'max_rank_global', 0);
 % sparse_lambda_vals = {{0.05}};
-% global_lambda_vec = linspace(0.0018,0.01,1);
-sparse_lambda_vals = {{0.025, 0.04, 0.055}};
-global_lambda_vec = linspace(0.0018, 0.01, 50);
+% global_lambda_vec = linspace(0.0018,0.01,3);
+sparse_lambda_vals = {{0.03, 0.043, 0.056}};
+% global_lambda_vec = linspace(0.0018, 0.01, 200);
+global_lambda_vec = linspace(0.0018,0.01,10);
 settings = struct(...
     'base_settings', model_settings,...
     'iterate_settings',struct('lambda_sparse',sparse_lambda_vals),...
@@ -604,17 +685,46 @@ settings = struct(...
     'fields_to_plot',{{{'AdaptiveDmdc_obj','calc_reconstruction_error'},...
                         {'L_global_rank'}}});
 
-this_pareto_obj = cell(5,1);
-for i=1:5
+this_pareto_obj = cell(num_figures,1);
+this_scale_factor = 1e-5;
+baseline_func_persistence = ...
+    @(x) x.AdaptiveDmdc_obj.calc_reconstruction_error([],true);
+y_func_global = ...
+    @(x,~) x.run_with_only_global_control(...
+    @(x2)x2.AdaptiveDmdc_obj.calc_reconstruction_error() );
+for i=1:num_figures
     settings.file_or_dat = sprintf(filename_template, i);
     this_pareto_obj{i} = ParetoFrontObj('CElegansModel', settings);
-%     for i2=1:length(global_signal_modes{1})
-%         tmp = global_signal_modes{1}{i2};
-%         all_pareto_objs{i}.save_combined_y_val(...
-%             sprintf('%s_AdaptiveDmdc_obj_calc_reconstruction_error',tmp),...
-%             sprintf('%s_S_sparse_nnz',tmp) );
-%     end
-    all_figs{i} = this_pareto_obj{i}.plot_pareto_front();
+    
+    for i2=1:length(sparse_lambda_vals{1})
+        this_sparse = sparse_lambda_vals{1}{i2};
+        this_mode_str = this_pareto_obj{i}.make_valid_name(this_sparse);
+        this_pareto_obj{i}.save_combined_y_val(...
+            sprintf('%s_AdaptiveDmdc_obj_calc_reconstruction_error',this_mode_str),...
+            sprintf('%s_L_global_rank',this_mode_str),...
+            this_scale_factor);
+    end
+    
+    % Calculate a persistence baseline and combine with rank
+    this_mode_str = this_pareto_obj{i}.make_valid_name(sparse_lambda_vals{1}{1});
+    this_pareto_obj{i}.save_baseline(this_mode_str, baseline_func_persistence);
+    this_pareto_obj{i}.save_combined_y_val(...
+        sprintf('baseline__%s',this_mode_str),...
+        sprintf('%s_L_global_rank',this_mode_str),...
+        this_scale_factor);
+    
+    % Calculate the error with only the global control signal, and combine
+    if to_plot_global_only
+        y_global_str = sprintf('global_only_%s',this_mode_str);
+        this_pareto_obj{i}.save_y_vals(...
+            iterate_setting, [], y_func_global);
+        this_pareto_obj{i}.save_combined_y_val(...
+            sprintf('%s_custom_func', y_global_str),...
+            sprintf('%s_S_sparse_nnz',y_global_str),...
+            this_scale_factor);
+    end
+        
+    all_figs{i} = this_pareto_obj{i}.plot_pareto_front('combine');
 end
 
 %---------------------------------------------
