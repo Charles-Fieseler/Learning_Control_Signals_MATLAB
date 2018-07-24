@@ -3339,6 +3339,120 @@ fig = my_pareto_obj.plot_pareto_front('baseline', true, fig);
 %==========================================================================
 
 
+%% Use RPCA on residual
+clear Xmodes
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+dat = importdata(filename);
+this_dat = dat.traces.';
+this_dat = this_dat - mean(this_dat,2);
+
+tspan = dat.timeVectorSeconds;
+dt = tspan(2)-tspan(1);
+X1 = this_dat(:,1:end-1);
+X2 = this_dat(:,2:end);
+
+% Do dmd with optimal truncation
+r = optimal_truncation(X2);
+[ coeff, Omega, Phi, romA ] = dmd( this_dat, dt, r);
+
+% Get reconstruction and error
+for jT = length(tspan):-1:1
+    Xmodes(:,jT) = coeff.*exp(Omega*tspan(jT));
+end
+Xapprox = Phi*Xmodes;
+
+reconstruction_error = this_dat - Xapprox;
+mean0_error = reconstruction_error - mean(reconstruction_error,2);
+
+% Do RPCA on the residual
+% lambda = 0.003;
+% lambda = 0.004; % rank 1 with only error mean subtracted
+% lambda = 0.005; % rank 1 with all means subtracted
+lambda = 0.006; % rank 2 with all means subtracted
+[L, S, rank_L, nnz_S] = RobustPCA(mean0_error, lambda);
+
+plotSVD(L,struct('PCA3d',true,'PCA_opt','o','sigma',false,'to_subtract_mean',false));
+[u,s,v,proj3d] = plotSVD(L',struct('sigma_modes',1:rank_L,'to_subtract_mean',false));
+
+plot_colored([(1:3021)', real(u(:,1))],dat.SevenStates,dat.SevenStatesKey);
+plot_colored([(1:3021)', real(u(:,2))],dat.SevenStates,dat.SevenStatesKey);
+
+%==========================================================================
+
+
+%% Train a linear classifier for the experimentalist behavior ID's
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat = importdata(filename);
+
+use_deriv = true;
+use_no_state = false;
+
+% With hyperparameter fitting
+rng default
+this_labels = dat.SevenStates;
+if ~use_deriv
+    this_dat = dat.traces;
+    if ~use_no_state
+        this_dat = this_dat(15:end-50,:);
+        this_labels = this_labels(15:end-50);
+    end
+else
+    if ~use_no_state
+        this_dat = [dat.traces(15:end-50,:),... 
+            dat.tracesDif(14:end-50,:)];
+        this_labels = this_labels(15:end-50);
+    else
+        this_dat = [dat.traces(2:end,:), dat.tracesDif];
+        this_labels = this_labels(2:end);
+    end
+end
+Mdl = fitcecoc(this_dat, this_labels,...
+    'OptimizeHyperparameters','auto',...
+    'HyperparameterOptimizationOptions',struct('AcquisitionFunctionName',...
+    'expected-improvement-plus'));
+
+cv_Mdl = crossval(Mdl);
+fprintf('10-fold cross validation error is %f\n',...
+    kfoldLoss(cv_Mdl))
+
+% Now get a CElegansModel and use the classifier on the reconstructed data
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc');
+settings.global_signal_mode = 'ID';
+my_model_classifier = CElegansModel(filename, settings);
+
+reconstructed_data = ...
+    my_model_classifier.AdaptiveDmdc_obj.calc_reconstruction_control();
+if use_deriv
+    reconstructed_data = [reconstructed_data;
+        gradient(reconstructed_data)];
+    
+end
+
+% Use the linear classifier
+predicted_labels = ...
+    predict(Mdl, reconstructed_data');
+
+% Plot
+tspan = dat.timeVectorSeconds(1:length(this_labels));
+
+figure;
+plot(tspan, this_labels, 'LineWidth',2)
+hold on
+plot(tspan, predicted_labels(15:end-50), 'LineWidth',2)
+legend({'Original Labels', 'Predicted Labels (reconstruction)'})
+yticklabels(dat.SevenStatesKey)
+%==========================================================================
+
+
+
+
+
+
 
 
 
