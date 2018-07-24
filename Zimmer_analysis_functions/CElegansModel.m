@@ -405,7 +405,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         state_labels_ind_raw
     end
         
-    properties (Hidden=false, SetAccess=private)
+    properties (Hidden=true, SetAccess=private)
         dat
         original_sz
         dat_sz
@@ -432,6 +432,9 @@ classdef CElegansModel < SettingsImportableFromStruct
         state_labels_ind_old
         state_labels_key
         state_labels_key_old
+        
+        % Generative model
+        cecoc_model
     end
     
     properties (SetAccess=private)
@@ -1034,6 +1037,53 @@ classdef CElegansModel < SettingsImportableFromStruct
                     neuron_roles{i} = 'other';
                 end
             end
+        end
+    end
+    
+    methods % Building predictive model
+        function train_classifier(self, optimize_hyperparameters)
+            % Trains a classifier on the experimentalist ID's and the full
+            % brain state
+            % Input:
+            %   optimize_hyperparameters (true) - flag to use MATLAB's
+            %           routines for optimizing the large number of
+            %           hyperparameters. Helps a lot, but takes time
+            if ~exist('optimize_hyperparameters','var')
+                optimize_hyperparameters = true;
+            end
+            
+            rng(1);
+            if optimize_hyperparameters
+                self.cecoc_model = fitcecoc(...
+                    self.dat_without_control',...
+                    self.state_labels_ind,...
+                    'OptimizeHyperparameters','auto',...
+                    'HyperparameterOptimizationOptions',...
+                        struct('AcquisitionFunctionName',...
+                        'expected-improvement-plus'));
+            else
+                self.cecoc_model = fitcecoc(...
+                    self.dat_without_control',...
+                    self.state_labels_ind);
+            end
+        end
+        
+        function ctr_signal = calc_next_step_controller(self,...
+                time_slice, t_ind)
+            % Uses the trained classifier to predict the category of the
+            % input brain state
+            % Note: input should be one or more column vectors
+            num_neurons = size(self.original_sz,1);
+            ctr_signal = self.control_signal(:, t_ind);
+            
+            % Only change the single entry that is the ID (any later
+            % entries are constant)
+            category = predict(self.cecoc_model, time_slice);
+            ctr_signal(num_neurons+1) = category;
+        end
+        
+        function next_time_slice = calc_next_step_state(self, ctr_signal)
+            
         end
     end
     
@@ -1786,6 +1836,19 @@ classdef CElegansModel < SettingsImportableFromStruct
                 [sparse_signal(:,1:num_pts);...
                 L_low_rank(:,1:num_pts)];
             self.num_data_pts = num_pts;
+            dat_to_shorten = {'L_global','L_sparse','S_global','S_sparse',...
+                'L_global_modes'};
+            for fname = dat_to_shorten
+                tmp = self.(fname{1});
+                if isempty(tmp)
+                    continue
+                end
+                try
+                    self.(fname{1}) = tmp(:,1:num_pts);
+                catch
+                    self.(fname{1}) = tmp(1:num_pts,:);
+                end
+            end
             self.dat = this_dat;
 %             self.dat_without_control = this_dat(:,1:num_pts);
         end
