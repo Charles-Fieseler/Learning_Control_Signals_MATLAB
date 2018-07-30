@@ -3339,7 +3339,7 @@ fig = my_pareto_obj.plot_pareto_front('baseline', true, fig);
 %==========================================================================
 
 
-%% Use RPCA on residual
+%% Use RPCA on RECONSTRUCTION residual
 clear Xmodes
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 
@@ -3378,6 +3378,165 @@ plotSVD(L,struct('PCA3d',true,'PCA_opt','o','sigma',false,'to_subtract_mean',fal
 plot_colored([(1:3021)', real(u(:,1))],dat.SevenStates,dat.SevenStatesKey);
 plot_colored([(1:3021)', real(u(:,2))],dat.SevenStates,dat.SevenStatesKey);
 
+plot_2imagesc_colorbar(real(L),real(S),'2 1',...
+    'Low-rank component of the residual',...
+    'Sparse comonent of the residual')
+%==========================================================================
+
+
+%% Use RPCA on 1-step residual (robustified data)
+clear Xmodes
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+dat = importdata(filename);
+
+% Now get a CElegansModel and use the classifier on the reconstructed data
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'use_deriv',true);
+settings.global_signal_mode = 'ID';
+my_model_residual = CElegansModel(filename, settings);
+
+num_neurons = my_model_residual.original_sz(1);
+residual = my_model_residual.AdaptiveDmdc_obj.error_mat(1:num_neurons,:);
+mean0_error = residual - mean(residual,2);
+
+% Do RPCA on the residual
+% lambda = 0.003;
+% lambda = 0.004; % rank 1 with only error mean subtracted
+% lambda = 0.005; % rank 1 with all means subtracted
+% lambda = 0.011; % rank 1 with all means subtracted
+lambda = 0.0115; % rank 2 with all means subtracted
+[L, S, rank_L, nnz_S] = RobustPCA(mean0_error, lambda,...
+    10*lambda, 1e-6, 3000);
+
+plotSVD(L,struct('PCA3d',true,'PCA_opt','o','sigma',false,'to_subtract_mean',false));
+[u,s,v,proj3d] = plotSVD(L',struct('sigma_modes',1:rank_L,'to_subtract_mean',false));
+
+ind = 1:size(u,1);
+u = real(u);
+plot_colored([ind', u(:,1)],dat.SevenStates(ind),dat.SevenStatesKey);
+plot_colored([ind', u(:,2)],dat.SevenStates(ind),dat.SevenStatesKey);
+plot_colored([u(:,1),u(:,2),u(:,3)],dat.SevenStates(ind),dat.SevenStatesKey);
+
+plot_2imagesc_colorbar(real(L),real(S),'2 1',...
+    'Low-rank component of the residual',...
+    'Sparse comonent of the residual')
+%==========================================================================
+
+
+%% Analyze DMDc residual
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+dat = importdata(filename);
+
+% Now get a CElegansModel and use the classifier on the reconstructed data
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc');
+settings.global_signal_mode = 'ID';
+my_model_residual = CElegansModel(filename, settings);
+
+residual = my_model_residual.dat_without_control - ...
+    my_model_residual.AdaptiveDmdc_obj.calc_reconstruction_control();
+
+% Basic SVD visualizations
+residual = residual - mean(residual,2);
+plotSVD(residual,struct(...
+    'PCA3d',true,'PCA_opt','o','sigma',true,'to_subtract_mean',false));
+[u,s,v,proj3d] = plotSVD(residual',struct(...
+    'sigma_modes',1:2,'to_subtract_mean',false));
+
+ind = 1:size(u,1);
+plot_colored([ind', real(u(:,1))],dat.SevenStates(ind),dat.SevenStatesKey);
+title('First SVD mode of full residual')
+plot_colored([ind', real(u(:,2))],dat.SevenStates(ind),dat.SevenStatesKey);
+title('Second SVD mode of full residual')
+plot_colored([u(:,1),u(:,2),u(:,3)],dat.SevenStates(ind),dat.SevenStatesKey);
+
+
+% Visualizations using RPCA
+lambda = 0.007; % rank 2 with all means subtracted
+% lambda = 0.006; % rank 1 with all means subtracted
+mean0_residual = residual - mean(residual,2);
+[L, S, rank_L, nnz_S] = RobustPCA(mean0_residual, lambda);
+
+L = L-mean(L,2);
+plotSVD(L,struct('PCA3d',true,'PCA_opt','o','sigma',true,'to_subtract_mean',false));
+[u,s,v,proj3d] = plotSVD(L',struct('sigma_modes',1:rank_L,'to_subtract_mean',false));
+
+ind = 1:size(u,1);
+u = real(u);
+plot_colored([ind', u(:,1)],dat.SevenStates(ind),dat.SevenStatesKey);
+title('First SVD mode of L')
+plot_colored([ind', u(:,2)],dat.SevenStates(ind),dat.SevenStatesKey);
+title('Second SVD mode of L')
+plot_colored([u(:,1),u(:,2),u(:,3)],dat.SevenStates(ind),dat.SevenStatesKey);
+
+plot_2imagesc_colorbar(real(L),real(S),'2 1',...
+    'Low-rank component of the residual',...
+    'Sparse comonent of the residual')
+
+%==========================================================================
+
+
+%% Use DMDc residual to add a couple neurons to the controller
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+dat = importdata(filename);
+
+% Now get a CElegansModel and use the classifier on the reconstructed data
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc');
+settings.global_signal_mode = 'ID';
+my_model_residual = CElegansModel(filename, settings);
+
+residual = my_model_residual.dat_without_control - ...
+    my_model_residual.AdaptiveDmdc_obj.calc_reconstruction_control();
+
+% Basic SVD visualizations
+%   Also for adding to the controller
+residual = residual - mean(residual,2);
+[u,s,v,proj3d] = plotSVD(residual,struct(...
+    'PCA3d',true,'PCA_opt','o','sigma',true,'to_subtract_mean',false));
+[u2,s2,v2,proj3d_2] = plotSVD(residual',struct(...
+    'sigma_modes',1:2,'to_subtract_mean',false));
+
+% Look at the top 2 modes OF THE FIRST SVD for neurons to add
+[~, mode_1_max] = max(abs(u(:,1)));
+[~, mode_2_max] = max(abs(u(:,2)));
+% neurons_to_add = mode_1_max;
+% neurons_to_add = mode_2_max;
+neurons_to_add = [mode_1_max, mode_2_max];
+
+% Add them back in to the dmdc object, then rerun the algorithm
+ad_settings = my_model_residual.AdaptiveDmdc_settings;
+ad_settings.x_indices(neurons_to_add) = [];
+settings.AdaptiveDmdc_settings = ad_settings;
+
+my_model_residual2 = CElegansModel(filename, settings);
+
+residual2 = my_model_residual2.dat_without_control - ...
+    my_model_residual2.AdaptiveDmdc_obj.calc_reconstruction_control();
+residual2 = residual2 - mean(residual2,2);
+[u,s,v,proj3d] = plotSVD(residual2,struct(...
+    'PCA3d',true,'PCA_opt','o','sigma',true,'to_subtract_mean',false));
+[u2,s2,v2,proj3d_2] = plotSVD(residual2',struct(...
+    'sigma_modes',1:2,'to_subtract_mean',false));
+ind = 1:size(u2,1);
+u2 = real(u2);
+plot_colored([ind', u2(:,1)],dat.SevenStates(ind),dat.SevenStatesKey);
+title('First SVD mode of L')
+plot_colored([ind', u2(:,2)],dat.SevenStates(ind),dat.SevenStatesKey);
+title('Second SVD mode of L')
 %==========================================================================
 
 
@@ -3430,7 +3589,6 @@ reconstructed_data = ...
 if use_deriv
     reconstructed_data = [reconstructed_data;
         gradient(reconstructed_data)];
-    
 end
 
 % Use the linear classifier
@@ -3448,6 +3606,35 @@ legend({'Original Labels', 'Predicted Labels (reconstruction)'})
 yticklabels(dat.SevenStatesKey)
 %==========================================================================
 
+
+%% Train a linear classifier for the experimentalist behavior ID's
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat = importdata(filename);
+
+use_deriv = true;
+use_no_state = false;
+
+% Get a CElegansModel and train the classifier on the original data
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'lambda_sparse',0.015);
+settings.global_signal_mode = 'ID';
+my_model_classifier2 = CElegansModel(filename, settings);
+
+% THIS COMMAND TAKES A LONG TIME
+my_model_classifier2.train_classifier();
+
+% Generate data and watch a movie
+my_model_classifier2.generate_time_series(2000);
+figure;
+num_neurons = my_model_classifier2.original_sz(1);
+plot(my_model_classifier2.control_signal_generated(num_neurons+1,:))
+
+my_model_classifier2.plot_colored_arrow_movie([], true);
+%==========================================================================
 
 
 

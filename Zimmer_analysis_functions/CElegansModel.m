@@ -435,6 +435,8 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         % Generative model
         cecoc_model
+        dat_generated
+        control_signal_generated
     end
     
     properties (SetAccess=private)
@@ -453,6 +455,7 @@ classdef CElegansModel < SettingsImportableFromStruct
     properties (Dependent)
         dat_without_control
         dat_with_control
+        x_indices
     end
     
     methods
@@ -1054,6 +1057,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             rng(1);
             if optimize_hyperparameters
+                disp('Optimizing hyperparameters, may take >1 hour')
                 self.cecoc_model = fitcecoc(...
                     self.dat_without_control',...
                     self.state_labels_ind,...
@@ -1110,6 +1114,9 @@ classdef CElegansModel < SettingsImportableFromStruct
                         time_series(:,i-1),...
                         ctr_signal(:,i-1));
             end
+            
+            self.dat_generated = time_series;
+            self.control_signal_generated = ctr_signal;
         end
     end
     
@@ -1381,17 +1388,30 @@ classdef CElegansModel < SettingsImportableFromStruct
         end
         
         function fig = plot_colored_arrow_movie(self,...
-                attractor_view, use_legend, movie_filename,...
+                attractor_view, use_generated_data, movie_filename,...
                 intrinsic_arrow_mode, show_reconstruction, pause_time)
             % Plots a movie of the 3 different control signal directions:
             %    Intrinsic dynamics
             %    Sparse controller
             %    Global mode
+            % Input:
+            %   attractor_view (true) - show the 'global mode' control
+            %       signal as an attractor
+            %   use_generated_data (false) - to use generated data (default
+            %       is to use the original data)
+            %   movie_filename ('') - if not empty, then saves a movie
+            %   intrinsic_arrow_mode ('mean_and_difference') - mode for
+            %       displaying the intrinsic (blue) kick; an alternative is
+            %       just 'mean' which has the base of the arrow at the
+            %       origin instead of the current data point
+            %   show_reconstruction (true) - to show the reconstructed data
+            %       point as it travels or not
+            %   pause_time (0) - pause time between time steps
             if ~exist('attractor_view','var') || isempty(attractor_view)
                 attractor_view = true;
             end
-            if ~exist('use_legend','var') || isempty(use_legend)
-                use_legend = false;
+            if ~exist('use_generated_data','var') || isempty(use_generated_data)
+                use_generated_data = false;
             end
             if ~exist('movie_filename','var') || isempty(movie_filename)
                 movie_filename = '';
@@ -1408,9 +1428,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             fig = self.plot_colored_data(false, 'o');
             [~, b] = fig.Children.Children;
             alpha(b, 0.2)
-            if ~use_legend
-                legend off;
-            end
+            legend off;
             
             if ~isempty(movie_filename)
                 video_obj = VideoWriter(movie_filename);
@@ -1424,15 +1442,29 @@ classdef CElegansModel < SettingsImportableFromStruct
                 num_neurons;
             this_dat = self.dat_without_control - ...
                 mean(self.dat_without_control,2);
-            this_ctr_sparse = ...
-                self.dat_with_control((num_neurons+1):(2*num_neurons),:);
-            this_ctr_global = ...
-                self.dat_with_control((2*num_neurons+1):end,:);
+            if ~use_generated_data
+                this_ctr_sparse = ...
+                    self.dat_with_control((num_neurons+1):(2*num_neurons),:);
+                this_ctr_global = ...
+                    self.dat_with_control((2*num_neurons+1):end,:);
+            else
+                this_ctr_sparse = ...
+                    self.control_signal_generated(1:num_neurons,:);
+                this_ctr_global = ...
+                    self.control_signal_generated((num_neurons+1):end,:);
+            end
             modes_3d = self.L_sparse_modes(:,1:3).';
             if show_reconstruction
-                this_reconstruction = ...
-                    self.AdaptiveDmdc_obj.calc_reconstruction_control(...
-                    [], [], true);
+                if ~use_generated_data
+                    this_reconstruction = ...
+                        self.AdaptiveDmdc_obj.calc_reconstruction_control(...
+                        [], [], true);
+                else
+                    % Trace the original data
+                    this_reconstruction = ...
+                        self.dat_generated - ...
+                        mean(self.dat_generated, 2);
+                end
                 this_reconstruction = this_reconstruction(neuron_ind,:);
                 all_arrow_bases = modes_3d * this_reconstruction;
                 all_dat_projected = modes_3d * this_dat;
@@ -1480,18 +1512,13 @@ classdef CElegansModel < SettingsImportableFromStruct
                         'k*', 'LineWidth',5)
                 end
                 
-                if use_legend
-                    leg = legend;
-                    leg.String(end-3:end) = ...
-                        {'Intrinsic','Sparse','Global','Current Point'};
-                end
                 if ~isempty(movie_filename)
                     frame = getframe(fig);
                     writeVideo(video_obj, frame);
                 end
                 pause(pause_time)
                 
-                c = get(gca,'children');
+                c = fig.Children.Children;
                 if show_reconstruction
                     delete(c(1:5));
                 else
@@ -1912,7 +1939,8 @@ classdef CElegansModel < SettingsImportableFromStruct
             this_neuron = round(evt.IntersectionPoint(2));
             if evt.Button==1
                 self.AdaptiveDmdc_obj.plot_reconstruction(true, ...
-                    true, true, this_neuron);
+                    true, true, this_neuron, true);
+                warning('With a custom control signal the names might be off...')
             else
                 self.AdaptiveDmdc_obj.get_names(this_neuron);
             end
@@ -1922,13 +1950,17 @@ classdef CElegansModel < SettingsImportableFromStruct
     
     methods % For dependent variables
         function out = get.dat_without_control(self)
-            out = self.dat(:,1:self.num_data_pts);
+            out = self.dat(self.x_indices,1:self.num_data_pts);
         end
         
         function out = get.dat_with_control(self)
             out = ...
-                [self.dat(:,1:self.num_data_pts);...
+                [self.dat(self.x_indices,1:self.num_data_pts);...
                 self.control_signal];
+        end
+        
+        function out = get.x_indices(self)
+            out = self.AdaptiveDmdc_settings.x_indices;
         end
     end
     
