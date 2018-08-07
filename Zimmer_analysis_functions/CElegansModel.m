@@ -1575,7 +1575,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 ...% Getting the control signal
                 'lambda_global', 0.0065,...
                 'max_rank_global', 4,...
-                'lambda_sparse', 0.05,...
+                'lambda_sparse', 0.043,...
                 'global_signal_mode', 'RPCA',...
                 ...% Data processing
                 'filter_window_dat', 3,...
@@ -1736,59 +1736,77 @@ classdef CElegansModel < SettingsImportableFromStruct
         end
         
         function calc_global_signal(self)
+            % Calculates the global control signals using one of several
+            % methods
+            
+            if contains(self.global_signal_mode,'RPCA')
+                warning('RPCA coloring is off')
+            end
             
             switch self.global_signal_mode
                 case 'RPCA'
-                    % Gets VERY low-rank signal
-                    %   Loop to check for rank convergence if 
-                    %   self.max_rank_global > 0
-                    iter_max = 10;
-                    this_lambda = self.lambda_global;
-                    for i=1:iter_max
-                        if self.max_rank_global==0
-                            break;
-                        end
-                        [~, ~,...
-                            self.L_global_rank, ~] = ...
-                            RobustPCA(self.dat, this_lambda, 10*this_lambda,...
-                            1e-6, 70);
-                        if self.L_global_rank <= self.max_rank_global
-                            fprintf("Reached target rank (%d); restarting with more accuracy\n",...
-                                    self.max_rank_global);
-                            self.lambda_global = this_lambda;
-                            break
-                        else
-                            % A smaller penalty means more data in the sparse
-                            % component, less in the low-rank
-                            if self.verbose
-                                fprintf("Didn't reach target rank (%d); decreasing lambda\n",...
-                                    self.max_rank_global);
-                            end
-                            if i==iter_max
-                                warning("Didn't converge on maximum rank")
-                            end
-                            this_lambda = this_lambda*0.9;
-                        end
-                    end
+                    % Gets VERY low-rank signal, checking the lambda value
+                    % first
+                    [self.lambda_global, self.L_global_rank] =...
+                        self.check_rank_with_lambda(...
+                        self.dat, self.lambda_global, self.max_rank_global);
                     % Get a more accurate decomposition (even if we didn't converge
                     % to the proper rank)
                     [self.L_global_raw, self.S_global_raw,...
                         self.L_global_rank, self.S_global_nnz] = ...
                         RobustPCA(self.dat, self.lambda_global);
                     % Smooth the modes out
-                    self.L_global = self.flat_filter(...
-                        self.L_global_raw.', self.filter_window_global).';
-                    tmp_dat = self.L_global - mean(self.L_global,2);
-                    [u, ~] = svd(tmp_dat(:,self.filter_window_global+5:end).');
-                    x = 1:rank(self.L_global);
-                    self.L_global_modes = u(:,x);
-
-                    self.S_global = self.S_global_raw;
+                    self.smooth_and_save_global_modes();
+                    
+                case 'RPCA_reconstruction_residual'
+                    % Same as RPCA above, but use the residual from the
+                    % data reconstruction instead... check the lambda value
+                    % first
+                    set = struct('use_optdmd',false,'verbose',false);
+                    dmd_obj = PlotterDmd(self.dat,set);
+                    this_dat = self.dat - dmd_obj.get_reconstruction();
+                    
+                    % Gets VERY low-rank signal
+                    [self.lambda_global, self.L_global_rank] =...
+                        self.check_rank_with_lambda(...
+                        this_dat, self.lambda_global, self.max_rank_global);
+                    % Get a more accurate decomposition (even if we didn't converge
+                    % to the proper rank)
+                    [self.L_global_raw, self.S_global_raw,...
+                        self.L_global_rank, self.S_global_nnz] = ...
+                        RobustPCA(this_dat, self.lambda_global);
+                    % Smooth the modes out and save them both
+                    self.smooth_and_save_global_modes();
+                
+                case 'RPCA_one_step_residual'
+                    % Same as RPCA above, but use the residual from the
+                    % one-step fit instead... check the lambda value
+                    % before doing a full fit
+                    X1 = self.dat(:,1:end-1);
+                    X2 = self.dat(:,2:end);
+                    this_dat = X2 - (X2/X1)*X1; %Naive DMD residual 
+                    
+                    % Gets VERY low-rank signal
+                    [self.lambda_global, self.L_global_rank] =...
+                        self.check_rank_with_lambda(...
+                        this_dat, self.lambda_global, self.max_rank_global);
+                    % Get a more accurate decomposition (even if we didn't converge
+                    % to the proper rank)
+                    [self.L_global_raw, self.S_global_raw,...
+                        self.L_global_rank, self.S_global_nnz] = ...
+                        RobustPCA(this_dat, self.lambda_global);
+                    % Smooth the modes out and save them both
+                    self.smooth_and_save_global_modes();
+                    
+                case 'RPCA_and_grad'
+                    self.global_signal_mode = 'RPCA_reconstruction_residual';
+                    self.calc_global_signal();
+                    self.L_global_modes = [self.L_global_modes,...
+                        gradient(self.L_global_modes(:,1:end-1)')'];
                 
                 case 'ID'
                     self.L_global_modes = [self.state_labels_ind_raw;...
-                        ones(size(self.state_labels_ind_raw));
-                        log(1:length(self.state_labels_ind_raw))].';
+                        ones(size(self.state_labels_ind_raw))].';
                     
                 case 'ID_binary'
                     tmp = self.state_labels_ind_raw;
@@ -1844,9 +1862,59 @@ classdef CElegansModel < SettingsImportableFromStruct
                     self.L_global_modes = [self.L_global_modes; 
                         log(1:size(tmp,2))].';
                     
+                case 'ID_and_grad'
+                    self.L_global_modes = [self.state_labels_ind_raw;...
+                        gradient(self.state_labels_ind_raw);
+                        ones(size(self.state_labels_ind_raw))].';
+                    
                 otherwise
                     error('Unrecognized method')
             end
+        end
+        
+        function [this_lambda, this_rank] = check_rank_with_lambda(self,...
+                this_dat, this_lambda, max_rank)
+            %   Loop to check for rank convergence if 
+            %   self.max_rank_global > 0
+            iter_max = 10;
+            for i=1:iter_max
+                if max_rank==0
+                    break;
+                end
+                [~, ~,...
+                    this_rank, ~] = ...
+                    RobustPCA(this_dat, this_lambda, 10*this_lambda,...
+                    1e-6, 70);
+                if this_rank <= max_rank
+                    fprintf("Reached target rank (%d); restarting with more accuracy\n",...
+                        max_rank);
+                    break
+                else
+                    % A smaller penalty means more data in the sparse
+                    % component, less in the low-rank
+                    if self.verbose
+                        fprintf("Didn't reach target rank (%d); decreasing lambda\n",...
+                            max_rank);
+                    end
+                    if i==iter_max
+                        warning("Didn't converge on maximum rank")
+                    end
+                    this_lambda = this_lambda*0.9;
+                end
+            end
+        end
+        
+        function smooth_and_save_global_modes(self)
+            % Uses fields already present in the class to smooth and save
+            % the global modes
+            self.L_global = self.flat_filter(...
+                self.L_global_raw.', self.filter_window_global).';
+            tmp_dat = self.L_global - mean(self.L_global,2);
+            [u, ~] = svd(tmp_dat(:,self.filter_window_global+5:end).');
+            x = 1:self.L_global_rank;
+            self.L_global_modes = real(u(:,x));
+            
+            self.S_global = real(self.S_global_raw);
         end
         
         function calc_sparse_signal(self)
