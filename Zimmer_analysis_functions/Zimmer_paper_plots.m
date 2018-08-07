@@ -2,6 +2,8 @@
 
 
 %% Define folder to save in
+to_save = false;
+
 foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\figures\';
 %==========================================================================
 
@@ -258,14 +260,16 @@ end
 %---------------------------------------------
 % Save figures
 %---------------------------------------------
-for i = 1:length(all_figs)
-    if isempty(all_figs{i})
-        continue;
+if to_save
+    for i = 1:length(all_figs)
+        if isempty(all_figs{i})
+            continue;
+        end
+        fname = sprintf('%sfigure_4_%d', foldername, i);
+        this_fig = all_figs{i};
+        prep_figure_no_axis(this_fig)
+        saveas(this_fig, fname, 'png');
     end
-    fname = sprintf('%sfigure_4_%d', foldername, i);
-    this_fig = all_figs{i};
-    prep_figure_no_axis(this_fig)
-    saveas(this_fig, fname, 'png');
 end
 
 %==========================================================================
@@ -304,12 +308,15 @@ my_model_fig5.run_with_only_global_control(@(x)...
 % view(10,40)
 % Now make the colormap match the bar graphs
 % Save figures
-for i = 1:length(all_figs)
-    fname = sprintf('%sfigure_5_%d', foldername, i);
-    this_fig = all_figs{i};
-    prep_figure_no_axis(this_fig)
-    zoom(1.15) % Decided by hand
-    saveas(this_fig, fname, 'png');
+if to_save
+    for i = 1:length(all_figs)
+        fname = sprintf('%sfigure_5_%d', foldername, i);
+        this_fig = all_figs{i};
+        prep_figure_no_axis(this_fig)
+        this_fig.Children.Clipping = 'Off';
+        zoom(1.35) % Decided by hand
+        saveas(this_fig, fname, 'png');
+    end
 end
 %==========================================================================
 
@@ -566,7 +573,7 @@ for i = 1:length(all_figs)
     this_fig = all_figs{i};
     set(this_fig, 'Position', get(0, 'Screensize'));
     saveas(this_fig, fname, 'png');
-    matlab2tikz('figurehandle',this_fig,'filename',[fname '.tex']);
+    matlab2tikz('figurehandle',this_fig,'filename',[fname '_raw.tex']);
 end
 %==========================================================================
 
@@ -602,6 +609,7 @@ settings = struct(...
                         {'S_sparse_nnz'}}});
 
 this_pareto_obj = cell(num_figures,1);
+use_baseline = false;
 % this_scale_factor = 1e-9;
 this_scale_factor = 2e-10;
 baseline_func_persistence = ...
@@ -624,11 +632,13 @@ for i=1:num_figures
     end
     % Calculate a persistence baseline and combine with nnz
     this_global_mode = global_signal_modes{1}{1};
-    this_pareto_obj{i}.save_baseline(this_global_mode, baseline_func_persistence);
-    this_pareto_obj{i}.save_combined_y_val(...
-        sprintf('baseline__%s',this_global_mode),...
-        sprintf('%s_S_sparse_nnz',this_global_mode),...
-        this_scale_factor);
+    if use_baseline
+        this_pareto_obj{i}.save_baseline(this_global_mode, baseline_func_persistence);
+        this_pareto_obj{i}.save_combined_y_val(...
+            sprintf('baseline__%s',this_global_mode),...
+            sprintf('%s_S_sparse_nnz',this_global_mode),...
+            this_scale_factor);
+    end
     
     % Calculate the error with only the global control signal, and combine
     if to_plot_global_only
@@ -642,6 +652,15 @@ for i=1:num_figures
     end
     
     all_figs{i} = this_pareto_obj{i}.plot_pareto_front('combine');
+    
+    % Plot a vertical line for the default value
+    hold on
+    lambda_default = 0.043;
+    hax = all_figs{i}.Children(2);
+    tmp = line([lambda_default lambda_default],get(hax,'YLim'),...
+        'Color',[0 0 0], 'LineWidth',2, 'LineStyle','-.');
+    hLegend = findobj(all_figs{i}, 'Type', 'Legend');
+    legend({'Full Behavioral ID', 'Simplified ID', 'Default value'});
 end
 
 %---------------------------------------------
@@ -653,6 +672,7 @@ for i = 1:length(all_figs)
     set(this_fig, 'Position', get(0, 'Screensize'));
     this_fig = prep_figure_no_axis();
     saveas(this_fig, fname, 'png');
+    matlab2tikz('figurehandle',this_fig,'filename',[fname '_raw.tex']);
 end
 %==========================================================================
 

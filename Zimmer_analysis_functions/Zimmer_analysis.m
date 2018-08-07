@@ -3637,14 +3637,287 @@ my_model_classifier2.plot_colored_arrow_movie([], true);
 %==========================================================================
 
 
+%% Test the new RPCA_reconstruction_residual signal mode
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'lambda_sparse', 0.04,...
+    'lambda_global', 0.005,...
+    'max_rank_global', 2,...
+    'global_signal_mode', 'RPCA_reconstruction_residual');
+my_model_residual = CElegansModel(filename, settings);
+
+% Use original control; 3d pca plot
+% NOTE: reconstruction is not really that impressive here!
+my_model_residual.add_partial_original_control_signal();
+my_model_residual.plot_reconstruction_user_control();
+my_model_residual.set_simple_labels();
+my_model_residual.plot_colored_user_control([],false);
+
+%==========================================================================
 
 
+%% Test the new RPCA_one_step_residual signal mode
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'lambda_sparse', 0.04,...
+    'lambda_global', 0.0115,...
+    'max_rank_global', 2,...
+    'global_signal_mode', 'RPCA_one_step_residual');
+my_model_residual = CElegansModel(filename, settings);
+
+% Use original control; 3d pca plot
+% NOTE: reconstruction is not really that impressive here!
+my_model_residual.add_partial_original_control_signal();
+my_model_residual.plot_reconstruction_user_control();
+my_model_residual.set_simple_labels();
+my_model_residual.plot_colored_user_control([],false);
+
+%==========================================================================
 
 
+%% Look at suspiciously spike-like neurons
+% filename4 = '../../Zimmer_data/WildType_adult/simplewt4/wbdataset.mat';
+filename4 = '../../Zimmer_data/WildType_adult/simplewt3/wbdataset.mat';
+dat4 = importdata(filename4);
+
+labels_of_interest = {'RIVL','RIVR', 'SMDVR', 'SMDVL', 'SMBDR',...
+    'RIMR','RIML',...
+    'SAAVR','SAAVL', 'ASKL','ASKR'};
+neurons_of_interest = zeros(size(labels_of_interest));
+for i = 1:length(labels_of_interest)
+    this_neuron = find(cellfun(...
+        @(x) strcmp(x,labels_of_interest{i}), dat4.ID));
+    if isempty(this_neuron)
+        continue
+    end
+    neurons_of_interest(i) = this_neuron;
+end
+% neurons_of_interest = [80, 85, 43, 125, 82, 83, 41, 45];%, 56, 48];
+
+for i=1:length(neurons_of_interest)
+    if neurons_of_interest(i)==0
+        continue
+    end
+    plot_colored(dat4.traces(:,neurons_of_interest(i)),...
+        dat4.SevenStates,dat4.SevenStatesKey);
+    title(sprintf('Neuron ID: %s',...
+        dat4.ID{neurons_of_interest(i)}))
+end
+
+%==========================================================================
 
 
+%% Add a couple 'spike-like' neurons to the controller
+filename = '../../Zimmer_data/WildType_adult/simplewt4/wbdataset.mat';
+
+dat = importdata(filename);
+
+% First calculate the baseline model
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'use_deriv',true,...
+    'to_normalize_deriv',true,...
+    'filter_window_dat',6);
+%     'augment_data',6);
+settings.global_signal_mode = 'ID';
+my_model_residual = CElegansModel(filename, settings);
+
+% Now add some interesting neurons in
+% RIVL/R, SMDVR, SMBDR, RIMR/L, SAAVR/L
+neurons_of_interest = [80, 85, 43, 125, 82, 83, 41, 45]; % Divergence...
+% neurons_of_interest = [43]; % does worse...
+% neurons_of_interest = [41, 45]; % does worse...
+% neurons_of_interest = [82, 83]; % Divergence...
+% neurons_of_interest = [80, 85]; % Divergence...
+
+ad_settings = my_model_residual.AdaptiveDmdc_settings;
+ad_settings.x_indices(neurons_of_interest) = [];
+settings.AdaptiveDmdc_settings = ad_settings;
+my_model_residual2 = CElegansModel(filename, settings);
+
+% Exploratory plots and headline error
+fprintf('Error for base model is %f\n',...
+    my_model_residual.AdaptiveDmdc_obj.calc_reconstruction_error())
+fprintf('Error for augmented model is %f\n',...
+    my_model_residual2.AdaptiveDmdc_obj.calc_reconstruction_error())
+
+my_model_residual.plot_reconstruction_interactive(false);
+title('Original model')
+my_model_residual2.plot_reconstruction_interactive(false);
+title('Augmented model')
+%==========================================================================
 
 
+%% Add a couple 'spike-like' neurons to the RPCA controller
+filename = '../../Zimmer_data/WildType_adult/simplewt4/wbdataset.mat';
+
+dat = importdata(filename);
+
+% First calculate the baseline model
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'use_deriv',true,...
+    'to_normalize_deriv',true);
+settings.global_signal_mode = 'RPCA_reconstruction_residual';
+my_model_residual = CElegansModel(filename, settings);
+
+% Now add some interesting neurons in
+% RIVL/R, SMDVR, SMBDR, RIMR/L, SAAVR/L
+neurons_of_interest = [80, 85, 43, 125, 82, 83, 41, 45]; % Divergence...
+% neurons_of_interest = [43]; % does worse...
+% neurons_of_interest = [41, 45]; % does worse...
+% neurons_of_interest = [82, 83]; % Divergence...
+% neurons_of_interest = [80, 85]; % Divergence...
+
+ad_settings = my_model_residual.AdaptiveDmdc_settings;
+ad_settings.x_indices(neurons_of_interest) = [];
+settings.AdaptiveDmdc_settings = ad_settings;
+my_model_residual2 = CElegansModel(filename, settings);
+
+% Exploratory plots and headline error
+fprintf('Error for base model is %f\n',...
+    my_model_residual.AdaptiveDmdc_obj.calc_reconstruction_error())
+fprintf('Error for augmented model is %f\n',...
+    my_model_residual2.AdaptiveDmdc_obj.calc_reconstruction_error())
+
+my_model_residual.plot_reconstruction_interactive(false);
+title('Original model')
+my_model_residual2.plot_reconstruction_interactive(false);
+title('Augmented model')
+%==========================================================================
+
+
+%% Look at bode plots for input from these 'spike-like' neurons
+filename = '../../Zimmer_data/WildType_adult/simplewt4/wbdataset.mat';
+
+dat = importdata(filename);
+
+% First calculate the baseline model
+if ~exist('my_model_residual','var')
+    settings = struct(...
+        'to_subtract_mean',false,...
+        'to_subtract_mean_sparse',false,...
+        'to_subtract_mean_global',false,...
+        'dmd_mode','func_DMDc');
+    settings.global_signal_mode = 'ID';
+    my_model_residual = CElegansModel(filename, settings);
+else
+    warning('reusing object')
+end
+
+% Now add some interesting neurons in
+% RIVL/R, SMDVR, SMBDR, RIMR/L, SAAVR/L
+% neurons_of_interest = [80, 85, 43, 125, 82, 83, 41, 45];
+input_neurons = [80, 85, 43];
+% input_neurons = [71, 74, 39, 46];
+% input_neurons = [71, 74, 39, 46, 108];
+% input_neurons = [41, 45];
+% output_neurons = [39, 46]; %AVAR/L
+% output_neurons = [71, 74]; %AVBR/L
+output_neurons = [71, 74, 39, 46];
+% output_neurons = [39, 74]; %AVAR/AVBL
+% output_neurons = [120, 108]; %DA01, VB02
+
+% neurons_of_interest = [2];
+% ind = 1:2;
+
+ind = 1:my_model_residual.original_sz(1);
+A = my_model_residual.AdaptiveDmdc_obj.A_original(ind,ind);
+% Only a subset of outputs and inputs
+B = zeros(length(ind),length(input_neurons));
+for i2=1:length(input_neurons)
+    B(input_neurons(i2), i2) = 1;
+end
+C = zeros(length(output_neurons),length(ind));
+for i2=1:length(output_neurons)
+    C(i2,output_neurons(i2)) = 1;
+end
+D = 0;
+
+% First plot the power spectrum of the neurons of interest
+% for i2=input_neurons
+%     figure;
+%     this_dat = my_model_residual.dat(i2,:);
+%     Y = fft(this_dat-mean(this_dat,2));
+%     Pyy = Y.*conj(Y)/251;
+%     f = 1000/251*(0:127);
+%     plot(f,Pyy(1:128))
+%     title(sprintf('Power spectral density for neuron %d',i2))
+%     xlabel('Frequency (Hz)')
+% end
+
+sys = ss(A,B,C,D,1,...
+    'inputname',my_model_residual.AdaptiveDmdc_obj.get_names(input_neurons),...
+    'outputname',my_model_residual.AdaptiveDmdc_obj.get_names(output_neurons));
+% bodeplot(sys)
+opts = bodeoptions('cstprefs');
+opts.FreqUnits = 'Hz';
+[mag,phase,wout] = bode(sys, opts);
+
+figure()
+impulse(sys);
+figure;
+step(sys)
+
+% n = size(mag,3);
+% m = size(mag,2);
+% for i2=ind
+%     figure;
+%     subplot(2,1,1)
+%     loglog(wout, reshape(mag(i,:,:),[m,n]))
+%     title(sprintf('Magnitude for neuron %d',i2))
+%     subplot(2,1,2)
+%     semilogx(wout, reshape(phase(i,:,:),[m,n]))
+%     title('Phase')
+%     xlabel('Input frequency (Hz)')
+%     pause
+% end
+%==========================================================================
+
+
+%% Try new PID-like options
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+dat = importdata(filename);
+
+% First calculate the baseline model
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'filter_window_dat',6,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true);
+settings.global_signal_mode = 'ID_and_grad';
+% settings.global_signal_mode = 'RPCA_and_grad';
+my_model_PID = CElegansModel(filename, settings);
+
+% Exploratory plots and headline error
+fprintf('Error for ID_and_gradient model is %f\n',...
+    my_model_PID.AdaptiveDmdc_obj.calc_reconstruction_error())
+my_model_PID.plot_reconstruction_interactive(false);
+
+my_model_PID.add_partial_original_control_signal();
+my_model_PID.plot_reconstruction_user_control();
+my_model_PID.plot_colored_user_control([],false);
+%==========================================================================
 
 
 
