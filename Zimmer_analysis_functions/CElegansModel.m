@@ -1675,9 +1675,6 @@ classdef CElegansModel < SettingsImportableFromStruct
             if ~ismember(fnames,'dmd_mode')
                 self.AdaptiveDmdc_settings.dmd_mode = self.dmd_mode;
             end
-            if ~ismember(fnames,'dmd_mode')
-                self.AdaptiveDmdc_settings.dmd_mode = self.dmd_mode;
-            end
             if ~ismember(fnames,'to_plot_nothing')
                 self.AdaptiveDmdc_settings.to_plot_nothing = true;
             end
@@ -1752,21 +1749,19 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.calc_dat_and_control_signal();
         end
         
-        function calc_global_signal(self)
+        function calc_global_signal(self, global_signal_mode)
             % Calculates the global control signals using one of several
             % methods
-            
-            if contains(self.global_signal_mode,'RPCA')
+            if ~exist('global_signal_mode','var')
+                global_signal_mode = self.global_signal_mode;
+            end
+            if contains(global_signal_mode,'RPCA')
                 warning('RPCA coloring is off')
             end
             
-            if contains(self.global_signal_mode,'_and_length_count')
-                original_mode = self.global_signal_mode;
-                self.global_signal_mode = original_mode(1:end-17);
-                self.calc_global_signal();
-                self.global_signal_mode = 'length_count';
-                self.calc_global_signal();
-                self.global_signal_mode = original_mode;
+            if contains(global_signal_mode,'_and_length_count')
+                self.calc_global_signal(self.global_signal_mode(1:end-17));
+                self.calc_global_signal('length_count');
                 return
             end
             
@@ -1826,11 +1821,9 @@ classdef CElegansModel < SettingsImportableFromStruct
                     self.smooth_and_save_global_modes();
                     
                 case 'RPCA_and_grad'
-                    self.global_signal_mode = 'RPCA_reconstruction_residual';
-                    self.calc_global_signal();
+                    self.calc_global_signal('RPCA_reconstruction_residual');
                     self.L_global_modes = [self.L_global_modes,...
                         gradient(self.L_global_modes(:,1:end-1)')'];
-                    self.global_signal_mode = 'RPCA_and_grad';
                 
                 case 'ID'
                     self.L_global_modes = [self.state_labels_ind_raw;...
@@ -1849,8 +1842,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                         binary_labels(i,:) = (tmp==all_states(i));
                     end
                     self.L_global_modes = [binary_labels;...
-                        ones(1,size(binary_labels,2));
-                        log(1:size(tmp,2))].';
+                        ones(1,size(binary_labels,2))].';
                     
                 case 'ID_simple'
                     tmp = self.state_labels_ind_raw;
@@ -1877,11 +1869,9 @@ classdef CElegansModel < SettingsImportableFromStruct
                     self.L_global_modes = self.L_global_modes.';
                     
                 case 'ID_and_binary'
-                    self.global_signal_mode = 'ID_binary';
-                    self.calc_global_signal();
+                    self.calc_global_signal('ID_binary');
                     self.L_global_modes = [self.L_global_modes, ...
                         self.state_labels_ind_raw.'];
-                    self.global_signal_mode = 'ID_and_binary';
                     
                 case 'ID_and_offset'
                     tmp = self.state_labels_ind_raw;
@@ -1906,6 +1896,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             if ~isempty(self.custom_global_signal)
                 self.L_global_modes = [self.L_global_modes,...
                     self.custom_global_signal'];
+                self.custom_global_signal = [];
             end
         end
         
@@ -1955,10 +1946,18 @@ classdef CElegansModel < SettingsImportableFromStruct
         end
         
         function calc_sparse_signal(self)
-            % Calculates very sparse signal
-            [self.L_sparse_raw, self.S_sparse_raw,...
-                self.L_sparse_rank, self.S_sparse_nnz] = ...
-                RobustPCA(self.dat, self.lambda_sparse);
+            if self.lambda_sparse > 0
+                % Calculates very sparse signal
+                [self.L_sparse_raw, self.S_sparse_raw,...
+                    self.L_sparse_rank, self.S_sparse_nnz] = ...
+                    RobustPCA(self.dat, self.lambda_sparse);
+            else
+                % i.e. just skip this step
+                self.L_sparse_raw = self.dat;
+                self.S_sparse_raw = [];
+                self.L_sparse_rank = 0;
+                self.S_sparse_nnz = 0;
+            end
             % For now, no processing
             self.L_sparse = self.L_sparse_raw;
             self.S_sparse = self.S_sparse_raw;
@@ -1988,11 +1987,17 @@ classdef CElegansModel < SettingsImportableFromStruct
             % Create the augmented dataset (these might have different
             % amounts of filtering, therefore slightly different sizes)
             L_low_rank = L_low_rank';
-            num_pts = min([size(L_low_rank,2) size(sparse_signal,2) size(this_dat,2)]);
+            if ~isempty(sparse_signal)
+                num_pts = min([size(L_low_rank,2) ...
+                    size(sparse_signal,2) size(this_dat,2)]);
+                self.control_signal = ...
+                    [sparse_signal(:,1:num_pts);...
+                    L_low_rank(:,1:num_pts)];
+            else
+                num_pts = min([size(L_low_rank,2) size(this_dat,2)]);
+                self.control_signal = L_low_rank(:,1:num_pts);
+            end
 
-            self.control_signal = ...
-                [sparse_signal(:,1:num_pts);...
-                L_low_rank(:,1:num_pts)];
             self.num_data_pts = num_pts;
             dat_to_shorten = {'L_global','L_sparse','S_global','S_sparse',...
                 'L_global_modes'};
@@ -2008,7 +2013,6 @@ classdef CElegansModel < SettingsImportableFromStruct
                 end
             end
             self.dat = this_dat;
-%             self.dat_without_control = this_dat(:,1:num_pts);
         end
         
         function calc_AdaptiveDmdc(self)
