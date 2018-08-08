@@ -376,6 +376,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         max_rank_global
         global_signal_mode
         lambda_sparse
+        custom_global_signal
         
         % Data processing
         filter_window_dat
@@ -1577,6 +1578,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'max_rank_global', 4,...
                 'lambda_sparse', 0.043,...
                 'global_signal_mode', 'RPCA',...
+                'custom_global_signal',[],...
                 ...% Data processing
                 'filter_window_dat', 3,...
                 'filter_window_global', 10,...
@@ -1651,6 +1653,9 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             % Add this information to the subobject
             fnames = fieldnames(self.AdaptiveDmdc_settings);
+            if isempty(fnames)
+                fnames = {''}; % Just to make the following logic work
+            end
             if ~ismember(fnames,'id_struct')
                 id_struct = struct('ID',{Zimmer_struct.ID},...
                     'ID2',{Zimmer_struct.ID2},'ID3',{Zimmer_struct.ID3});
@@ -1896,6 +1901,11 @@ classdef CElegansModel < SettingsImportableFromStruct
                     
                 otherwise
                     error('Unrecognized method')
+            end
+            
+            if ~isempty(self.custom_global_signal)
+                self.L_global_modes = [self.L_global_modes,...
+                    self.custom_global_signal'];
             end
         end
         
