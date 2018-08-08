@@ -1650,21 +1650,33 @@ classdef CElegansModel < SettingsImportableFromStruct
                     ['Zimmer_struct.' (state_fields{2})]);
             end
             % Add this information to the subobject
-            if ~any(ismember(fieldnames(self.AdaptiveDmdc_settings),...
-                    {'id_struct','sort_mode','x_indices','dmd_mode',...
-                    'to_plot_nothing','to_save_raw_data'}))
+            fnames = fieldnames(self.AdaptiveDmdc_settings);
+            if ~ismember(fnames,'id_struct')
+                id_struct = struct('ID',{Zimmer_struct.ID},...
+                    'ID2',{Zimmer_struct.ID2},'ID3',{Zimmer_struct.ID3});
+                self.AdaptiveDmdc_settings.id_struct = id_struct;
+            end
+            if ~ismember(fnames,'sort_mode')
+                self.AdaptiveDmdc_settings.sort_mode = 'user_set';
+            end
+            if ~ismember(fnames,'x_indices')
                 if ~self.use_deriv
                     x_ind = 1:size(self.raw,1);
                 else
                     x_ind = 1:(2*size(self.raw,1));
                 end
-                id_struct = struct('ID',{Zimmer_struct.ID},...
-                    'ID2',{Zimmer_struct.ID2},'ID3',{Zimmer_struct.ID3});
-                self.AdaptiveDmdc_settings.id_struct = id_struct;
-                self.AdaptiveDmdc_settings.sort_mode = 'user_set';
                 self.AdaptiveDmdc_settings.x_indices = x_ind;
+            end
+            if ~ismember(fnames,'dmd_mode')
                 self.AdaptiveDmdc_settings.dmd_mode = self.dmd_mode;
+            end
+            if ~ismember(fnames,'dmd_mode')
+                self.AdaptiveDmdc_settings.dmd_mode = self.dmd_mode;
+            end
+            if ~ismember(fnames,'to_plot_nothing')
                 self.AdaptiveDmdc_settings.to_plot_nothing = true;
+            end
+            if ~ismember(fnames,'to_save_raw_data')
                 self.AdaptiveDmdc_settings.to_save_raw_data = false;
             end
         end
@@ -1684,7 +1696,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             %slices)
             aug = self.augment_data;
             self.original_sz = self.dat_sz;
-            if aug>0
+            if aug>1
                 new_sz = [self.dat_sz(1)*aug, self.dat_sz(2)-aug];
                 new_dat = zeros(new_sz);
                 for j=1:aug
@@ -1741,6 +1753,16 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             if contains(self.global_signal_mode,'RPCA')
                 warning('RPCA coloring is off')
+            end
+            
+            if contains(self.global_signal_mode,'_and_length_count')
+                original_mode = self.global_signal_mode;
+                self.global_signal_mode = original_mode(1:end-17);
+                self.calc_global_signal();
+                self.global_signal_mode = 'length_count';
+                self.calc_global_signal();
+                self.global_signal_mode = original_mode;
+                return
             end
             
             switch self.global_signal_mode
@@ -1803,10 +1825,15 @@ classdef CElegansModel < SettingsImportableFromStruct
                     self.calc_global_signal();
                     self.L_global_modes = [self.L_global_modes,...
                         gradient(self.L_global_modes(:,1:end-1)')'];
+                    self.global_signal_mode = 'RPCA_and_grad';
                 
                 case 'ID'
                     self.L_global_modes = [self.state_labels_ind_raw;...
                         ones(size(self.state_labels_ind_raw))].';
+                    
+                case 'length_count'
+                    self.L_global_modes = [self.L_global_modes,...
+                        self.state_length_count(self.state_labels_ind_raw)'];
                     
                 case 'ID_binary'
                     tmp = self.state_labels_ind_raw;
@@ -2028,7 +2055,15 @@ classdef CElegansModel < SettingsImportableFromStruct
         end
         
         function out = get.x_indices(self)
-            out = self.AdaptiveDmdc_settings.x_indices;
+            if ~isempty(fieldnames(self.AdaptiveDmdc_settings))
+                out = self.AdaptiveDmdc_settings.x_indices;
+            else
+                out = [];
+            end
+        end
+        
+        function set.x_indices(self, val)
+            self.AdaptiveDmdc_settings.x_indices = val;
         end
     end
     
@@ -2036,6 +2071,23 @@ classdef CElegansModel < SettingsImportableFromStruct
         function dat = flat_filter(dat, window_size)
             w = window_size;
             dat = filter(ones(w,1)/w,1,dat);
+        end
+        
+        function out = state_length_count(states)
+            % Counts the length of each state up to that point
+            % e.g. [0 0 1 1 1 1] becomes:
+            %   [1 2 1 2 3 4]
+            out = ones(size(states));
+            this_val = states(1);
+            for i=2:length(states)
+                if this_val == states(i)
+                    out(i) = out(i-1) + 1;
+                    continue
+                else
+                    % the default value of 'out' 1, so no need to assign it
+                    this_val = states(i);
+                end
+            end
         end
     end
     
