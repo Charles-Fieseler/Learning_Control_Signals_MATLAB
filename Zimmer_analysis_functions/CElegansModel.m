@@ -1765,7 +1765,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 return
             end
             
-            switch self.global_signal_mode
+            switch global_signal_mode
                 case 'RPCA'
                     % Gets VERY low-rank signal, checking the lambda value
                     % first
