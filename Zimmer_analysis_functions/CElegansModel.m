@@ -1620,6 +1620,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             self.A_old = [];
             self.dat_old = [];
+            self.control_signals_metadata = table();
         end
         
         function import_from_struct(self, Zimmer_struct)
@@ -1819,6 +1820,9 @@ classdef CElegansModel < SettingsImportableFromStruct
                 return
             end
             
+            this_metadata = table();
+            this_metadata.signal_name = global_signal_mode;
+            
             switch global_signal_mode
                 case 'RPCA'
                     % Gets VERY low-rank signal, checking the lambda value
@@ -1833,6 +1837,9 @@ classdef CElegansModel < SettingsImportableFromStruct
                         RobustPCA(self.dat, self.lambda_global);
                     % Smooth the modes out
                     self.smooth_and_save_global_modes();
+                    
+                    this_metadata.signal_indices = ...
+                        1:size(self.L_global_modes,2);
                     
                 case 'RPCA_reconstruction_residual'
                     % Same as RPCA above, but use the residual from the
@@ -1853,6 +1860,9 @@ classdef CElegansModel < SettingsImportableFromStruct
                         RobustPCA(this_dat, self.lambda_global);
                     % Smooth the modes out and save them both
                     self.smooth_and_save_global_modes();
+                    
+                    this_metadata.signal_indices = ...
+                        1:size(self.L_global_modes,2);
                 
                 case 'RPCA_one_step_residual'
                     % Same as RPCA above, but use the residual from the
@@ -1874,21 +1884,30 @@ classdef CElegansModel < SettingsImportableFromStruct
                     % Smooth the modes out and save them both
                     self.smooth_and_save_global_modes();
                     
+                    this_metadata.signal_indices = ...
+                        1:size(self.L_global_modes,2);
+                    
                 case 'RPCA_and_grad'
                     self.calc_global_signal('RPCA_reconstruction_residual');
-                    self.L_global_modes = [self.L_global_modes,...
-                        gradient(self.L_global_modes(:,1:end-1)')'];
+                    tmp = gradient(self.L_global_modes(:,1:end-1)')';
+                    this_metadata.signal_indices = ...
+                        size(self.L_global_modes,2) + ...
+                        (1:size(tmp,2));
+                    
+                    self.L_global_modes = [self.L_global_modes, tmp];
                 
                 case 'ID'
                     self.L_global_modes = [self.state_labels_ind;...
                         ones(size(self.state_labels_ind))].';
+                    this_metadata.signal_indices = ...
+                        1:size(self.state_labels_ind,1);
                     
                 case 'ID_binary'
                     binary_labels = self.calc_binary_labels(...
                         self.state_labels_ind);
-%                     self.L_global_modes = [binary_labels;...
-%                         ones(1,size(binary_labels,2))].';
                     self.L_global_modes = binary_labels.';
+                    this_metadata.signal_indices = ...
+                        1:size(binary_labels,2);
                     
                 case 'ID_simple'
                     tmp = self.state_labels_ind;
@@ -1898,48 +1917,54 @@ classdef CElegansModel < SettingsImportableFromStruct
                     for i=1:length(tmp)
                         tmp(i) = states_dict(tmp(i));
                     end
-                    self.L_global_modes = [tmp; ones(size(tmp))].';
+                    self.L_global_modes = tmp.';
+                    this_metadata.signal_indices = 1:size(tmp,2);
                     
-                case 'ID_and_ID_simple'
-                    tmp = self.state_labels_ind;
-                    states_dict = containers.Map(...
-                        {1,2,3,4,5,6,7,8},...
-                        {-1,-1,0,0,0,0,1,0});
-                    for i=1:length(tmp)
-                        tmp(i) = states_dict(tmp(i));
-                    end
-                    self.L_global_modes = ...
-                        [tmp,...
-                        self.state_labels_ind];
+%                 case 'ID_and_ID_simple'
+%                     tmp = self.state_labels_ind;
+%                     states_dict = containers.Map(...
+%                         {1,2,3,4,5,6,7,8},...
+%                         {-1,-1,0,0,0,0,1,0});
+%                     for i=1:length(tmp)
+%                         tmp(i) = states_dict(tmp(i));
+%                     end
+%                     self.L_global_modes = ...
+%                         [tmp,...
+%                         self.state_labels_ind];
+%                     
+%                     self.L_global_modes = self.L_global_modes.';
                     
-                    self.L_global_modes = self.L_global_modes.';
+%                 case 'ID_and_binary'
+%                     self.calc_global_signal('ID_binary');
+%                     self.L_global_modes = [self.L_global_modes, ...
+%                         self.state_labels_ind.'];
                     
-                case 'ID_and_binary'
-                    self.calc_global_signal('ID_binary');
-                    self.L_global_modes = [self.L_global_modes, ...
-                        self.state_labels_ind.'];
-                    
-                case 'ID_and_offset'
-                    tmp = self.state_labels_ind;
-                    self.L_global_modes = tmp;
-                    for i=1:length(unique(tmp))
-                        self.L_global_modes = ...
-                            [self.L_global_modes;
-                            tmp - i];
-                    end
-                    self.L_global_modes = [self.L_global_modes; 
-                        log(1:size(tmp,2))].';
+%                 case 'ID_and_offset'
+%                     tmp = self.state_labels_ind;
+%                     self.L_global_modes = tmp;
+%                     for i=1:length(unique(tmp))
+%                         self.L_global_modes = ...
+%                             [self.L_global_modes;
+%                             tmp - i];
+%                     end
+%                     self.L_global_modes = [self.L_global_modes; 
+%                         log(1:size(tmp,2))].';
                     
                 case 'ID_and_grad'
                     self.L_global_modes = [self.state_labels_ind;...
-                        gradient(self.state_labels_ind);
-                        ones(size(self.state_labels_ind))].';
+                        gradient(self.state_labels_ind)].';
+                    
+                    this_metadata.signal_indices = 1:2; % Indices should be a single vector
                     
                 case 'length_count' % Not called alone
                     tmp = self.state_length_count(self.state_labels_ind);
                     tmp = tmp * ...
                         ( (max(max(self.dat))-min(min(self.dat)))...
                         ./(max(max(tmp))-min(min(tmp))) );
+                    this_metadata.signal_indices = ...
+                        size(self.L_global_modes,1) + ...
+                        (1:size(tmp,2));
+                    
                     self.L_global_modes = [self.L_global_modes,...
                         tmp'];
                     
@@ -1948,12 +1973,12 @@ classdef CElegansModel < SettingsImportableFromStruct
                         self.state_labels_ind);
                     tmp = [];
                     ind = 1:size(binary_labels,2);
-%                     if self.augment_data>0
-%                         ind = ind(1:(end-self.augment_data));
-%                     end
                     for i=1:size(binary_labels,1)
                         tmp = [tmp; self.dat.*binary_labels(i,ind)]; %#ok<AGROW>
                     end
+                    this_metadata.signal_indices = ...
+                        size(self.L_global_modes,1) + ...
+                        (1:size(tmp,2));
                     self.L_global_modes = [self.L_global_modes, tmp.'];
                     
                 case 'cumsum_x_times_state' % Not called alone
@@ -1974,11 +1999,22 @@ classdef CElegansModel < SettingsImportableFromStruct
                         ( (max(max(self.dat))-min(min(self.dat)))...
                         ./(max(max(tmp))-min(min(tmp))) );
                     
+                    this_metadata.signal_indices = ...
+                        size(self.L_global_modes,1) + ...
+                        (1:size(tmp,2));
                     self.L_global_modes = [self.L_global_modes, tmp.'];
                     
                 otherwise
                     error('Unrecognized method')
             end
+            
+            % Save metadata for this global signal
+            %   Note that this is after the sparse signal
+            this_metadata.signal_indices = this_metadata.signal_indices +... 
+                self.original_sz(1);
+            self.control_signals_metadata = ...
+                [self.control_signals_metadata;
+                this_metadata];
             
             if ~isempty(self.custom_global_signal)
                 self.L_global_modes = [self.L_global_modes,...
