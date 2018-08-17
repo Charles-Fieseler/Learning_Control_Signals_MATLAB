@@ -376,7 +376,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         max_rank_global
         global_signal_mode
         lambda_sparse
-        custom_global_signal
+        custom_control_signal
         
         % Data processing
         filter_window_dat
@@ -1120,11 +1120,11 @@ classdef CElegansModel < SettingsImportableFromStruct
 %                         ctr_signal(:,i-1));
 %             end
             for i = 2:num_tsteps
-                for i2 = 1:size(self.dependent_rows,1)
-                    ctr_ind = self.dependent_rows.row_indices{i2};
+                for i2 = 1:size(self.dependent_signals,1)
+                    ctr_ind = self.dependent_signals.signal_indices{i2};
                     ctr_signal(ctr_ind,i) = ...
                         calc_next_step(...
-                            self.dependent_rows.row_functions{i2},...
+                            self.dependent_rsignals.signal_functions{i2},...
                             x(:,i-1)', ...
                             ctr_signal(ctr_ind,i-1));
                 end
@@ -1596,7 +1596,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'max_rank_global', 4,...
                 'lambda_sparse', 0.043,...
                 'global_signal_mode', 'RPCA',...
-                'custom_global_signal',[],...
+                'custom_control_signal',[],...
                 ...% Data processing
                 'filter_window_dat', 3,...
                 'filter_window_global', 10,...
@@ -1612,7 +1612,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'to_normalize_deriv', false,...
                 'to_save_raw_data', true,...
                 ...% Additional (nonlinear) rows
-                'dependent_rows', table());
+                'dependent_signals', table());
             for key = fieldnames(defaults).'
                 k = key{1};
                 self.(k) = defaults.(k);
@@ -1751,20 +1751,20 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             % Setup all dependent row objects, if any
             used_rows = [];
-            for i = 1:size(self.dependent_rows,1)
+            for i = 1:size(self.dependent_signals,1)
                 % Check if the row indices make sense
-                used_rows = [used_rows, self.dependent_rows.row_indices{i}]; %#ok<AGROW>
+                used_rows = [used_rows, self.dependent_signals.signal_indices{i}]; %#ok<AGROW>
                 if length(unique(used_rows)) < length(used_rows)
                     % Note: can't check if ind are out of bounds here...
-                    error('Dependent rows cannot overwrite each other')
+                    error('Dependent signals cannot overwrite each other')
                 end
                 % These should be classes which define a setup() method
-                setup_strings = self.dependent_rows.setup_arguments{i};
+                setup_strings = self.dependent_signals.setup_arguments{i};
                 setup_args = cell(size(setup_strings));
                 for i2 = 1:length(setup_strings)
                     setup_strings{i2} = self.(setup_args{i2});
                 end
-                setup(self.dependent_rows.row_functions{i}, setup_args);
+                setup(self.dependent_signals.signal_functions{i}, setup_args);
             end
         end
         
@@ -1787,6 +1787,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             % Calls subfunctions to calculate control signals
             self.calc_global_signal();
             self.calc_sparse_signal();
+            self.add_custom_control_signal();
             self.calc_dat_and_control_signal();
         end
         
@@ -1821,7 +1822,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             
             this_metadata = table();
-            
+ 
             switch global_signal_mode
                 case 'RPCA'
                     % Gets VERY low-rank signal, checking the lambda value
@@ -1838,7 +1839,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                     self.smooth_and_save_global_modes();
                     
                     this_metadata.signal_indices = ...
-                        1:size(self.L_global_modes,2);
+                        {1:size(self.L_global_modes,2)};
                     
                 case 'RPCA_reconstruction_residual'
                     % Same as RPCA above, but use the residual from the
@@ -1861,7 +1862,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                     self.smooth_and_save_global_modes();
                     
                     this_metadata.signal_indices = ...
-                        1:size(self.L_global_modes,2);
+                        {1:size(self.L_global_modes,2)};
                 
                 case 'RPCA_one_step_residual'
                     % Same as RPCA above, but use the residual from the
@@ -1884,29 +1885,28 @@ classdef CElegansModel < SettingsImportableFromStruct
                     self.smooth_and_save_global_modes();
                     
                     this_metadata.signal_indices = ...
-                        1:size(self.L_global_modes,2);
+                        {1:size(self.L_global_modes,2)};
                     
                 case 'RPCA_and_grad'
                     self.calc_global_signal('RPCA_reconstruction_residual');
                     tmp = gradient(self.L_global_modes(:,1:end-1)')';
                     this_metadata.signal_indices = ...
-                        size(self.L_global_modes,2) + ...
-                        (1:size(tmp,2));
+                        {size(self.L_global_modes,2) + ...
+                        (1:size(tmp,2))};
                     
                     self.L_global_modes = [self.L_global_modes, tmp];
                 
                 case 'ID'
-                    self.L_global_modes = [self.state_labels_ind;...
-                        ones(size(self.state_labels_ind))].';
+                    self.L_global_modes = self.state_labels_ind.';
                     this_metadata.signal_indices = ...
-                        1:size(self.state_labels_ind,1);
+                        {1:size(self.state_labels_ind,1)};
                     
                 case 'ID_binary'
                     binary_labels = self.calc_binary_labels(...
                         self.state_labels_ind);
                     self.L_global_modes = binary_labels.';
                     this_metadata.signal_indices = ...
-                        1:size(binary_labels,2);
+                        {1:size(binary_labels,1)};
                     
                 case 'ID_simple'
                     tmp = self.state_labels_ind;
@@ -1917,7 +1917,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                         tmp(i) = states_dict(tmp(i));
                     end
                     self.L_global_modes = tmp.';
-                    this_metadata.signal_indices = 1:size(tmp,2);
+                    this_metadata.signal_indices = {1:size(tmp,2)};
                     
 %                 case 'ID_and_ID_simple'
 %                     tmp = self.state_labels_ind;
@@ -1953,7 +1953,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                     self.L_global_modes = [self.state_labels_ind;...
                         gradient(self.state_labels_ind)].';
                     
-                    this_metadata.signal_indices = 1:2; % Indices should be a single vector
+                    this_metadata.signal_indices = {1:2}; % Indices should be a single vector
                     
                 case 'length_count' % Not called alone
                     tmp = self.state_length_count(self.state_labels_ind);
@@ -1961,8 +1961,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                         ( (max(max(self.dat))-min(min(self.dat)))...
                         ./(max(max(tmp))-min(min(tmp))) );
                     this_metadata.signal_indices = ...
-                        size(self.L_global_modes,1) + ...
-                        (1:size(tmp,2));
+                        {size(self.L_global_modes,1) + ...
+                        (1:size(tmp,2))};
                     
                     self.L_global_modes = [self.L_global_modes,...
                         tmp'];
@@ -1976,8 +1976,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                         tmp = [tmp; self.dat.*binary_labels(i,ind)]; %#ok<AGROW>
                     end
                     this_metadata.signal_indices = ...
-                        size(self.L_global_modes,1) + ...
-                        (1:size(tmp,2));
+                        {size(self.L_global_modes,1) + ...
+                        (1:size(tmp,2))};
                     self.L_global_modes = [self.L_global_modes, tmp.'];
                     
                 case 'cumsum_x_times_state' % Not called alone
@@ -1999,8 +1999,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                         ./(max(max(tmp))-min(min(tmp))) );
                     
                     this_metadata.signal_indices = ...
-                        size(self.L_global_modes,1) + ...
-                        (1:size(tmp,2));
+                        {size(self.L_global_modes,2) + ...
+                        (1:size(tmp,1))};
                     self.L_global_modes = [self.L_global_modes, tmp.'];
                     
                 otherwise
@@ -2008,19 +2008,27 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             
             % Save metadata for this global signal
-            %   Note that this is after the sparse signal
-            this_metadata.signal_indices = this_metadata.signal_indices +... 
-                self.original_sz(1);
+            %   Note that this is after the sparse signal, if any
+            if ~isempty(self.S_sparse_raw)
+                this_metadata.signal_indices{:} =...
+                    this_metadata.signal_indices{:} +... 
+                    self.original_sz(1);
+            end
             this_metadata.Properties.RowNames = {global_signal_mode};
             self.control_signals_metadata = ...
                 [self.control_signals_metadata;
                 this_metadata];
-            
-            if ~isempty(self.custom_global_signal)
-                self.L_global_modes = [self.L_global_modes,...
-                    self.custom_global_signal'];
-                self.custom_global_signal = [];
+            % Also add a row of ones
+            if ~ismember('constant',self.control_signals_metadata.Row)
+                signal_indices = {this_metadata.signal_indices{:}(end) + 1};
+                ones_metadata = table(signal_indices);
+                ones_metadata.Properties.RowNames = {'constant'};
+                self.control_signals_metadata = ...
+                    [self.control_signals_metadata;
+                    ones_metadata];
             end
+            
+            
         end
         
         function [this_lambda, this_rank] = check_rank_with_lambda(self,...
@@ -2074,6 +2082,13 @@ classdef CElegansModel < SettingsImportableFromStruct
                 [self.L_sparse_raw, self.S_sparse_raw,...
                     self.L_sparse_rank, self.S_sparse_nnz] = ...
                     RobustPCA(self.dat, self.lambda_sparse);
+                % Save the metadata for this signal, which is the first
+                this_metadata = table();
+                this_metadata.signal_indices = {1:size(self.L_sparse_raw,1)};
+                this_metadata.Properties.RowNames = {'sparse'};
+                self.control_signals_metadata = ...
+                    [self.control_signals_metadata;
+                    this_metadata];
             else
                 % i.e. just skip this step
                 self.L_sparse_raw = self.dat;
@@ -2084,6 +2099,37 @@ classdef CElegansModel < SettingsImportableFromStruct
             % For now, no processing
             self.L_sparse = self.L_sparse_raw;
             self.S_sparse = self.S_sparse_raw;
+        end
+        
+        function add_custom_control_signal(self, ...
+                custom_control_signal, custom_control_signal_name)
+            if ~exist('custom_control_signal','var')
+                custom_control_signal = self.custom_control_signal;
+                self.custom_control_signal = [];
+                custom_control_signal_name = 'user_custom_control_signal';
+            end
+            if isempty(custom_control_signal)
+                return
+            end
+            % Calculate the metadata
+            if isempty(self.control_signal)
+                current_controller_sz = ...
+                    max(cellfun(...
+                    @max, self.control_signals_metadata.signal_indices));
+            else
+                current_controller_sz = size(self.control_signal,1);
+            end
+            this_metadata = table();
+            this_metadata.signal_indices = ...
+                {current_controller_sz + ...
+                (1:size(custom_control_signal,1))};
+            this_metadata.Properties.RowNames = {custom_control_signal_name};
+            
+            % Save in self
+            self.control_signals_metadata = [self.control_signals_metadata;
+                this_metadata];
+            self.custom_control_signal = [self.custom_control_signal;
+                custom_control_signal];
         end
         
         function calc_dat_and_control_signal(self)
@@ -2098,9 +2144,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 this_dat = self.L_sparse;
                 sparse_signal = self.S_sparse;
             end
-            % Sparse signal with thresholding
-%             tol = 1e-2;
-%             sparse_signal = sparse_signal(max(abs(sparse_signal),[],2)>tol,:);
+            % Sparse signal with NO thresholding
             % Use top svd modes for the low-rank component
             if self.to_subtract_mean_global
                 L_low_rank = self.L_global_modes - mean(self.L_global_modes,1);
@@ -2120,10 +2164,12 @@ classdef CElegansModel < SettingsImportableFromStruct
                 num_pts = min([size(L_low_rank,2) size(this_dat,2)]);
                 self.control_signal = L_low_rank(:,1:num_pts);
             end
+            self.control_signal = [self.control_signal;
+                self.custom_control_signal(:,1:num_pts)];
 
             self.num_data_pts = num_pts;
             dat_to_shorten = {'L_global','L_sparse','S_global','S_sparse',...
-                'L_global_modes'};
+                'L_global_modes', 'custom_control_signal'};
             for fname = dat_to_shorten
                 tmp = self.(fname{1});
                 if isempty(tmp)
