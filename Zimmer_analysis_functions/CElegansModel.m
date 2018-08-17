@@ -392,6 +392,9 @@ classdef CElegansModel < SettingsImportableFromStruct
         use_only_deriv
         to_normalize_deriv
         to_save_raw_data
+        
+        % Additional rows
+        dependent_rows
     end
     
     properties (Access=private, Transient=true)
@@ -442,6 +445,7 @@ classdef CElegansModel < SettingsImportableFromStruct
     
     properties (SetAccess=private)
         control_signal
+        control_signals_metadata
         
         AdaptiveDmdc_obj
         % Changing the control signals and/or matrix
@@ -1091,32 +1095,46 @@ classdef CElegansModel < SettingsImportableFromStruct
                 predict(self.cecoc_model, time_slice);
         end
         
-        function [time_series, ctr_signal] = ...
+        function [x, ctr_signal] = ...
                 generate_time_series(self, num_tsteps, x0)
             % Generates a time series using the saved AdaptiveDmdc object
             % This means that user-set ablations and additional control
             % signals can be incorporated
-            if ~exist('x0','var')
-                x0 = self.dat(:,1);
-            end
             if ~exist('num_tsteps','var')
                 num_tsteps = self.original_sz(2);
             end
+            if ~exist('x0','var')
+                x0 = self.dat(:,1);
+            end
             
-            time_series = zeros(self.original_sz(1), num_tsteps);
-            time_series(:,1) = x0;
+            x = zeros(self.original_sz(1), num_tsteps);
+            x(:,1) = x0;
             ctr_signal = zeros(size(self.control_signal,1), num_tsteps);
             ctr_signal(:,1) = self.control_signal(:,1);
-            for i=2:num_tsteps
-                ctr_signal(:,i) = self.calc_next_step_controller(...
-                        time_series(:,i-1)', i-1);
-                time_series(:,i) = ...
+%             for i=2:num_tsteps
+%                 ctr_signal(:,i) = self.calc_next_step_controller(...
+%                         time_series(:,i-1)', i-1);
+%                 time_series(:,i) = ...
+%                     self.AdaptiveDmdc_obj.calc_reconstruction_manual(...
+%                         time_series(:,i-1),...
+%                         ctr_signal(:,i-1));
+%             end
+            for i = 2:num_tsteps
+                for i2 = 1:size(self.dependent_rows,1)
+                    ctr_ind = self.dependent_rows.row_indices{i2};
+                    ctr_signal(ctr_ind,i) = ...
+                        calc_next_step(...
+                            self.dependent_rows.row_functions{i2},...
+                            x(:,i-1)', ...
+                            ctr_signal(ctr_ind,i-1));
+                end
+                x(:,i) = ...
                     self.AdaptiveDmdc_obj.calc_reconstruction_manual(...
-                        time_series(:,i-1),...
+                        x(:,i-1),...
                         ctr_signal(:,i-1));
             end
             
-            self.dat_generated = time_series;
+            self.dat_generated = x;
             self.control_signal_generated = ctr_signal;
         end
     end
@@ -1592,7 +1610,9 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'use_deriv', false,...
                 'use_only_deriv', false,...
                 'to_normalize_deriv', false,...
-                'to_save_raw_data', true);
+                'to_save_raw_data', true,...
+                ...% Additional (nonlinear) rows
+                'dependent_rows', table());
             for key = fieldnames(defaults).'
                 k = key{1};
                 self.(k) = defaults.(k);
@@ -1727,6 +1747,24 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.pareto_struct = struct();
             self.state_labels_ind = ...
                 self.state_labels_ind_raw(end-size(self.dat,2)+1:end);
+            
+            % Setup all dependent row objects, if any
+            used_rows = [];
+            for i = 1:size(self.dependent_rows,1)
+                % Check if the row indices make sense
+                used_rows = [used_rows, self.dependent_rows.row_indices{i}]; %#ok<AGROW>
+                if length(unique(used_rows)) < length(used_rows)
+                    % Note: can't check if ind are out of bounds here...
+                    error('Dependent rows cannot overwrite each other')
+                end
+                % These should be classes which define a setup() method
+                setup_strings = self.dependent_rows.setup_arguments{i};
+                setup_args = cell(size(setup_strings));
+                for i2 = 1:length(setup_strings)
+                    setup_strings{i2} = self.(setup_args{i2});
+                end
+                setup(self.dependent_rows.row_functions{i}, setup_args);
+            end
         end
         
         function new_raw = preprocess_deriv(self)
@@ -1763,15 +1801,21 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             % Note that multiple '_and_xxxx' are supported
             if contains(global_signal_mode,'_and_length_count')
-                self.calc_global_signal(erase(self.global_signal_mode,...
+                self.calc_global_signal(erase(global_signal_mode,...
                     '_and_length_count'));
                 self.calc_global_signal('length_count');
                 return
             end
             if contains(global_signal_mode,'_and_x_times_state')
-                self.calc_global_signal(erase(self.global_signal_mode,...
+                self.calc_global_signal(erase(global_signal_mode,...
                     '_and_x_times_state'))
                 self.calc_global_signal('x_times_state');
+                return
+            end
+            if contains(global_signal_mode,'_and_cumsum_x_times_state')
+                self.calc_global_signal(erase(global_signal_mode,...
+                    '_and_cumsum_x_times_state'))
+                self.calc_global_signal('cumsum_x_times_state');
                 return
             end
             
@@ -1839,29 +1883,12 @@ classdef CElegansModel < SettingsImportableFromStruct
                     self.L_global_modes = [self.state_labels_ind;...
                         ones(size(self.state_labels_ind))].';
                     
-                case 'length_count'
-                    self.L_global_modes = [self.L_global_modes,...
-                        self.state_length_count(self.state_labels_ind)'];
-                    
                 case 'ID_binary'
                     binary_labels = self.calc_binary_labels(...
                         self.state_labels_ind);
 %                     self.L_global_modes = [binary_labels;...
 %                         ones(1,size(binary_labels,2))].';
                     self.L_global_modes = binary_labels.';
-                    
-                case 'x_times_state'
-                    binary_labels = self.calc_binary_labels(...
-                        self.state_labels_ind);
-                    tmp = [];
-                    ind = 1:size(binary_labels,2);
-%                     if self.augment_data>0
-%                         ind = ind(1:(end-self.augment_data));
-%                     end
-                    for i=1:size(binary_labels,1)
-                        tmp = [tmp; self.dat.*binary_labels(i,ind)]; %#ok<AGROW>
-                    end
-                    self.L_global_modes = [self.L_global_modes, tmp.'];
                     
                 case 'ID_simple'
                     tmp = self.state_labels_ind;
@@ -1907,6 +1934,47 @@ classdef CElegansModel < SettingsImportableFromStruct
                     self.L_global_modes = [self.state_labels_ind;...
                         gradient(self.state_labels_ind);
                         ones(size(self.state_labels_ind))].';
+                    
+                case 'length_count' % Not called alone
+                    tmp = self.state_length_count(self.state_labels_ind);
+                    tmp = tmp * ...
+                        ( (max(max(self.dat))-min(min(self.dat)))...
+                        ./(max(max(tmp))-min(min(tmp))) );
+                    self.L_global_modes = [self.L_global_modes,...
+                        tmp'];
+                    
+                case 'x_times_state' % Not called alone
+                    binary_labels = self.calc_binary_labels(...
+                        self.state_labels_ind);
+                    tmp = [];
+                    ind = 1:size(binary_labels,2);
+%                     if self.augment_data>0
+%                         ind = ind(1:(end-self.augment_data));
+%                     end
+                    for i=1:size(binary_labels,1)
+                        tmp = [tmp; self.dat.*binary_labels(i,ind)]; %#ok<AGROW>
+                    end
+                    self.L_global_modes = [self.L_global_modes, tmp.'];
+                    
+                case 'cumsum_x_times_state' % Not called alone
+                    binary_labels = self.calc_binary_labels(...
+                        self.state_labels_ind);
+                    tmp = [];
+                    for i=1:size(binary_labels,1)
+                        tmp = [tmp; self.dat.*binary_labels(i,:)]; %#ok<AGROW>
+                    end
+                    transitions = abs(diff(self.state_labels_ind))>0;
+                    transitions(end) = 1;
+                    transitions = [0 find(transitions)];
+                    for i=1:(length(transitions)-1)
+                        ind = (transitions(i)+1):transitions(i+1);
+                        tmp(:,ind) = cumsum(tmp(:,ind),2); %#ok<AGROW>
+                    end
+                    tmp = tmp * ...
+                        ( (max(max(self.dat))-min(min(self.dat)))...
+                        ./(max(max(tmp))-min(min(tmp))) );
+                    
+                    self.L_global_modes = [self.L_global_modes, tmp.'];
                     
                 otherwise
                     error('Unrecognized method')

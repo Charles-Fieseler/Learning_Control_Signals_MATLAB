@@ -3608,6 +3608,7 @@ yticklabels(dat.SevenStatesKey)
 
 
 %% Train a linear classifier for the experimentalist behavior ID's
+% (w/hyperparameter fitting)
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 dat = importdata(filename);
 
@@ -3941,6 +3942,33 @@ my_model_PID = CElegansModel(filename, settings);
 my_model_PID.plot_reconstruction_interactive(false);
 
 %==========================================================================
+
+
+%% Test new dependent rows
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat = importdata(filename);
+num_neurons = size(dat.traces,2);
+num_states = 8;
+
+% Define the table for the dependent row objects
+row_functions = {XtimesStateDependentRow()};
+setup_arguments = {''};
+row_indices = {(num_neurons+1):(num_neurons*num_states)};
+dependent_rows = table(row_functions, row_indices, setup_arguments);
+
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'dependent_rows', dependent_rows);
+settings.global_signal_mode = 'ID_binary_and_x_times_state';
+my_model_dependent = CElegansModel(filename, settings);
+my_model_dependent.plot_reconstruction_interactive(false);
+
+%==========================================================================
+
+
 
 
 
