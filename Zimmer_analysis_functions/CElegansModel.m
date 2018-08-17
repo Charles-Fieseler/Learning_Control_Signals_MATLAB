@@ -1725,6 +1725,8 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             
             self.pareto_struct = struct();
+            self.state_labels_ind = ...
+                self.state_labels_ind_raw(end-size(self.dat,2)+1:end);
         end
         
         function new_raw = preprocess_deriv(self)
@@ -1759,9 +1761,17 @@ classdef CElegansModel < SettingsImportableFromStruct
                 warning('RPCA coloring is off')
             end
             
+            % Note that multiple '_and_xxxx' are supported
             if contains(global_signal_mode,'_and_length_count')
-                self.calc_global_signal(self.global_signal_mode(1:end-17));
+                self.calc_global_signal(erase(self.global_signal_mode,...
+                    '_and_length_count'));
                 self.calc_global_signal('length_count');
+                return
+            end
+            if contains(global_signal_mode,'_and_x_times_state')
+                self.calc_global_signal(erase(self.global_signal_mode,...
+                    '_and_x_times_state'))
+                self.calc_global_signal('x_times_state');
                 return
             end
             
@@ -1826,26 +1836,35 @@ classdef CElegansModel < SettingsImportableFromStruct
                         gradient(self.L_global_modes(:,1:end-1)')'];
                 
                 case 'ID'
-                    self.L_global_modes = [self.state_labels_ind_raw;...
-                        ones(size(self.state_labels_ind_raw))].';
+                    self.L_global_modes = [self.state_labels_ind;...
+                        ones(size(self.state_labels_ind))].';
                     
                 case 'length_count'
                     self.L_global_modes = [self.L_global_modes,...
-                        self.state_length_count(self.state_labels_ind_raw)'];
+                        self.state_length_count(self.state_labels_ind)'];
                     
                 case 'ID_binary'
-                    tmp = self.state_labels_ind_raw;
-                    all_states = unique(tmp);
-                    sz = [length(all_states), 1];
-                    binary_labels = zeros(sz(1),size(tmp,2));
-                    for i = 1:sz(1)
-                        binary_labels(i,:) = (tmp==all_states(i));
+                    binary_labels = self.calc_binary_labels(...
+                        self.state_labels_ind);
+%                     self.L_global_modes = [binary_labels;...
+%                         ones(1,size(binary_labels,2))].';
+                    self.L_global_modes = binary_labels.';
+                    
+                case 'x_times_state'
+                    binary_labels = self.calc_binary_labels(...
+                        self.state_labels_ind);
+                    tmp = [];
+                    ind = 1:size(binary_labels,2);
+%                     if self.augment_data>0
+%                         ind = ind(1:(end-self.augment_data));
+%                     end
+                    for i=1:size(binary_labels,1)
+                        tmp = [tmp; self.dat.*binary_labels(i,ind)]; %#ok<AGROW>
                     end
-                    self.L_global_modes = [binary_labels;...
-                        ones(1,size(binary_labels,2))].';
+                    self.L_global_modes = [self.L_global_modes, tmp.'];
                     
                 case 'ID_simple'
-                    tmp = self.state_labels_ind_raw;
+                    tmp = self.state_labels_ind;
                     states_dict = containers.Map(...
                         {1,2,3,4,5,6,7,8},...
                         {-1,-1,0,0,0,0,1,0});
@@ -1855,7 +1874,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                     self.L_global_modes = [tmp; ones(size(tmp))].';
                     
                 case 'ID_and_ID_simple'
-                    tmp = self.state_labels_ind_raw;
+                    tmp = self.state_labels_ind;
                     states_dict = containers.Map(...
                         {1,2,3,4,5,6,7,8},...
                         {-1,-1,0,0,0,0,1,0});
@@ -1864,17 +1883,17 @@ classdef CElegansModel < SettingsImportableFromStruct
                     end
                     self.L_global_modes = ...
                         [tmp,...
-                        self.state_labels_ind_raw];
+                        self.state_labels_ind];
                     
                     self.L_global_modes = self.L_global_modes.';
                     
                 case 'ID_and_binary'
                     self.calc_global_signal('ID_binary');
                     self.L_global_modes = [self.L_global_modes, ...
-                        self.state_labels_ind_raw.'];
+                        self.state_labels_ind.'];
                     
                 case 'ID_and_offset'
-                    tmp = self.state_labels_ind_raw;
+                    tmp = self.state_labels_ind;
                     self.L_global_modes = tmp;
                     for i=1:length(unique(tmp))
                         self.L_global_modes = ...
@@ -1885,9 +1904,9 @@ classdef CElegansModel < SettingsImportableFromStruct
                         log(1:size(tmp,2))].';
                     
                 case 'ID_and_grad'
-                    self.L_global_modes = [self.state_labels_ind_raw;...
-                        gradient(self.state_labels_ind_raw);
-                        ones(size(self.state_labels_ind_raw))].';
+                    self.L_global_modes = [self.state_labels_ind;...
+                        gradient(self.state_labels_ind);
+                        ones(size(self.state_labels_ind))].';
                     
                 otherwise
                     error('Unrecognized method')
@@ -2101,6 +2120,15 @@ classdef CElegansModel < SettingsImportableFromStruct
                     % the default value of 'out' 1, so no need to assign it
                     this_val = states(i);
                 end
+            end
+        end
+        
+        function binary_labels = calc_binary_labels(these_states)
+            all_states = unique(these_states);
+            sz = [length(all_states), 1];
+            binary_labels = zeros(sz(1),size(these_states,2));
+            for i = 1:sz(1)
+                binary_labels(i,:) = (these_states==all_states(i));
             end
         end
     end

@@ -3920,6 +3920,31 @@ my_model_PID.plot_colored_user_control([],false);
 %==========================================================================
 
 
+%% Use new ID_binary modes
+
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+dat = importdata(filename);
+
+% First calculate the baseline model
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'filter_window_dat',6,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true);
+settings.global_signal_mode = 'ID_binary_and_x_times_state';
+% settings.global_signal_mode = 'RPCA_and_grad';
+my_model_PID = CElegansModel(filename, settings);
+my_model_PID.plot_reconstruction_interactive(false);
+
+%==========================================================================
+
+
+
+
 
 
 
