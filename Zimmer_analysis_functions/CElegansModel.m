@@ -1821,7 +1821,6 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             
             this_metadata = table();
-            this_metadata.signal_name = global_signal_mode;
             
             switch global_signal_mode
                 case 'RPCA'
@@ -2012,6 +2011,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             %   Note that this is after the sparse signal
             this_metadata.signal_indices = this_metadata.signal_indices +... 
                 self.original_sz(1);
+            this_metadata.Properties.RowNames = {global_signal_mode};
             self.control_signals_metadata = ...
                 [self.control_signals_metadata;
                 this_metadata];
