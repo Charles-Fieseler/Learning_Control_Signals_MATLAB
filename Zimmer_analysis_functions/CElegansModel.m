@@ -394,7 +394,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         to_save_raw_data
         
         % Additional rows
-        dependent_rows
+        dependent_signals
     end
     
     properties (Access=private, Transient=true)
@@ -1748,24 +1748,6 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.pareto_struct = struct();
             self.state_labels_ind = ...
                 self.state_labels_ind_raw(end-size(self.dat,2)+1:end);
-            
-            % Setup all dependent row objects, if any
-            used_rows = [];
-            for i = 1:size(self.dependent_signals,1)
-                % Check if the row indices make sense
-                used_rows = [used_rows, self.dependent_signals.signal_indices{i}]; %#ok<AGROW>
-                if length(unique(used_rows)) < length(used_rows)
-                    % Note: can't check if ind are out of bounds here...
-                    error('Dependent signals cannot overwrite each other')
-                end
-                % These should be classes which define a setup() method
-                setup_strings = self.dependent_signals.setup_arguments{i};
-                setup_args = cell(size(setup_strings));
-                for i2 = 1:length(setup_strings)
-                    setup_strings{i2} = self.(setup_args{i2});
-                end
-                setup(self.dependent_signals.signal_functions{i}, setup_args);
-            end
         end
         
         function new_raw = preprocess_deriv(self)
@@ -1960,9 +1942,10 @@ classdef CElegansModel < SettingsImportableFromStruct
                     tmp = tmp * ...
                         ( (max(max(self.dat))-min(min(self.dat)))...
                         ./(max(max(tmp))-min(min(tmp))) );
-                    this_metadata.signal_indices = ...
-                        {size(self.L_global_modes,1) + ...
-                        (1:size(tmp,2))};
+%                     this_metadata.signal_indices = ...
+%                         {size(self.L_global_modes,2) + ...
+%                         (1:size(tmp,1))};
+                    this_metadata.signal_indices = {1:size(tmp,1)};
                     
                     self.L_global_modes = [self.L_global_modes,...
                         tmp'];
@@ -1975,9 +1958,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                     for i=1:size(binary_labels,1)
                         tmp = [tmp; self.dat.*binary_labels(i,ind)]; %#ok<AGROW>
                     end
-                    this_metadata.signal_indices = ...
-                        {size(self.L_global_modes,1) + ...
-                        (1:size(tmp,2))};
+                    this_metadata.signal_indices = {1:size(tmp,2)};
                     self.L_global_modes = [self.L_global_modes, tmp.'];
                     
                 case 'cumsum_x_times_state' % Not called alone
@@ -1998,9 +1979,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                         ( (max(max(self.dat))-min(min(self.dat)))...
                         ./(max(max(tmp))-min(min(tmp))) );
                     
-                    this_metadata.signal_indices = ...
-                        {size(self.L_global_modes,2) + ...
-                        (1:size(tmp,1))};
+                    this_metadata.signal_indices = {1:size(tmp,1)};
                     self.L_global_modes = [self.L_global_modes, tmp.'];
                     
                 otherwise
@@ -2009,26 +1988,23 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             % Save metadata for this global signal
             %   Note that this is after the sparse signal, if any
-            if ~isempty(self.S_sparse_raw)
-                this_metadata.signal_indices{:} =...
-                    this_metadata.signal_indices{:} +... 
-                    self.original_sz(1);
-            end
+%             if ~isempty(self.S_sparse_raw)
+%                 this_metadata.signal_indices{:} =...
+%                     this_metadata.signal_indices{:} +... 
+%                     self.original_sz(1);
+%             end
             this_metadata.Properties.RowNames = {global_signal_mode};
-            self.control_signals_metadata = ...
-                [self.control_signals_metadata;
-                this_metadata];
+            self.append_control_metadata(this_metadata, true);
             % Also add a row of ones
             if ~ismember('constant',self.control_signals_metadata.Row)
-                signal_indices = {this_metadata.signal_indices{:}(end) + 1};
+                signal_indices = {1};
                 ones_metadata = table(signal_indices);
                 ones_metadata.Properties.RowNames = {'constant'};
-                self.control_signals_metadata = ...
-                    [self.control_signals_metadata;
-                    ones_metadata];
+                self.append_control_metadata(ones_metadata, true);
+                
+                self.L_global_modes = [self.L_global_modes, ...
+                    ones(size(self.L_global_modes,1),1)];
             end
-            
-            
         end
         
         function [this_lambda, this_rank] = check_rank_with_lambda(self,...
@@ -2086,9 +2062,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 this_metadata = table();
                 this_metadata.signal_indices = {1:size(self.L_sparse_raw,1)};
                 this_metadata.Properties.RowNames = {'sparse'};
-                self.control_signals_metadata = ...
-                    [self.control_signals_metadata;
-                    this_metadata];
+                self.append_control_metadata(this_metadata);
             else
                 % i.e. just skip this step
                 self.L_sparse_raw = self.dat;
@@ -2112,22 +2086,13 @@ classdef CElegansModel < SettingsImportableFromStruct
                 return
             end
             % Calculate the metadata
-            if isempty(self.control_signal)
-                current_controller_sz = ...
-                    max(cellfun(...
-                    @max, self.control_signals_metadata.signal_indices));
-            else
-                current_controller_sz = size(self.control_signal,1);
-            end
             this_metadata = table();
             this_metadata.signal_indices = ...
-                {current_controller_sz + ...
-                (1:size(custom_control_signal,1))};
+                {1:size(custom_control_signal,1)};
             this_metadata.Properties.RowNames = {custom_control_signal_name};
             
             % Save in self
-            self.control_signals_metadata = [self.control_signals_metadata;
-                this_metadata];
+            self.append_control_metadata(this_metadata, true);
             self.custom_control_signal = [self.custom_control_signal;
                 custom_control_signal];
         end
@@ -2207,6 +2172,32 @@ classdef CElegansModel < SettingsImportableFromStruct
                     end
                 end
             end
+            
+            % Setup all dependent row objects, if any
+            used_rows = [];
+            for i = 1:size(self.dependent_signals,1)
+                this_ind = self.dependent_signals.signal_indices{i};
+                if ischar(this_ind)
+                    assert(ismember(this_ind,...
+                        self.control_signals_metadata.Row),...
+                        'Dependent signal must refer to a valid training signal')
+                    this_ind = self.control_signals_metadata{this_ind,:}{:};
+                    self.dependent_signals.signal_indices{i} = {this_ind};
+                end
+                % Check if the row indices make sense
+                used_rows = [used_rows, this_ind]; %#ok<AGROW>
+                if length(unique(used_rows)) < length(used_rows)
+                    % Note: can't check if ind are out of bounds here...
+                    error('Dependent signals cannot overwrite each other')
+                end
+                % These should be classes which define a setup() method
+                setup_strings = self.dependent_signals.setup_arguments{i};
+                setup_args = cell(size(setup_strings));
+                for i2 = 1:length(setup_strings)
+                    setup_strings{i2} = self.(setup_args{i2});
+                end
+                setup(self.dependent_signals.signal_functions{i}, setup_args);
+            end
         end
         
         function callback_plotter(self, ~, evt)
@@ -2222,6 +2213,29 @@ classdef CElegansModel < SettingsImportableFromStruct
             else
                 self.AdaptiveDmdc_obj.get_names(this_neuron);
             end
+        end
+        
+        function append_control_metadata(self, new_metadata, to_push_indices)
+            if ~exist('to_push_indices','var')
+                to_push_indices = false;
+            end
+            % Simple sanity check and then append
+            if ~isempty(self.control_signals_metadata)
+                if to_push_indices
+                    last_ctr_ind = max(cellfun(@max,...
+                        self.control_signals_metadata.signal_indices));
+                    new_metadata.signal_indices = ...
+                        {new_metadata.signal_indices{:} + last_ctr_ind};
+                else
+                    assert(~any(cellfun( @(x) any(...
+                        ismember(new_metadata.signal_indices{:}, x) ),...
+                        self.control_signals_metadata.signal_indices) ),...
+                        'Control signals must not overlap in indices')
+                end
+            end
+            self.control_signals_metadata = ...
+                [self.control_signals_metadata;
+                new_metadata];
         end
         
     end
