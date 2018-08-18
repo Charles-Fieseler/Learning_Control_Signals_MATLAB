@@ -441,6 +441,8 @@ classdef CElegansModel < SettingsImportableFromStruct
         cecoc_model
         dat_generated
         control_signal_generated
+        normalize_cumsum_x_times_state
+        normalize_length_count
     end
     
     properties (SetAccess=private)
@@ -1109,8 +1111,8 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             x = zeros(self.original_sz(1), num_tsteps);
             x(:,1) = x0;
-            ctr_signal = zeros(size(self.control_signal,1), num_tsteps);
-            ctr_signal(:,1) = self.control_signal(:,1);
+            % Only some of the control signal will be overwritten
+            ctr_signal = self.control_signal(:,1:num_tsteps);
 %             for i=2:num_tsteps
 %                 ctr_signal(:,i) = self.calc_next_step_controller(...
 %                         time_series(:,i-1)', i-1);
@@ -1119,14 +1121,18 @@ classdef CElegansModel < SettingsImportableFromStruct
 %                         time_series(:,i-1),...
 %                         ctr_signal(:,i-1));
 %             end
+            assert(size(self.dependent_signals,1)<2,...
+                'Currently more than 1 dependent signal may interfere')
             for i = 2:num_tsteps
                 for i2 = 1:size(self.dependent_signals,1)
                     ctr_ind = self.dependent_signals.signal_indices{i2};
-                    ctr_signal(ctr_ind,i) = ...
+                    % Produce the control signal for the PREVIOUS step
+                    ctr_signal(ctr_ind,i-1) = ...
                         calc_next_step(...
-                            self.dependent_rsignals.signal_functions{i2},...
+                            self.dependent_signals.signal_functions{i2},...
                             x(:,i-1)', ...
-                            ctr_signal(ctr_ind,i-1));
+                            ctr_signal(:,i-1),...
+                            self.control_signals_metadata);
                 end
                 x(:,i) = ...
                     self.AdaptiveDmdc_obj.calc_reconstruction_manual(...
@@ -1767,8 +1773,8 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function calc_all_control_signals(self)
             % Calls subfunctions to calculate control signals
-            self.calc_global_signal();
             self.calc_sparse_signal();
+            self.calc_global_signal();
             self.add_custom_control_signal();
             self.calc_dat_and_control_signal();
         end
@@ -1939,9 +1945,10 @@ classdef CElegansModel < SettingsImportableFromStruct
                     
                 case 'length_count' % Not called alone
                     tmp = self.state_length_count(self.state_labels_ind);
-                    tmp = tmp * ...
+                    self.normalize_length_count = ...
                         ( (max(max(self.dat))-min(min(self.dat)))...
                         ./(max(max(tmp))-min(min(tmp))) );
+                    tmp = tmp * self.normalize_length_count;
 %                     this_metadata.signal_indices = ...
 %                         {size(self.L_global_modes,2) + ...
 %                         (1:size(tmp,1))};
@@ -1975,9 +1982,10 @@ classdef CElegansModel < SettingsImportableFromStruct
                         ind = (transitions(i)+1):transitions(i+1);
                         tmp(:,ind) = cumsum(tmp(:,ind),2); %#ok<AGROW>
                     end
-                    tmp = tmp * ...
+                    self.normalize_cumsum_x_times_state = ...
                         ( (max(max(self.dat))-min(min(self.dat)))...
                         ./(max(max(tmp))-min(min(tmp))) );
+                    tmp = tmp * self.normalize_cumsum_x_times_state;
                     
                     this_metadata.signal_indices = {1:size(tmp,1)};
                     self.L_global_modes = [self.L_global_modes, tmp.'];
@@ -2129,8 +2137,10 @@ classdef CElegansModel < SettingsImportableFromStruct
                 num_pts = min([size(L_low_rank,2) size(this_dat,2)]);
                 self.control_signal = L_low_rank(:,1:num_pts);
             end
-            self.control_signal = [self.control_signal;
-                self.custom_control_signal(:,1:num_pts)];
+            if ~isempty(self.custom_control_signal)
+                self.control_signal = [self.control_signal;
+                    self.custom_control_signal(:,1:num_pts)];
+            end
 
             self.num_data_pts = num_pts;
             dat_to_shorten = {'L_global','L_sparse','S_global','S_sparse',...
@@ -2182,7 +2192,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                         self.control_signals_metadata.Row),...
                         'Dependent signal must refer to a valid training signal')
                     this_ind = self.control_signals_metadata{this_ind,:}{:};
-                    self.dependent_signals.signal_indices{i} = {this_ind};
+                    self.dependent_signals.signal_indices{i} = this_ind;
                 end
                 % Check if the row indices make sense
                 used_rows = [used_rows, this_ind]; %#ok<AGROW>
@@ -2191,10 +2201,10 @@ classdef CElegansModel < SettingsImportableFromStruct
                     error('Dependent signals cannot overwrite each other')
                 end
                 % These should be classes which define a setup() method
-                setup_strings = self.dependent_signals.setup_arguments{i};
+                setup_strings = self.dependent_signals.setup_arguments(i);
                 setup_args = cell(size(setup_strings));
                 for i2 = 1:length(setup_strings)
-                    setup_strings{i2} = self.(setup_args{i2});
+                    setup_args{i2} = self.(setup_strings{i2});
                 end
                 setup(self.dependent_signals.signal_functions{i}, setup_args);
             end
