@@ -33,7 +33,9 @@ classdef CElegansModelTest_ID_cumsum < matlab.unittest.TestCase
             testCase.verifyEqual(...
                 mdat{'ID_binary',:}{:}, 130:137);
             testCase.verifyEqual(...
-                mdat{'cumsum_x_times_state',:}{:}, 138:1169);
+                mdat{'constant',:}{:}, 138);
+            testCase.verifyEqual(...
+                mdat{'cumsum_x_times_state',:}{:}, 139:1170);
         end
         
         function testSparse(testCase)
@@ -59,10 +61,10 @@ classdef CElegansModelTest_ID_cumsum < matlab.unittest.TestCase
                 testCase.model.original_sz, [129, 3021]));
             
             testCase.verifyTrue(isequal(...
-                testCase.model.total_sz, [1298, 3021]));
+                testCase.model.total_sz, [1299, 3021]));
             
             testCase.verifyTrue(isequal(...
-                size(testCase.model.control_signal), [1169, 3021]));
+                size(testCase.model.control_signal), [1170, 3021]));
         end
     end
     

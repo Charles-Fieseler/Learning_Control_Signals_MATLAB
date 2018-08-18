@@ -95,6 +95,24 @@ classdef CElegansModelTest_generated < matlab.unittest.TestCase
                 mdat{'user_custom_control_signal',:}{:}, 9:10);
         end
         
+        function testControlSignalsBinary(testCase)
+            % Control signal metadata
+            ctr = testCase.model.control_signal(1:2,:);
+            
+            testCase.verifyEqual(unique(ctr), [0; 1]);
+            testCase.verifyEqual(...
+                find(abs(diff(ctr(1,:)))>0)',...
+                [110; 360; 367; 520; 870; 907; 961; 1123; 1208; 1210;
+                1218; 1371; 1406; 1737; 1898; 2205; 2646; 2723; 2839; 2988]);
+        end
+        
+        function testControlSignalsConstant(testCase)
+            % Control signal metadata
+            ctr = testCase.model.control_signal(3,:);
+            
+            testCase.verifyEqual(ctr, ones(size(ctr)));
+        end
+        
         function testSparse(testCase)
             % Properties of the sparse signal
             testCase.verifyEqual(...
@@ -122,6 +140,17 @@ classdef CElegansModelTest_generated < matlab.unittest.TestCase
             
             testCase.verifyTrue(isequal(...
                 size(testCase.model.control_signal), [10,3000]));
+        end
+        
+        function testDependentSignals(testCase)
+            % Control signal metadata and dependent signal metadata
+            mdat = testCase.model.control_signals_metadata;
+            dsig = testCase.model.dependent_signals;
+            
+            testCase.verifyEqual(...
+                mdat{'cumsum_x_times_state',:},...
+                dsig.signal_indices{:});
+            
         end
     end
     

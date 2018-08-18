@@ -75,7 +75,7 @@ num_states = 2;
 
 % Define the table for the dependent row objects
 signal_functions = {SumXtimesStateDependentRow()};
-setup_arguments = {''};
+setup_arguments = {'normalize_cumsum_x_times_state'};
 % signal_indices = {(num_neurons+1):(num_neurons+num_neurons*num_states)};
 signal_indices = {'cumsum_x_times_state'};
 dependent_signals = table(signal_functions, signal_indices, setup_arguments);

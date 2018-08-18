@@ -14,6 +14,7 @@ classdef SumXtimesStateDependentRow < AbstractDependentRow
     
     properties
         XtimesState_obj
+        normalization_factor
     end
     
     methods
@@ -29,6 +30,7 @@ classdef SumXtimesStateDependentRow < AbstractDependentRow
             self.XtimesState_obj = XtimesStateDependentRow();
             
             self.signal_name = 'cumsum_x_times_state';
+            self.XtimesState_obj.signal_name = 'cumsum_x_times_state';
         end
         
         function set_defaults(self)
@@ -41,8 +43,8 @@ classdef SumXtimesStateDependentRow < AbstractDependentRow
             
         end
         
-        function setup(~, ~)
-            % No setup required
+        function setup(self, varargin)
+            self.normalization_factor = varargin{1}{1};
         end
         
         function ctr_signal = calc_next_step(self, x, u, metadata)
@@ -56,6 +58,7 @@ classdef SumXtimesStateDependentRow < AbstractDependentRow
             %   A state change means no cumulative sum is necessary
             nonzero_ctr = abs(ctr_signal)>0;
             nonzero_u = abs(this_u)>0;
+            ctr_signal = ctr_signal * self.normalization_factor;
             if nonzero_ctr == nonzero_u
                 ctr_signal = ctr_signal + this_u;
             end

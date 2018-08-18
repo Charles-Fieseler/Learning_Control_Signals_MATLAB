@@ -44,14 +44,14 @@ classdef XtimesStateDependentRow < AbstractDependentRow
         
         function ctr_signal = calc_next_step(~, x, u, metadata)
             % Inputs entire control signal but returns only this controller
-            this_u = u(metadata{self.signal_name,:}{:});
+            u_binary = u(metadata{'ID_binary',:}{:});
             % Simple multiplication of the data by the binary control
             % signal
             sz_x = length(x);
-            ctr_signal = zeros(length(this_u)*sz_x,1);
-            for i = 1:length(this_u)
+            ctr_signal = zeros(length(u_binary)*sz_x,1);
+            for i = 1:length(u_binary)
                 ind = ((i-1)*sz_x+1):(i*sz_x);
-                ctr_signal(ind) = this_u(i)*x;
+                ctr_signal(ind) = u_binary(i)*x;
             end
         end
     end
