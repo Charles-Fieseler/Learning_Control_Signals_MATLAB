@@ -1801,24 +1801,6 @@ classdef CElegansModel < SettingsImportableFromStruct
                     return
                 end
             end
-%             if contains(global_signal_mode,'_and_length_count')
-%                 self.calc_global_signal(erase(global_signal_mode,...
-%                     '_and_length_count'));
-%                 self.calc_global_signal('length_count');
-%                 return
-%             end
-%             if contains(global_signal_mode,'_and_x_times_state')
-%                 self.calc_global_signal(erase(global_signal_mode,...
-%                     '_and_x_times_state'))
-%                 self.calc_global_signal('x_times_state');
-%                 return
-%             end
-%             if contains(global_signal_mode,'_and_cumsum_x_times_state')
-%                 self.calc_global_signal(erase(global_signal_mode,...
-%                     '_and_cumsum_x_times_state'))
-%                 self.calc_global_signal('cumsum_x_times_state');
-%                 return
-%             end
             
             this_metadata = table();
  
@@ -1918,36 +1900,6 @@ classdef CElegansModel < SettingsImportableFromStruct
                     self.L_global_modes = tmp.';
                     this_metadata.signal_indices = {1:size(tmp,2)};
                     
-%                 case 'ID_and_ID_simple'
-%                     tmp = self.state_labels_ind;
-%                     states_dict = containers.Map(...
-%                         {1,2,3,4,5,6,7,8},...
-%                         {-1,-1,0,0,0,0,1,0});
-%                     for i=1:length(tmp)
-%                         tmp(i) = states_dict(tmp(i));
-%                     end
-%                     self.L_global_modes = ...
-%                         [tmp,...
-%                         self.state_labels_ind];
-%                     
-%                     self.L_global_modes = self.L_global_modes.';
-                    
-%                 case 'ID_and_binary'
-%                     self.calc_global_signal('ID_binary');
-%                     self.L_global_modes = [self.L_global_modes, ...
-%                         self.state_labels_ind.'];
-                    
-%                 case 'ID_and_offset'
-%                     tmp = self.state_labels_ind;
-%                     self.L_global_modes = tmp;
-%                     for i=1:length(unique(tmp))
-%                         self.L_global_modes = ...
-%                             [self.L_global_modes;
-%                             tmp - i];
-%                     end
-%                     self.L_global_modes = [self.L_global_modes; 
-%                         log(1:size(tmp,2))].';
-                    
                 case 'ID_and_grad'
                     self.L_global_modes = [self.state_labels_ind;...
                         gradient(self.state_labels_ind)].';
@@ -2029,11 +1981,6 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             % Save metadata for this global signal
             %   Note that this is after the sparse signal, if any
-%             if ~isempty(self.S_sparse_raw)
-%                 this_metadata.signal_indices{:} =...
-%                     this_metadata.signal_indices{:} +... 
-%                     self.original_sz(1);
-%             end
             this_metadata.Properties.RowNames = {global_signal_mode};
             self.append_control_metadata(this_metadata, true);
             % Also add a row of ones
