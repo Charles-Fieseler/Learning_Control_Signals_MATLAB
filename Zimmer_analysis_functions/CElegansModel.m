@@ -442,6 +442,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         dat_generated
         control_signal_generated
         normalize_cumsum_x_times_state
+        normalize_cumtrapz_x_times_state
         normalize_length_count
     end
     
@@ -1112,15 +1113,13 @@ classdef CElegansModel < SettingsImportableFromStruct
             x = zeros(self.original_sz(1), num_tsteps);
             x(:,1) = x0;
             % Only some of the control signal will be overwritten
+            %   Set the ones we must calculate to 0
             ctr_signal = self.control_signal(:,1:num_tsteps);
-%             for i=2:num_tsteps
-%                 ctr_signal(:,i) = self.calc_next_step_controller(...
-%                         time_series(:,i-1)', i-1);
-%                 time_series(:,i) = ...
-%                     self.AdaptiveDmdc_obj.calc_reconstruction_manual(...
-%                         time_series(:,i-1),...
-%                         ctr_signal(:,i-1));
-%             end
+            for i2 = 1:size(self.dependent_signals,1)
+                ctr_ind = self.dependent_signals.signal_indices{i2};
+                % Produce the control signal for the PREVIOUS step
+                ctr_signal(ctr_ind,1) = 0;
+            end
             assert(size(self.dependent_signals,1)<2,...
                 'Currently more than 1 dependent signal may interfere')
             for i = 2:num_tsteps
@@ -1790,24 +1789,36 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             
             % Note that multiple '_and_xxxx' are supported
-            if contains(global_signal_mode,'_and_length_count')
-                self.calc_global_signal(erase(global_signal_mode,...
-                    '_and_length_count'));
-                self.calc_global_signal('length_count');
-                return
+            additional_signals = {'length_count', 'x_times_state',...
+                'cumsum_x_times_state', 'cumtrapz_x_times_state'};
+            for i = 1:length(additional_signals)
+                this_str = ['_and_' additional_signals{i}];
+                if contains(global_signal_mode, this_str)
+                    self.calc_global_signal(...
+                        erase(global_signal_mode, this_str));
+                    self.calc_global_signal(additional_signals{i});
+                    % Really do want to quit the entire function!
+                    return
+                end
             end
-            if contains(global_signal_mode,'_and_x_times_state')
-                self.calc_global_signal(erase(global_signal_mode,...
-                    '_and_x_times_state'))
-                self.calc_global_signal('x_times_state');
-                return
-            end
-            if contains(global_signal_mode,'_and_cumsum_x_times_state')
-                self.calc_global_signal(erase(global_signal_mode,...
-                    '_and_cumsum_x_times_state'))
-                self.calc_global_signal('cumsum_x_times_state');
-                return
-            end
+%             if contains(global_signal_mode,'_and_length_count')
+%                 self.calc_global_signal(erase(global_signal_mode,...
+%                     '_and_length_count'));
+%                 self.calc_global_signal('length_count');
+%                 return
+%             end
+%             if contains(global_signal_mode,'_and_x_times_state')
+%                 self.calc_global_signal(erase(global_signal_mode,...
+%                     '_and_x_times_state'))
+%                 self.calc_global_signal('x_times_state');
+%                 return
+%             end
+%             if contains(global_signal_mode,'_and_cumsum_x_times_state')
+%                 self.calc_global_signal(erase(global_signal_mode,...
+%                     '_and_cumsum_x_times_state'))
+%                 self.calc_global_signal('cumsum_x_times_state');
+%                 return
+%             end
             
             this_metadata = table();
  
@@ -1986,6 +1997,28 @@ classdef CElegansModel < SettingsImportableFromStruct
                         ( (max(max(self.dat))-min(min(self.dat)))...
                         ./(max(max(tmp))-min(min(tmp))) );
                     tmp = tmp * self.normalize_cumsum_x_times_state;
+                    
+                    this_metadata.signal_indices = {1:size(tmp,1)};
+                    self.L_global_modes = [self.L_global_modes, tmp.'];
+                    
+                case 'cumtrapz_x_times_state' % Not called alone
+                    binary_labels = self.calc_binary_labels(...
+                        self.state_labels_ind);
+                    tmp = [];
+                    for i=1:size(binary_labels,1)
+                        tmp = [tmp; self.dat.*binary_labels(i,:)]; %#ok<AGROW>
+                    end
+                    transitions = abs(diff(self.state_labels_ind))>0;
+                    transitions(end) = 1;
+                    transitions = [0 find(transitions)];
+                    for i=1:(length(transitions)-1)
+                        ind = (transitions(i)+1):transitions(i+1);
+                        tmp(:,ind) = cumtrapz(tmp(:,ind),2); %#ok<AGROW>
+                    end
+                    self.normalize_cumtrapz_x_times_state = ...
+                        ( (max(max(self.dat))-min(min(self.dat)))...
+                        ./(max(max(tmp))-min(min(tmp))) );
+                    tmp = tmp * self.normalize_cumtrapz_x_times_state;
                     
                     this_metadata.signal_indices = {1:size(tmp,1)};
                     self.L_global_modes = [self.L_global_modes, tmp.'];
@@ -2204,6 +2237,9 @@ classdef CElegansModel < SettingsImportableFromStruct
                 setup_strings = self.dependent_signals.setup_arguments(i);
                 setup_args = cell(size(setup_strings));
                 for i2 = 1:length(setup_strings)
+                    if isempty(setup_strings{i2})
+                        continue;
+                    end
                     setup_args{i2} = self.(setup_strings{i2});
                 end
                 setup(self.dependent_signals.signal_functions{i}, setup_args);

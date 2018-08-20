@@ -68,7 +68,7 @@ classdef CElegansModelTest_generated < matlab.unittest.TestCase
             
             % Define the table for the dependent row objects
             signal_functions = {SumXtimesStateDependentRow()};
-            setup_arguments = {''};
+            setup_arguments = {'normalize_cumsum_x_times_state'};
             signal_indices = {'cumsum_x_times_state'};
             dependent_signals = table(signal_functions, signal_indices, setup_arguments);
             testCase.settings.dependent_signals = dependent_signals;
@@ -148,7 +148,7 @@ classdef CElegansModelTest_generated < matlab.unittest.TestCase
             dsig = testCase.model.dependent_signals;
             
             testCase.verifyEqual(...
-                mdat{'cumsum_x_times_state',:},...
+                mdat{'cumsum_x_times_state',:}{1},...
                 dsig.signal_indices{:});
             
         end

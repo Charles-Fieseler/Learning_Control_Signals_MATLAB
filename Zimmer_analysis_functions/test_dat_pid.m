@@ -47,25 +47,27 @@ int_error = zeros(sz);
 state_vec = zeros([1,sz(2)]);
 state_vec(1) = z0;
 for i = 2:sz(2)
-    z = state_vec(i-1);
     x = dat(:,i-1);
+    % Possibly transition states
+    %   i.e. determine the state for the CURRENT timestep
+    [state_vec(i), did_switch] = ...
+        calc_new_state(transition_mat, num_states, state_vec(i-1));
+    z = state_vec(i);
+    if did_switch
+        int_error(:,i-1) = 0;
+%         int_error(:,i) = x - set_points(:,z);
+    end
     % Add PID control signal
     % TODO: intrinsic dynamics as well
     [u, int_error(:,i)] = calc_pid_ctr_signal(...
         x, kp(z), ki(z), set_points(:,z), int_error(:,i-1));
     dat(:,i) = x + u + perturbation_mat(:,i-1);
-    % Transition states
-    [state_vec(i), did_switch] = ...
-        calc_new_state(transition_mat, num_states, z);
-    if did_switch
-        int_error(:,i) = 0;
-    end
 end
 
 ctr_signal = [int_error; perturbation_mat];
 
     function [u, int_error] = calc_pid_ctr_signal(x, kp, ki, sp, int_error)
-        error = x-sp;
+        error = x - sp;
         int_error = int_error + error;
         u = -kp*error - ki*int_error;
     end

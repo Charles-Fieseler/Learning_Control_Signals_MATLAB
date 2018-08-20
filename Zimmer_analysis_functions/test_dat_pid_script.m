@@ -69,26 +69,40 @@ my_model_PID2 = CElegansModel(dat_struct, settings);
 
 %% Now redo the model but with the additional integral control signal 
 % settings.global_signal_mode = 'ID_binary_and_cumsum_x_times_state';
-settings.global_signal_mode = 'ID_binary_and_cumsum_x_times_state_and_length_count';
+settings.global_signal_mode = 'ID_binary_and_cumtrapz_x_times_state_and_length_count';
 num_neurons = 2;
 num_states = 2;
 
 % Define the table for the dependent row objects
-signal_functions = {SumXtimesStateDependentRow()};
-setup_arguments = {'normalize_cumsum_x_times_state'};
+signal_functions = {TrapzXtimesStateDependentRow()};
+setup_arguments = {'normalize_cumtrapz_x_times_state'};
 % signal_indices = {(num_neurons+1):(num_neurons+num_neurons*num_states)};
-signal_indices = {'cumsum_x_times_state'};
+signal_indices = {'cumtrapz_x_times_state'};
 dependent_signals = table(signal_functions, signal_indices, setup_arguments);
 settings.dependent_signals = dependent_signals;
 
 my_model_PID3 = CElegansModel(dat_struct, settings);
-my_model_PID3.plot_reconstruction_interactive();
+
 
 %% Plots
-my_model_PID1.plot_reconstruction_interactive(false);
-title('Only integral controller')
-my_model_PID2.plot_reconstruction_interactive(false);
-title('Also has length counts')
+my_model_PID3.plot_reconstruction_interactive();
+
+[x, ctr] = my_model_PID3.generate_time_series(3000);
+
+figure;
+plot(x(1,:));
+hold on
+plot(my_model_PID3.dat(1,:))
+
+figure;
+plot(ctr(4,:));
+hold on
+plot(my_model_PID3.control_signal(4,:))
+
+% my_model_PID1.plot_reconstruction_interactive(false);
+% title('Only integral controller')
+% my_model_PID2.plot_reconstruction_interactive(false);
+% title('Also has length counts')
 
 % figure;imagesc(my_model_PID1.AdaptiveDmdc_obj.A_separate)
 % title('Only integral controller')
