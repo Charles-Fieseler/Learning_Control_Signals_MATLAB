@@ -395,6 +395,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         % Additional rows
         dependent_signals
+        add_constant_signal
     end
     
     properties (Access=private, Transient=true)
@@ -1515,7 +1516,11 @@ classdef CElegansModel < SettingsImportableFromStruct
                     false, 'mean', 'r');
                 % Global controller
                 if attractor_view
-                    label_ind = this_ctr_global(1,i);
+                    if strcmp(self.global_signal_mode, 'ID')
+                        label_ind = this_ctr_global(1,i);
+                    elseif strcmp(self.global_signal_mode, 'ID_binary')
+                        label_ind = find(this_ctr_global(:,i));
+                    end
                     label_str = self.state_labels_key{label_ind};
                     self.plot_colored_fixed_point(label_str, true, fig);
                 else
@@ -1617,7 +1622,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'to_normalize_deriv', false,...
                 'to_save_raw_data', true,...
                 ...% Additional (nonlinear) rows
-                'dependent_signals', table());
+                'dependent_signals', table(),...
+                'add_constant_signal', true);
             for key = fieldnames(defaults).'
                 k = key{1};
                 self.(k) = defaults.(k);
@@ -1928,7 +1934,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                     for i=1:size(binary_labels,1)
                         tmp = [tmp; self.dat.*binary_labels(i,ind)]; %#ok<AGROW>
                     end
-                    this_metadata.signal_indices = {1:size(tmp,2)};
+                    this_metadata.signal_indices = {1:size(tmp,1)};
                     self.L_global_modes = [self.L_global_modes, tmp.'];
                     
                 case 'cumsum_x_times_state' % Not called alone
@@ -1984,7 +1990,8 @@ classdef CElegansModel < SettingsImportableFromStruct
             this_metadata.Properties.RowNames = {global_signal_mode};
             self.append_control_metadata(this_metadata, true);
             % Also add a row of ones
-            if ~ismember('constant',self.control_signals_metadata.Row)
+            if ~ismember('constant',self.control_signals_metadata.Row) &&...
+                    self.add_constant_signal
                 signal_indices = {1};
                 ones_metadata = table(signal_indices);
                 ones_metadata.Properties.RowNames = {'constant'};
@@ -2265,23 +2272,31 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function out = state_length_count(states)
             % Counts the length of each state up to that point
-            % e.g. [0 0 1 1 1 1] becomes:
-            %   [1 2 1 2 3 4]
-            out = ones(size(states));
+            % e.g. 
+            % >> state_length_count([1 1 2 2 2 2])
+            %   [ [1 2 0 0 0 0]
+            %     [0 0 1 2 3 4] ]
+            % ... Testing out a start at 0!
+            %   [ [0 1 0 0 0 0]
+            %     [0 0 0 1 2 3] ]
+            % 
+            % Assumes input is sequentially labeled states
+            out = zeros(length(unique(states)), size(states,2));
             this_val = states(1);
+            out(this_val, 1) = 1;
             for i=2:length(states)
                 if this_val == states(i)
-                    out(i) = out(i-1) + 1;
+                    out(this_val, i) = out(this_val, i-1) + 1;
                     continue
                 else
-                    % the default value of 'out' 1, so no need to assign it
                     this_val = states(i);
+                    out(this_val, i) = 1;
                 end
             end
         end
         
         function binary_labels = calc_binary_labels(these_states)
-            all_states = unique(these_states);
+            all_states = sort(unique(these_states));
             sz = [length(all_states), 1];
             binary_labels = zeros(sz(1),size(these_states,2));
             for i = 1:sz(1)
