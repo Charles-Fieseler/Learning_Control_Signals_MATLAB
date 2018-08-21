@@ -11,8 +11,8 @@ classdef CElegansModelTest_generated < matlab.unittest.TestCase
         function setFilename(testCase)
             %% Settings
             sz = [2, 3000];
-            kp = [0.5, 0.25];
-            ki = [0.01, 0.01];
+            kp = [0.5; 0.25];
+            ki = [0.01; 0.01];
             kd = [];
             set_points = [[0.5 1];
                 [1 -1]];
@@ -90,9 +90,9 @@ classdef CElegansModelTest_generated < matlab.unittest.TestCase
             testCase.verifyEqual(...
                 mdat{'cumsum_x_times_state',:}{:}, 4:7);
             testCase.verifyEqual(...
-                mdat{'length_count',:}{:}, 8);
+                mdat{'length_count',:}{:}, 8:9);
             testCase.verifyEqual(...
-                mdat{'user_custom_control_signal',:}{:}, 9:10);
+                mdat{'user_custom_control_signal',:}{:}, 10:11);
         end
         
         function testControlSignalsBinary(testCase)
@@ -136,10 +136,10 @@ classdef CElegansModelTest_generated < matlab.unittest.TestCase
                 testCase.model.original_sz, [2,3000]));
             
             testCase.verifyTrue(isequal(...
-                testCase.model.total_sz, [12,3000]));
+                testCase.model.total_sz, [13,3000]));
             
             testCase.verifyTrue(isequal(...
-                size(testCase.model.control_signal), [10,3000]));
+                size(testCase.model.control_signal), [11,3000]));
         end
         
         function testDependentSignals(testCase)

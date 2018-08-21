@@ -3936,7 +3936,8 @@ settings = struct(...
     'filter_window_dat',6,...
     'use_deriv',true,...
     'to_normalize_deriv',true);
-settings.global_signal_mode = 'ID_binary_and_x_times_state';
+settings.global_signal_mode = 'ID_binary';
+% settings.global_signal_mode = 'ID_binary_and_x_times_state';
 % settings.global_signal_mode = 'RPCA_and_grad';
 my_model_PID = CElegansModel(filename, settings);
 my_model_PID.plot_reconstruction_interactive(false);
