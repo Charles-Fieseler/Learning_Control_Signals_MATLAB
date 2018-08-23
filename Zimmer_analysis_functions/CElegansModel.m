@@ -385,6 +385,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         to_subtract_mean
         to_subtract_mean_sparse
         to_subtract_mean_global
+        offset_control_signal
         dmd_mode
         AdaptiveDmdc_settings
         % Data importing
@@ -509,6 +510,12 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.reset_user_control();
             %==========================================================================
 
+        end
+        
+        function calc_AdaptiveDmdc(self)
+            % Uses external class AdaptiveDmdc
+            self.AdaptiveDmdc_obj = AdaptiveDmdc(self.dat_with_control,...
+                self.AdaptiveDmdc_settings);
         end
         
         function calc_pareto_front(self, lambda_vec, global_signal_mode,...
@@ -1251,6 +1258,34 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
         end
         
+        function fig = plot_colored_reconstruction(self, fig, use_same_fig)
+            % Plots 3d colored reconstruction on top of colored original dataset
+            if ~exist('use_same_fig','var')
+                use_same_fig = false;
+            end
+            if use_same_fig
+                plot_opt = '.';
+            else
+                plot_opt = 'o';
+            end
+            if ~exist('fig','var') || isempty(fig)
+                fig = self.plot_colored_data(false, plot_opt);
+            end
+            
+            this_dat = self.AdaptiveDmdc_obj.calc_reconstruction_control();
+            modes_3d = self.L_sparse_modes(:,1:3);
+            x = 1:size(modes_3d,1);
+            proj_3d = (modes_3d.')*this_dat(x,:);
+            if use_same_fig
+                plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), 'k*')
+            else
+                fig = plot_colored(proj_3d,...
+                    self.state_labels_ind(end-size(proj_3d,2)+1:end),...
+                    self.state_labels_key);
+                title('Dynamics of the low-rank component (reconstruction)')
+            end
+        end
+        
         function fig = plot_colored_fixed_point(self,...
                 which_label, use_centroid, fig, use_only_global)
             % Plots the fixed point on top of colored original dataset
@@ -1518,7 +1553,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 if attractor_view
                     if strcmp(self.global_signal_mode, 'ID')
                         label_ind = this_ctr_global(1,i);
-                    elseif strcmp(self.global_signal_mode, 'ID_binary')
+                    elseif contains(self.global_signal_mode, 'ID_binary')
                         label_ind = find(this_ctr_global(:,i));
                     end
                     label_str = self.state_labels_key{label_ind};
@@ -1615,6 +1650,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'to_subtract_mean',false,...
                 'to_subtract_mean_sparse', true,...
                 'to_subtract_mean_global', true,...
+                'offset_control_signal', false,...
                 'dmd_mode', 'naive',...
                 ...% Data importing
                 'use_deriv', false,...
@@ -1796,7 +1832,8 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             % Note that multiple '_and_xxxx' are supported
             additional_signals = {'length_count', 'x_times_state',...
-                'cumsum_x_times_state', 'cumtrapz_x_times_state'};
+                'cumsum_x_times_state', 'cumtrapz_x_times_state',...
+                'ID_binary'};
             for i = 1:length(additional_signals)
                 this_str = ['_and_' additional_signals{i}];
                 if contains(global_signal_mode, this_str)
@@ -1891,9 +1928,26 @@ classdef CElegansModel < SettingsImportableFromStruct
                 case 'ID_binary'
                     binary_labels = self.calc_binary_labels(...
                         self.state_labels_ind);
-                    self.L_global_modes = binary_labels.';
+                    % Also filter this so the gradients aren't so sharp
+                    binary_labels = self.flat_filter(...
+                        binary_labels.', self.filter_window_global).';
+                    if ~isempty(self.L_global_modes)
+                        self.L_global_modes = [self.L_global_modes...
+                            binary_labels(:,1:size(self.L_global_modes,1)).'];
+                    else
+                        self.L_global_modes = binary_labels.';
+                    end
                     this_metadata.signal_indices = ...
                         {1:size(binary_labels,1)};
+                    
+                case 'ID_binary_and_grad'
+                    self.calc_global_signal('ID_binary');
+                    tmp = gradient(self.L_global_modes(:,1:end-1)')';
+                    this_metadata.signal_indices = ...
+                        {size(self.L_global_modes,2) + ...
+                        (1:size(tmp,2))};
+                    
+                    self.L_global_modes = [self.L_global_modes, tmp];
                     
                 case 'ID_simple'
                     tmp = self.state_labels_ind;
@@ -2129,6 +2183,14 @@ classdef CElegansModel < SettingsImportableFromStruct
                     self.custom_control_signal(:,1:num_pts)];
             end
 
+            % TEST: offset the control signals by one step backwards...
+            % this makes sense particularly for the sparse signal
+            if self.offset_control_signal
+                self.control_signal = ...
+                    [self.control_signal(:,2:end),...
+                    zeros(size(self.control_signal,1),1)];
+            end
+            
             self.num_data_pts = num_pts;
             dat_to_shorten = {'L_global','L_sparse','S_global','S_sparse',...
                 'L_global_modes', 'custom_control_signal'};
@@ -2144,12 +2206,6 @@ classdef CElegansModel < SettingsImportableFromStruct
                 end
             end
             self.dat = this_dat;
-        end
-        
-        function calc_AdaptiveDmdc(self)
-            % Uses external class AdaptiveDmdc
-            self.AdaptiveDmdc_obj = AdaptiveDmdc(self.dat_with_control,...
-                self.AdaptiveDmdc_settings);
         end
         
         function postprocess(self)
@@ -2267,7 +2323,8 @@ classdef CElegansModel < SettingsImportableFromStruct
     methods (Static)
         function dat = flat_filter(dat, window_size)
             w = window_size;
-            dat = filter(ones(w,1)/w,1,dat);
+            dat = filtfilt(ones(w,1)/w,1,dat);
+%             dat = filter(ones(w,1)/w,1,dat);
         end
         
         function out = state_length_count(states)
