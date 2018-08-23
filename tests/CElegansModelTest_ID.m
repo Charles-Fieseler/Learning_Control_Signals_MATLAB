@@ -36,7 +36,7 @@ classdef CElegansModelTest_ID < matlab.unittest.TestCase
         function testSparse(testCase)
             % Properties of the sparse signal
             testCase.verifyEqual(...
-                testCase.model.S_sparse_nnz, 14485);
+                testCase.model.S_sparse_nnz, 14699);
             
             testCase.verifyEqual(...
                 testCase.model.L_sparse_rank, 129);

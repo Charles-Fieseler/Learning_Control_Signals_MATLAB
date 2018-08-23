@@ -61,25 +61,26 @@ classdef CElegansModelTest_generated_P < matlab.unittest.TestCase
                 'use_deriv',use_deriv,...
                 ...'AdaptiveDmdc_settings',struct('x_indices',x_ind),...
                 ...'custom_global_signal',ctr_signal,...
-                'custom_control_signal',ctr_signal(3:end,:),... % Not using the integral error, only perturbations
+                'custom_control_signal',ctr_signal(2,:),... % Not using the integral error, only perturbations
                 ...'lambda_sparse',0.022); % This gets some of the perturbations, and some of the transitions...
                 'lambda_sparse',0); % Don't want a sparse signal here
             
             %% Now add an additional integral control signal for generating data
             % settings.global_signal_mode = 'ID_binary_and_cumsum_x_times_state';
-            testCase.settings.global_signal_mode = ...
-                'ID_binary_and_cumsum_x_times_state_and_length_count';
+%             testCase.settings.global_signal_mode = ...
+%                 'ID_binary_and_cumsum_x_times_state_and_length_count';
+            testCase.settings.global_signal_mode = 'ID_binary';
             
             % Define the table for the dependent row objects
-            signal_functions = {SumXtimesStateDependentRow()};
-            setup_arguments = {'normalize_cumsum_x_times_state'};
-            signal_indices = {'cumsum_x_times_state'};
-            dependent_signals = table(signal_functions, signal_indices, setup_arguments);
-            testCase.settings.dependent_signals = dependent_signals;
+%             signal_functions = {SumXtimesStateDependentRow()};
+%             setup_arguments = {'normalize_cumsum_x_times_state'};
+%             signal_indices = {'cumsum_x_times_state'};
+%             dependent_signals = table(signal_functions, signal_indices, setup_arguments);
+%             testCase.settings.dependent_signals = dependent_signals;
             
             %% Save the true matrix for later comparison
             num_neurons = sz(1);
-            testCase.true_matrix = ...
+            A_true = ...
                 [eye(num_neurons).*(1-kp)... % Intrinsic dynamics
                 set_points.*kp... % ID_binary
                 ...zeros(num_neurons,1)... % constant
@@ -87,6 +88,8 @@ classdef CElegansModelTest_generated_P < matlab.unittest.TestCase
 
             %% Actually calculate the model
             testCase.model = CElegansModel(dat_struct, testCase.settings);
+            testCase.true_matrix = [A_true;...
+                zeros(size(testCase.model.control_signal,1), size(A_true,2))];
         end
     end
     

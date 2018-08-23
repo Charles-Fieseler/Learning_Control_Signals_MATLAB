@@ -3718,7 +3718,7 @@ end
 %==========================================================================
 
 
-%% Add a couple 'spike-like' neurons to the controller
+%% Add a couple 'spike-like' neurons to the ID controller
 filename = '../../Zimmer_data/WildType_adult/simplewt4/wbdataset.mat';
 
 dat = importdata(filename);
@@ -3733,16 +3733,19 @@ settings = struct(...
     'to_normalize_deriv',true,...
     'filter_window_dat',6);
 %     'augment_data',6);
-settings.global_signal_mode = 'ID';
+settings.global_signal_mode = 'ID_binary';
 my_model_residual = CElegansModel(filename, settings);
 
 % Now add some interesting neurons in
+%   UPDATE: The "DIVERGENCE" notes below were from a bug... actually adding
+%   most of these does better! Adding in all of them does by far the best
+%   relatively.
 % RIVL/R, SMDVR, SMBDR, RIMR/L, SAAVR/L
-neurons_of_interest = [80, 85, 43, 125, 82, 83, 41, 45]; % Divergence...
+% neurons_of_interest = [80, 85, 43, 125, 82, 83, 41, 45]; % Divergence...
 % neurons_of_interest = [43]; % does worse...
 % neurons_of_interest = [41, 45]; % does worse...
-% neurons_of_interest = [82, 83]; % Divergence...
-% neurons_of_interest = [80, 85]; % Divergence...
+% neurons_of_interest = [82, 83]; % Divergence... % actually still diverges
+neurons_of_interest = [80, 85]; % Divergence... % HELPS
 
 ad_settings = my_model_residual.AdaptiveDmdc_settings;
 ad_settings.x_indices(neurons_of_interest) = [];
@@ -3936,8 +3939,8 @@ settings = struct(...
     'filter_window_dat',6,...
     'use_deriv',true,...
     'to_normalize_deriv',true);
-settings.global_signal_mode = 'ID_binary';
-% settings.global_signal_mode = 'ID_binary_and_x_times_state';
+% settings.global_signal_mode = 'ID_binary';
+settings.global_signal_mode = 'ID_binary_and_x_times_state';
 % settings.global_signal_mode = 'RPCA_and_grad';
 my_model_PID = CElegansModel(filename, settings);
 my_model_PID.plot_reconstruction_interactive(false);
@@ -3968,6 +3971,161 @@ my_model_dependent = CElegansModel(filename, settings);
 my_model_dependent.plot_reconstruction_interactive(false);
 
 %==========================================================================
+
+
+%% Try out not subtracting the sparse signal
+%   It's still in the controller
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+% First calculate the baseline model
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'filter_window_dat',6,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true);
+settings.global_signal_mode = 'ID_binary';
+my_model_sparse = CElegansModel(filename, settings);
+my_model_sparse.plot_reconstruction_interactive(false);
+
+my_model_sparse.AdaptiveDmdc_obj.plot_reconstruction(true,true,true,1);
+title('With sparse signal subtracted')
+
+% Now reset the data and redo the analysis
+dat = importdata(filename);
+my_model_sparse.dat = ...
+    [dat.traces(1:end-1,:), dat.tracesDif]';
+my_model_sparse.calc_AdaptiveDmdc();
+my_model_sparse.plot_reconstruction_interactive(false);
+
+my_model_sparse.AdaptiveDmdc_obj.plot_reconstruction(true,true,true,1);
+title('With sparse signal still in the data')
+%==========================================================================
+
+
+%% Plot possible Fitzhugh-Nagumo hidden variables
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+% filename = '../../Zimmer_data/WildType_adult/simplewt4/wbdataset.mat';
+dat = importdata(filename);
+
+% WORM 5
+interesting_neuron = 90; %SMBDL, a spike-like guy
+% interesting_neuron = 113; %SMBDR, a spike-like guy
+% interesting_neuron = 71; %RIVL
+% interesting_neuron = 79; %RIVR
+% interesting_neuron = 44; %SMDVR
+% interesting_neuron = 42; %SMDVL
+
+
+% WORM 4
+% RIVL/R, SMDVR, SMBDR, RIMR/L, SAAVR/L
+% neurons_of_interest = [80, 85, 43, 125, 82, 83, 41, 45]; % Divergence...
+% interesting_neuron = 125;
+
+% Calculate FHN model variables
+v = dat.traces(1:end-1,interesting_neuron);
+vt = dat.tracesDif(:,interesting_neuron);
+w_minus_I = v - (v.^3)/3 - vt;
+% figure;
+% plot(w_minus_I)
+% title('Hidden variable (w) - Input current')
+
+my_filter = @(dat,w) filter(ones(w,1)/w,1,dat);
+filter_w_minus_I = my_filter(w_minus_I, 10);
+% figure;
+% plot(filter_w_minus_I)
+% title('Hidden variable (w) - Input current')
+
+% Try robust PCA to get the spikes (I) out
+to_plot_labmdas = false;
+if to_plot_labmdas
+    all_lambdas = linspace(0.05,0.03,10);
+    for i=1:length(all_lambdas)
+        lambda = all_lambdas(i);
+        [L, S, ~, nnz_S] = RobustPCA(w_minus_I, lambda);
+        figure;
+        plot(L);
+        hold on;
+        plot(S);
+        legend({'L','S'})
+        title(sprintf('Lambda=%.4f, nnz_S=%d',lambda,nnz_S))
+    end
+end
+
+% Looking a the graphs;
+good_lambda = 0.0456;
+
+% Plot this variable vs. the transition colors
+plot_colored(filter_w_minus_I,...
+    dat.SevenStates(1:end-1),dat.SevenStatesKey);
+title('Hidden variable (w) - Input current')
+plot_colored(v,...
+    dat.SevenStates(1:end-1),dat.SevenStatesKey);
+title('Original neuron trace')
+% plot_colored(vt,...
+%     dat.SevenStates(1:end-1),dat.SevenStatesKey);
+% title('Original neuron derivative')
+
+% Normalize the traces to a max of 3
+%   Chosen because this is worm5 neuron 90's max, which gives a very good
+%   separation of behaviors
+z = 3.5/max(v);
+normalized_w_minus_I = z*v - ((z*v).^3)/3 - z*vt;
+
+plot_colored(my_filter(normalized_w_minus_I, 10),...
+    dat.SevenStates(1:end-1),dat.SevenStatesKey);
+title('Hidden variable (w) - Input current')
+
+
+%==========================================================================
+
+
+%% Use both RPCA and ID_binary
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+disp('Does not help...')
+
+% First calculate the baseline model
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'filter_window_dat',6,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true);
+settings.global_signal_mode = 'RPCA_reconstruction_residual_and_ID_binary';
+my_model_both = CElegansModel(filename, settings);
+my_model_both.plot_reconstruction_interactive(false);
+
+fprintf('Overall model error is %f\n',...
+    my_model_both.AdaptiveDmdc_obj.calc_reconstruction_error())
+
+
+% Does it do any better if "drift" is subtracted out?
+tmp_dat = my_model_both.L_global - mean(my_model_both.L_global,2);
+[u, s, v] = svd(tmp_dat.');
+figure;
+% ind = 1:4;
+ind = 4;
+imagesc(real(u(:,ind)*s(ind,ind)*v(:,ind)')')
+
+figure;
+plot(real(u(:,ind)))
+title('Temporal coefficient')
+
+figure;
+plot(real(v(:,ind)))
+title('Spatial coefficients')
+%==========================================================================
+
+
+
+
+
+
 
 
 

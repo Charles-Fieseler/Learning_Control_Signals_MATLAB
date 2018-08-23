@@ -168,19 +168,19 @@ legend({'First channel reconstruction','data'})
 % plot(o.control_signal(6,:))
 % legend({'Cumulative Sum','Length Count'})
 
-figure;
-plot(o.control_signal(4,:)./o.normalize_cumsum_x_times_state)
-hold on
-plot(set_points(2)*o.control_signal(6,:)./o.normalize_length_count)
-legend({'Cumulative Sum','Length Count'})
-
-figure;
-plot( -(set_points(2)*o.control_signal(6,:)./o.normalize_length_count - ...
-    o.control_signal(4,:)./o.normalize_cumsum_x_times_state) )
-hold on
-plot(ctr_signal(1,:))
-legend({'Best learn-able control signal',...
-    'Real control signal'})
+% figure;
+% plot(obj.control_signal(4,:)./obj.normalize_cumsum_x_times_state)
+% hold on
+% plot(set_points(2)*obj.control_signal(6,:)./obj.normalize_length_count)
+% legend({'Cumulative Sum','Length Count'})
+% 
+% figure;
+% plot( -(set_points(2)*obj.control_signal(6,:)./obj.normalize_length_count - ...
+%     obj.control_signal(4,:)./obj.normalize_cumsum_x_times_state) )
+% hold on
+% plot(ctr_signal(1,:))
+% legend({'Best learn-able control signal',...
+%     'Real control signal'})
 
 % my_model_PID1.plot_reconstruction_interactive(false);
 % title('Only integral controller')
