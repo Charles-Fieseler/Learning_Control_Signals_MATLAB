@@ -5,6 +5,8 @@
 to_save = false;
 
 foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\figures\';
+
+my_viewpoint = [0, 80];
 %==========================================================================
 
 
@@ -39,7 +41,9 @@ close all
 
 
 %% Figure 1: Intro to control
-% Maybe have a trace of some controller neurons?
+%---------------------------------------------
+% First just do the cartoon outline
+%---------------------------------------------
 to_plot_figure_1 = false;
 if to_plot_figure_1
     filename = 'C:\cygwin64\home\charl\GitWormSim\Model\simdata_original.csv';
@@ -48,6 +52,59 @@ if to_plot_figure_1
     fig = prep_figure_no_axis();
     fname = sprintf('%sfigure_1_%d', foldername, 1);
     saveas(fig, fname, 'png');
+end
+%---------------------------------------------
+% Next get some representative neurons
+%---------------------------------------------
+all_figs = cell(3,1);
+% Use CElegans model to preprocess
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'filter_window_dat',6,...
+    'use_deriv',false,...
+    'to_normalize_deriv',false,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_and_grad';
+my_model_preprocess = CElegansModel(filename, settings);
+
+% Get the neurons
+%   tspans decided by hand
+sensory_neuron = 2;
+sensory_tspan = 800:1800;
+inter_neuron = 45;
+inter_tspan = 600:1600;
+motor_neuron = 114;
+motor_tspan = 2021:3021;
+
+% Actually plot
+all_figs{1} = figure;
+plot(my_model_preprocess.dat(sensory_neuron,sensory_tspan),...
+    'LineWidth',8,'Color',my_cmap_3d(1,:))
+
+all_figs{2} = figure;
+plot(my_model_preprocess.dat(inter_neuron,inter_tspan),...
+    'LineWidth',8,'Color',my_cmap_3d(2,:))
+
+all_figs{3} = figure;
+plot(my_model_preprocess.dat(motor_neuron,motor_tspan),...
+    'LineWidth',8,'Color',my_cmap_3d(3,:))
+
+%---------------------------------------------
+% Save the figures
+%---------------------------------------------
+if to_save
+    for i = 1:length(all_figs)
+        if isempty(all_figs{i})
+            continue;
+        end
+        fname = sprintf('%sfigure_1_%d', foldername, i);
+        this_fig = all_figs{i};
+        prep_figure_no_axis(this_fig)
+        saveas(this_fig, fname, 'png');
+    end
 end
 %==========================================================================
 
@@ -175,6 +232,7 @@ new_labels_ind = arrayfun(f, dat_struct.SevenStates(filter_window:end));
 all_figs{1} = plot_colored(proj3d,...
     new_labels_ind, new_labels_key, 'o');
 title('Dynamics of the low-rank component (reconstructed)')
+view(my_viewpoint)
 % Now make the colormap match the bar graphs
 for i=1:length(new_labels_key)
     all_figs{1}.Children(2).Children(i).CData = ...
@@ -205,10 +263,12 @@ my_model_fig4_b = CElegansModel(filename, settings);
 
 % Use original control; 3d pca plot
 % NOTE: reconstruction is not really that impressive here!
-my_model_fig4_b.add_partial_original_control_signal();
-my_model_fig4_b.plot_reconstruction_user_control();
+% my_model_fig4_b.add_partial_original_control_signal();
+% my_model_fig4_b.plot_reconstruction_user_control();
+% all_figs{4} = my_model_fig4_b.plot_colored_user_control([],false);
 my_model_fig4_b.set_simple_labels();
-all_figs{4} = my_model_fig4_b.plot_colored_user_control([],false);
+all_figs{4} = my_model_fig4_b.plot_colored_reconstruction();
+view(my_viewpoint)
 % Now make the colormap match the bar graphs
 for i=1:length(new_labels_key)
     all_figs{4}.Children(2).Children(i).CData = ...
@@ -232,18 +292,20 @@ settings = struct(...
     'to_subtract_mean_global',false,...
     'dmd_mode','func_DMDc',...
     'add_constant_signal',false,...
-    'filter_window_dat',6,...
+    'filter_window_dat',3,...
     'use_deriv',true,...
     'to_normalize_deriv',true);
-settings.global_signal_mode = 'ID_binary';
+settings.global_signal_mode = 'ID_binary_and_grad';
 my_model_fig4_c = CElegansModel(filename, settings);
 
 % Use original control; 3d pca plot
 % NOTE: reconstruction is not really that impressive here!
-my_model_fig4_c.add_partial_original_control_signal();
-my_model_fig4_c.plot_reconstruction_user_control();
+% my_model_fig4_c.add_partial_original_control_signal();
+% my_model_fig4_c.plot_reconstruction_user_control();
+% all_figs{7} = my_model_fig4_c.plot_colored_user_control([],false);
 my_model_fig4_c.set_simple_labels();
-all_figs{7} = my_model_fig4_c.plot_colored_user_control([],false);
+all_figs{7} = my_model_fig4_c.plot_colored_reconstruction();
+view(my_viewpoint)
 % Now make the colormap match the bar graphs
 for i=1:length(new_labels_key)
     all_figs{7}.Children(2).Children(i).CData = ...
@@ -256,6 +318,7 @@ for i=1:length(new_labels_key)
     all_figs{10}.Children(2).Children(i).CData = ...
         my_cmap_3d(my_cmap_dict(i),:);
 end
+view(my_viewpoint)
 
 % Reconstruct some individual neurons
 neur_id = [38, 59];
@@ -292,39 +355,45 @@ settings = struct(...
     'to_subtract_mean_sparse',false,...
     'to_subtract_mean_global',false,...
     'dmd_mode','func_DMDc',...
-    'to_plot_nothing',true,...
-    'global_signal_mode', 'ID');
+    'use_deriv',true,...
+    'to_normalize_deriv',true,...
+    'global_signal_mode', 'ID_binary_and_grad');
 my_model_fig5 = CElegansModel(filename, settings);
 my_model_fig5.set_simple_labels();
 
+% Plot the original data
 all_figs{1} = my_model_fig5.plot_colored_data(false, 'o');
 for i=1:length(my_model_fig5.state_labels_key)
     all_figs{1}.Children(2).Children(i).CData = ...
         my_cmap_3d(my_cmap_dict(i),:);
 end
-view(0,60)
-[~, b] = all_figs{1}.Children.Children;
-alpha(b, 0.3)
+view(my_viewpoint)
+% Now plot the fixed points
 my_model_fig5.run_with_only_global_control(@(x)...
     plot_colored_fixed_point(x,'Simple Reverse', true, all_figs{1}) );
 my_model_fig5.run_with_only_global_control(@(x)...
     plot_colored_fixed_point(x,'Simple Forward', true, all_figs{1}) );
-% my_model_fig5.plot_colored_fixed_point('REVSUS', true, all_figs{1});
-% my_model_fig5.plot_colored_fixed_point('FWD', true, all_figs{1});
-% all_figs{2} = my_model_fig5.plot_colored_fixed_point('SLOW', true);
-% all_figs{2} = my_model_fig5.plot_colored_data(false, 'o');
-% view(10,40)
-% Now make the colormap match the bar graphs
+[~, b] = all_figs{1}.Children.Children;
+
+% Add invisible axes on top and place the stars there so they will be
+% visible
+ax = all_figs{1}.Children(2);
+axHidden = axes('Visible','off','hittest','off'); % Invisible axes
+linkprop([ax axHidden],{'CameraPosition' 'XLim' 'YLim' 'ZLim' 'Position'}); % The axes should stay aligned
+set(b(1), 'Parent', axHidden)
+set(b(2), 'Parent', axHidden)
+
 % Save figures
 if to_save
-    for i = 1:length(all_figs)
-        fname = sprintf('%sfigure_5_%d', foldername, i);
-        this_fig = all_figs{i};
-        prep_figure_no_axis(this_fig)
-        this_fig.Children.Clipping = 'Off';
-        zoom(1.35) % Decided by hand
-        saveas(this_fig, fname, 'png');
-    end
+    fname = sprintf('%sfigure_5_%d', foldername, 1);
+    this_fig = all_figs{1};
+    prep_figure_no_axis(this_fig)
+    ax.Visible = 'Off';
+%     axes(ax)
+%     zoom(1.175) % Decided by hand
+%     axes(axHidden)
+%     zoom(1.175) % Decided by hand
+    saveas(this_fig, fname, 'png');
 end
 %==========================================================================
 
@@ -384,7 +453,17 @@ settings = struct(...
     'to_subtract_mean_sparse',false,...
     'to_subtract_mean_global',false,...
     'dmd_mode','func_DMDc');
+% settings = struct(...
+%     'to_subtract_mean',false,...
+%     'to_subtract_mean_sparse',false,...
+%     'to_subtract_mean_global',false,...
+%     'dmd_mode','func_DMDc',...
+%     'add_constant_signal',false,...
+%     'filter_window_dat',3,...
+%     'use_deriv',true,...
+%     'to_normalize_deriv',true);
 settings.global_signal_mode = 'ID';
+% settings.global_signal_mode = 'ID_binary_and_grad';
 
 %---------------------------------------------
 % Calculate 5 worms and get roles
@@ -403,7 +482,7 @@ for i=1:5
     all_models{i} = CElegansModel(filename,settings);
 end
 for i=1:5
-    % Use the dynamic attractor
+    % Use the dynamic fixed point
     [all_roles_dynamics{i,1}, all_roles_dynamics{i,2}] = ...
         all_models{i}.calc_neuron_roles_in_transition(true, [], true);
     % Just use centroid of a behavior
@@ -599,11 +678,14 @@ model_settings = struct(...
     'to_subtract_mean_sparse',false,...
     'to_subtract_mean_global',false,...
     'dmd_mode','func_DMDc',...
-    'to_save_raw_data',false);
-% global_signal_modes = {{'ID'}};
+    'to_save_raw_data',false,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true,...
+    'add_constant_signal',false);
 % global_signal_modes = {{'ID','ID_binary'}};
-global_signal_modes = {{'ID','ID_simple'}};
-% global_signal_modes = {{'ID','ID_simple','ID_binary'}};
+% global_signal_modes = {{'ID','ID_simple'}};
+% global_signal_modes = {{'ID_binary', 'ID_binary_and_grad'}};
+global_signal_modes = {{'ID_binary_and_grad'}};
 iterate_setting = 'global_signal_mode';
 % lambda_vec = linspace(0.0185, 0.08, 400);
 lambda_vec = linspace(0.03, 0.08, 400);
@@ -620,11 +702,13 @@ this_pareto_obj = cell(num_figures,1);
 use_baseline = false;
 % this_scale_factor = 1e-9;
 this_scale_factor = 2e-10;
-baseline_func_persistence = ...
-    @(x) x.AdaptiveDmdc_obj.calc_reconstruction_error([],true);
-y_func_global = ...
-    @(x,~) x.run_with_only_global_control(...
-    @(x2)x2.AdaptiveDmdc_obj.calc_reconstruction_error() );
+if use_baseline
+    baseline_func_persistence = ...
+        @(x) x.AdaptiveDmdc_obj.calc_reconstruction_error([],true);
+    y_func_global = ...
+        @(x,~) x.run_with_only_global_control(...
+        @(x2)x2.AdaptiveDmdc_obj.calc_reconstruction_error() );
+end
 for i=1:num_figures
     settings.file_or_dat = sprintf(filename_template, i);
     this_pareto_obj{i} = ParetoFrontObj('CElegansModel', settings);
@@ -660,27 +744,37 @@ for i=1:num_figures
     end
     
     all_figs{i} = this_pareto_obj{i}.plot_pareto_front('combine');
+    xlabel('\lambda')
+    ylabel('Weighted Error')
     
     % Plot a vertical line for the default value
     hold on
-    lambda_default = 0.043;
+%     lambda_default = 0.043;
+    [min_error, lambda_default] = min(...
+        this_pareto_obj{1}.y_struct.combine__ID_binary__ID_binary_);
+    lambda_default = this_pareto_obj{1}.x_vector(lambda_default);
     hax = all_figs{i}.Children(2);
     tmp = line([lambda_default lambda_default],get(hax,'YLim'),...
         'Color',[0 0 0], 'LineWidth',2, 'LineStyle','-.');
     hLegend = findobj(all_figs{i}, 'Type', 'Legend');
-    legend({'Full Behavioral ID', 'Simplified ID', 'Default value'});
+    legend({'Behavioral ID', 'Default value'});
+    fprintf('The minimum error is %.3f at \lambda=%.3f\n',...
+        min_error, lambda_default)
+%     legend({'Full Behavioral ID', 'Simplified ID', 'Default value'});
 end
 
 %---------------------------------------------
 % Save figures
 %---------------------------------------------
-for i = 1:length(all_figs)
-    fname = sprintf('%sfigure_s3_%d_combine', foldername, i);
-    this_fig = all_figs{i};
-    set(this_fig, 'Position', get(0, 'Screensize'));
-    this_fig = prep_figure_no_axis();
-    saveas(this_fig, fname, 'png');
-    matlab2tikz('figurehandle',this_fig,'filename',[fname '_raw.tex']);
+if to_save
+    for i = 1:length(all_figs)
+        fname = sprintf('%sfigure_s3_%d', foldername, i);
+        this_fig = all_figs{i};
+        set(this_fig, 'Position', get(0, 'Screensize'));
+        matlab2tikz('figurehandle',this_fig,'filename',[fname '_raw.tex']);
+        this_fig = prep_figure_no_axis();
+        saveas(this_fig, fname, 'png');
+    end
 end
 %==========================================================================
 

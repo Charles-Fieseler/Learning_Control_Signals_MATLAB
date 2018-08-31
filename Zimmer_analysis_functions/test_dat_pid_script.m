@@ -192,5 +192,33 @@ legend({'First channel reconstruction','data'})
 % figure;imagesc(my_model_PID2.AdaptiveDmdc_obj.A_separate)
 % title('Also has length counts')
 
+%% Scratch work on learning the control signal
+real_transitions = [360, 367,  870, 907];
+
+% Function for getting windows
+%   Important: first window can't just have each channel as constant!
+window_length = 30;
+x0 = 871; % Has non-trivial dynamics here
+get_X = @(i) dat( (x0+i):(x0+window_length+i) );
+get_X_U = @(i) [get_X(i); ...
+    ones(1,window_length+1)];
+
+% Initialize
+AB1 = get_X(1)/get_X_U(0);
+
+tend = 10;
+err = zeros(1,tend);
+for i=1:tend
+    err(i) = norm(get_X(i+1) - AB1*get_X_U(i));
+end
+
+disp(err)
+
+
+
+
+
+
+
 
 

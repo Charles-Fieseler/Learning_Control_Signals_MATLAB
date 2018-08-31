@@ -4122,9 +4122,263 @@ title('Spatial coefficients')
 %==========================================================================
 
 
+%% Look at neurons that seem to be strongly drifting
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat = importdata(filename);
+
+% this_neuron = 108; % Unnamed, but seems to have slight activity
+% this_neuron = 50; % Unnamed, but seems to have slight activity
+% this_neuron = 100; % Unnamed, but seems to have slight activity
+this_neuron = 101; % RIS
+% this_neuron = 111; % Unnamed, but seems to have slight activity
+% this_neuron = 121; % Unnamed, but has strong activity at the end
+% this_neuron = 42; % Spikes!
+% this_neuron = 45; % Spikes!
+% this_neuron = 84; % Spikes!
+% this_neuron = 1; % Very strong single event
+
+this_dat = dat.traces(:,this_neuron);
+% this_dat = dat.tracesDif(:,this_neuron);
+this_dat = this_dat - mean(this_dat);
 
 
+% Also look at the fft to see what we're cutting off
+Fs = 1;            % Sampling frequency                    
+T = 1/Fs;             % Sampling period       
+L = length(this_dat);             % Length of signal
+t = (0:L-1)*T;        % Time vector
 
+Y = fft(this_dat);
+P2 = abs(Y/L);
+P1 = P2(1:L/2+1);
+P1(2:end-1) = 2*P1(2:end-1);
+
+f = Fs*(0:(L/2))/L;
+figure;
+plot(f,P1) 
+title('Single-Sided Amplitude Spectrum of X(t)')
+xlabel('f (Hz)')
+ylabel('|P1(f)|')
+
+% Look at the data and a filtered version
+figure;
+plot(this_dat, 'LineWidth',2)
+hold on;
+
+% Make up a low-pass filter
+%   From Mathworks page
+
+% lpFilt = designfilt('lowpassiir','FilterOrder',8, ...
+%     'PassbandFrequency',10,'PassbandRipple',0.2, ...
+%     'SampleRate',10e2);
+
+% lpFilt = designfilt('lowpassiir','FilterOrder',12, ...
+%     'HalfPowerFrequency',0.2,'DesignMethod','butter');
+
+% Fstop = 0.1;
+% Fpass = 0.05;
+Apass = 0.1;
+Astop = 20;
+Fs = 1;
+% Use the fft to make a slightly smarter filter
+sz = length(P1);
+noise_level = max(P1(round(length(P1)/2):end)) * 1.5;
+noise_beginning = [];
+while isempty(noise_beginning)
+    noise_beginning = f(find(P1-noise_level>0,1,'last'));
+    noise_level = noise_level * 0.95;
+    fprintf('Reducing Noise level to %.5f\n',noise_level)
+end
+Fpass = noise_beginning;
+Fstop = min(Fpass*1.5,0.499);
+
+design_method = 'cheby2';
+lpFilt = designfilt('lowpassiir', ...
+  'PassbandFrequency',Fpass, 'StopbandFrequency',Fstop,...  
+  'PassbandRipple',Apass,'StopbandAttenuation',Astop,...
+  'SampleRate',Fs,...
+  'DesignMethod','cheby2');
+filter_dat = filtfilt(lpFilt, this_dat);
+plot(filter_dat, 'LineWidth',2)
+
+title(sprintf('Std:%.3f; Max:%.2f; Min:%.2f',...
+    std(this_dat), max(this_dat), min(this_dat)))
+
+% Also look at the filtered spectrum
+Y = fft(filter_dat);
+P2 = abs(Y/L);
+P1 = P2(1:L/2+1);
+P1(2:end-1) = 2*P1(2:end-1);
+
+figure;
+plot(f,P1) 
+title('Single-Sided Amplitude Spectrum of filter(X(t))')
+xlabel('f (Hz)')
+ylabel('|P1(f)|')
+
+%==========================================================================
+
+
+%% Use new 'smart' filter mode
+
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+dat = importdata(filename);
+
+% First calculate the baseline model
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    'filter_window_dat',0,...
+    'filter_window_global',10,...
+    'filter_aggressiveness',1.5,... % New mode
+    'use_deriv',true,...
+    'to_normalize_deriv',true,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_and_grad';
+% settings.global_signal_mode = 'ID_binary_and_x_times_state';
+% settings.global_signal_mode = 'RPCA_and_grad';
+my_model_smart_filter = CElegansModel(filename, settings);
+my_model_smart_filter.plot_reconstruction_interactive(false);
+
+%==========================================================================
+
+
+%% Plot reconstructions with only a partial control signal
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat = importdata(filename);
+num_neurons = size(dat.traces,2);
+num_slices = size(dat.traces,1);
+
+% First the baseline settings
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',true,...
+    ...'filter_window_dat',6,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true);
+
+% Calculate a model with only sparse signals
+settings.global_signal_mode = 'None';
+my_model_sparse = CElegansModel(filename, settings);
+% my_model_sparse.plot_colored_reconstruction();
+
+% Calculate a full model with both control signals
+settings.global_signal_mode = 'ID_binary_and_grad';
+my_model_both = CElegansModel(filename, settings);
+
+% Calculate a model with no sparse signal
+settings.lambda_sparse = 0;
+settings.global_signal_mode = 'ID_binary_and_grad';
+my_model_global = CElegansModel(filename, settings);
+% my_model_global.plot_colored_reconstruction();
+
+% Now use no sparse signal, but the same (filtered) data as my_model_sparse
+dat.traces = my_model_sparse.dat';
+settings.use_deriv = false;
+settings.to_normalize_deriv = false;
+my_model_global_filtered = CElegansModel(dat, settings);
+warning('This last model is somewhat unstable...');
+% my_model_global_filtered.plot_colored_reconstruction();
+
+% Look at the histogram of neuron errors for each
+global_dat = sum((my_model_global.dat - ...
+    my_model_global.AdaptiveDmdc_obj.calc_reconstruction_control([],[],false)...
+    ).^2, 2) / num_slices;
+global_dat = global_dat(1:num_neurons,:);
+global_dat_filt = sum((my_model_global_filtered.dat - ...
+    my_model_global_filtered.AdaptiveDmdc_obj.calc_reconstruction_control([],[],false)...
+    ).^2, 2) / num_slices;
+global_dat_filt = global_dat_filt(1:num_neurons,:);
+sparse_dat = sum((my_model_sparse.dat - ...
+    my_model_sparse.AdaptiveDmdc_obj.calc_reconstruction_control([],[],false)...
+    ).^2, 2) / num_slices;
+sparse_dat = sparse_dat(1:num_neurons,:);
+full_dat = sum((my_model_both.dat - ...
+    my_model_both.AdaptiveDmdc_obj.calc_reconstruction_control([],[],false)...
+    ).^2, 2) / num_slices;
+full_dat = full_dat(1:num_neurons,:);
+
+figure;
+bin_width = 5e-3;
+
+x_sz = [0,0.13];
+y_sz = [0 100];
+subplot(2,1,1)
+h1 = histogram(full_dat,'BinWidth',bin_width);
+title('Per-neuron error for the full model')
+xlim(x_sz)
+ylim(y_sz)
+% h1 = histogram(full_dat);
+% hold on
+% figure
+% h2 = histogram(global_dat(global_dat>min_error),'BinWidth',bin_width);
+% h2 = histogram(global_dat);
+subplot(2,1,2)
+h2 = histogram(global_dat_filt,'BinWidth',bin_width);
+title('Per-neuron error for global-only model (filtered data)')
+xlim(x_sz)
+ylim(y_sz)
+% h2 = histogram(sparse_dat(sparse_dat>min_error),'BinWidth',bin_width);
+% legend({'Full model','Model with only global signals'});
+
+figure;
+sparse_signal_sum = sum(my_model_both.control_signal(1:num_neurons,:).^2,2);
+normalize = sum(my_model_global.dat(1:num_neurons,:).^2,2); % RAW data
+fraction_sparse = sparse_signal_sum./normalize;
+bin_width = 1e-3;
+histogram(fraction_sparse, 'BinWidth',bin_width)
+title('Per-neuron fraction of sparse control signal activity')
+%==========================================================================
+
+
+%% Supplementary figure? looking at neuron errors
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+% First the settings and model
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true);
+settings.global_signal_mode = 'ID_binary_and_grad';
+my_model_errors = CElegansModel(filename, settings);
+
+% Plot the errors 
+my_model_errors.AdaptiveDmdc_obj.plot_data_and_outliers();
+num_neurons = my_model_errors.original_sz(1)/2;
+xlim([0,num_neurons]);
+
+%==========================================================================
+
+
+%% Understand the distribution of final errors
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat = importdata(filename);
+mu = 0;
+sigma = 1e-4;
+sz = size(dat.traces');
+
+% Calculate the errors for each 
+rng default;  % For reproducibility
+err = normrnd(mu, sigma, sz(1), sz(2));  % Simulate errors
+total_err = sum(abs(err),2);
+
+figure;
+bin_width = 1e-3;
+histogram(total_err,'BinWidth',bin_width);
+
+
+%==========================================================================
 
 
 
