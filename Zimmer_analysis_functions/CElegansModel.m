@@ -381,6 +381,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         % Data processing
         filter_window_dat
         filter_window_global
+        filter_aggressiveness
         augment_data
         to_subtract_mean
         to_subtract_mean_sparse
@@ -1313,7 +1314,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                     'k*', 'LineWidth', 50)
             else
                 plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), ...
-                    'ko', 'LineWidth', 6)
+                    'ko', 'LineWidth', 8)
             end
                 
             title(sprintf(...
@@ -1645,6 +1646,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 ...% Data processing
                 'filter_window_dat', 3,...
                 'filter_window_global', 10,...
+                'filter_aggressiveness', 0,...
                 'AdaptiveDmdc_settings', struct(),...
                 'augment_data', 0,...
                 'to_subtract_mean',false,...
@@ -1787,9 +1789,13 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
 
             % Moving average filter
-            if self.filter_window_dat>1
+            if self.filter_window_dat > 1
                 self.dat = ...
                     self.flat_filter(self.dat.',self.filter_window_dat).';
+            end
+            if self.filter_aggressiveness > 0
+                self.dat = self.smart_filter(self.dat.',...
+                    self.filter_aggressiveness).';
             end
             
             self.pareto_struct = struct();
@@ -1944,7 +1950,10 @@ classdef CElegansModel < SettingsImportableFromStruct
                     
                 case 'ID_binary_and_grad'
                     self.calc_global_signal('ID_binary');
-                    tmp = gradient(self.L_global_modes(:,1:end-1)')';
+                    binary_ind = self.control_signals_metadata{'ID_binary',:}{:};
+                    binary_ind = binary_ind - binary_ind(1) + 1;
+                    ID_binary_dat = self.L_global_modes(:, binary_ind);
+                    tmp = gradient(ID_binary_dat')';
                     this_metadata.signal_indices = ...
                         {size(self.L_global_modes,2) + ...
                         (1:size(tmp,2))};
@@ -2037,14 +2046,21 @@ classdef CElegansModel < SettingsImportableFromStruct
                     this_metadata.signal_indices = {1:size(tmp,1)};
                     self.L_global_modes = [self.L_global_modes, tmp.'];
                     
+                case 'None'
+                    % Only way to assign an empty value
+%                     error('Not working')
+                    this_metadata.signal_indices = {[]};
+                    
                 otherwise
                     error('Unrecognized method')
             end
             
             % Save metadata for this global signal
             %   Note that this is after the sparse signal, if any
-            this_metadata.Properties.RowNames = {global_signal_mode};
-            self.append_control_metadata(this_metadata, true);
+            if ~isempty(this_metadata.signal_indices{:})
+                this_metadata.Properties.RowNames = {global_signal_mode};
+                self.append_control_metadata(this_metadata, true);
+            end
             % Also add a row of ones
             if ~ismember('constant',self.control_signals_metadata.Row) &&...
                     self.add_constant_signal
@@ -2053,8 +2069,11 @@ classdef CElegansModel < SettingsImportableFromStruct
                 ones_metadata.Properties.RowNames = {'constant'};
                 self.append_control_metadata(ones_metadata, true);
                 
-                self.L_global_modes = [self.L_global_modes, ...
-                    ones(size(self.L_global_modes,1),1)];
+                sz = size(self.L_global_modes,1);
+                if sz == 0
+                    sz = size(self.dat,2);
+                end
+                self.L_global_modes = [self.L_global_modes, ones(sz,1)];
             end
         end
         
@@ -2194,6 +2213,8 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             
             self.num_data_pts = num_pts;
+            assert(num_pts>0,...
+                'Something went wrong with a data signal...')
             dat_to_shorten = {'L_global','L_sparse','S_global','S_sparse',...
                 'L_global_modes', 'custom_control_signal'};
             for fname = dat_to_shorten
@@ -2282,8 +2303,10 @@ classdef CElegansModel < SettingsImportableFromStruct
                 if to_push_indices
                     last_ctr_ind = max(cellfun(@max,...
                         self.control_signals_metadata.signal_indices));
-                    new_metadata.signal_indices = ...
-                        {new_metadata.signal_indices{:} + last_ctr_ind};
+                    if ~isnan(new_metadata.signal_indices{:})
+                        new_metadata.signal_indices = ...
+                            {new_metadata.signal_indices{:} + last_ctr_ind};
+                    end
                 else
                     assert(~any(cellfun( @(x) any(...
                         ismember(new_metadata.signal_indices{:}, x) ),...
@@ -2295,6 +2318,56 @@ classdef CElegansModel < SettingsImportableFromStruct
                 [self.control_signals_metadata;
                 new_metadata];
         end
+        
+        
+        function dat = smart_filter(self, dat, aggresiveness)
+            % Learns a cutoff frequency for each neuron (column)
+            if ~exist('aggresiveness','var')
+                aggresiveness = 1.5;
+            end
+            sz = size(dat);
+            assert(sz(1)>sz(2),...
+                'Filter column-wise')
+            
+            for i=1:sz(2)
+                if self.use_deriv && i>sz(2)/2
+                    % This basically won't work for them very well
+                    break
+                end
+                this_dat = dat(:,i);
+
+                % Get the fft
+                Fs = 1;            % Sampling frequency   
+                L = sz(1);             % Length of signal
+                Y = fft(this_dat);
+                P2 = abs(Y/L);
+                P1 = P2(1:round(L/2+1));
+                P1(2:end-1) = 2*P1(2:end-1);
+                f = Fs*(0:(L/2))/L;
+                
+                % Learn a cutoff frequency
+                noise_level = max(P1(round(length(P1)/2):end)) * 1.5;
+                noise_beginning = f(find(P1-noise_level>0,1,'last'));
+                Fpass = noise_beginning;
+                Fstop = Fpass*aggresiveness;
+                
+                % Design a low-pass filter 
+                Apass = 0.1;
+                Astop = 20;
+                Fs = 1;
+                design_method = 'cheby2';
+%                 disp(i)
+                lpFilt = designfilt('lowpassiir', ...
+                  'PassbandFrequency',Fpass, 'StopbandFrequency',Fstop,...  
+                  'PassbandRipple',Apass,'StopbandAttenuation',Astop,...
+                  'SampleRate',Fs,...
+                  'DesignMethod',design_method);
+                
+                % Apply the filter in a zero-phase algorithm
+                dat(:,i) = filtfilt(lpFilt, this_dat);
+            end
+        end
+        
         
     end
     
