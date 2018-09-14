@@ -112,7 +112,6 @@ end
 %% Figure 2: Robust PCA
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 all_figs = cell(9,1);
-
 % Calculate double RPCA model
 settings = struct(...
     'to_subtract_mean',true,...
@@ -170,7 +169,11 @@ caxis(all_figs{9}.CurrentAxes, [-0.0, 1.0])
 % Save figures
 for i = 1:length(all_figs)
     this_fig = all_figs{i};
+    if isempty(this_fig)
+        continue
+    end
     prep_figure_no_axis(this_fig)
+    zoom(1.2)
     colorbar off;
     fname = sprintf('%sfigure_3_%d', foldername, i);
     saveas(this_fig, fname, 'png');
@@ -178,10 +181,62 @@ end
 %==========================================================================
 
 
-%% Figure 3: Reconstructions (multiple methods)
-filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
-all_figs = cell(10,1);
+%% Figure 3: Hold-out cross-validation
+all_figs = cell(1,1);
+filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
 
+% First the baseline settings
+ad_settings = struct(...
+    'hold_out_fraction',0.2,...
+    'cross_val_window_size_percent', 0.8);
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true,...
+    'AdaptiveDmdc_settings',ad_settings);
+settings.global_signal_mode = 'ID_binary_and_grad';
+
+num_worms = 5;
+err_train = zeros(200, num_worms);
+err_test = zeros(200,num_worms);
+for i=1:num_worms
+    filename = sprintf(filename_template,i);
+    my_model_crossval = CElegansModel(filename, settings);
+
+    % Use crossvalidation functions
+    err_train(:,i) = my_model_crossval.AdaptiveDmdc_obj.calc_baseline_error();
+    err_test(:,i) = my_model_crossval.AdaptiveDmdc_obj.calc_test_error();
+end
+
+all_figs{1} = figure('DefaultAxesFontSize',14);
+boxplot(err_test,'colors',[1 0 0])
+hold on
+boxplot(err_train)
+ylim([0, 1.1*max(max([err_test;err_train]))])
+ylabel('L2 error')
+xlabel('Worm ID number')
+title('Training and Test Data Reconstruction')
+
+% Save figures
+if to_save
+    fname = sprintf('%sfigure_3b_%d', foldername, 1);
+    this_fig = all_figs{1};
+    matlab2tikz('figurehandle',this_fig,'filename',[fname '_raw.tex']);
+    prep_figure_no_axis(this_fig)
+    saveas(this_fig, fname, 'png');
+end
+%==========================================================================
+
+
+%% Figure 4,5: Reconstructions (multiple methods)
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+all_figs = cell(11,1);
+
+to_calc_double_RPCA = false;
 %---------------------------------------------
 % Get neuron removal model
 %---------------------------------------------
@@ -247,40 +302,40 @@ for i = neur_id
         ad_obj_fig4.plot_reconstruction(true,false,true,i);
 end
 
-%---------------------------------------------
-% Get double RPCA model
-%---------------------------------------------
-settings = struct(...
-    'to_subtract_mean',true,...
-    'to_subtract_mean_sparse',false,...
-    'to_subtract_mean_global',false,...
-    'dmd_mode','func_DMDc',...
-    'lambda_sparse', 0.04,...
-    'filter_window_dat',6,...
-    'use_deriv',true,...
-    'to_normalize_deriv',true);
-my_model_fig4_b = CElegansModel(filename, settings);
-
-% Use original control; 3d pca plot
-% NOTE: reconstruction is not really that impressive here!
-% my_model_fig4_b.add_partial_original_control_signal();
-% my_model_fig4_b.plot_reconstruction_user_control();
-% all_figs{4} = my_model_fig4_b.plot_colored_user_control([],false);
-my_model_fig4_b.set_simple_labels();
-all_figs{4} = my_model_fig4_b.plot_colored_reconstruction();
-view(my_viewpoint)
-% Now make the colormap match the bar graphs
-for i=1:length(new_labels_key)
-    all_figs{4}.Children(2).Children(i).CData = ...
-        my_cmap_3d(my_cmap_dict(i),:);
-end
-
-% Reconstruct some individual neurons
-neur_id = [38, 59];
-fig_dict = containers.Map({neur_id(1), neur_id(2)}, {5, 6});
-for i = neur_id
-    [~, all_figs{fig_dict(i)}] = ...
-        my_model_fig4_b.AdaptiveDmdc_obj.plot_reconstruction(true,false,true,i);
+if to_calc_double_RPCA
+    %---------------------------------------------
+    % Get double RPCA model
+    %---------------------------------------------
+    settings = struct(...
+        'to_subtract_mean',true,...
+        'to_subtract_mean_sparse',false,...
+        'to_subtract_mean_global',false,...
+        'dmd_mode','func_DMDc',...
+        'lambda_sparse', 0.04,...
+        'filter_window_dat',6,...
+        'use_deriv',true,...
+        'to_normalize_deriv',true);
+    my_model_fig4_b = CElegansModel(filename, settings);
+    
+    % Use original control; 3d pca plot
+    % NOTE: reconstruction is not really that impressive here!
+    my_model_fig4_b.set_simple_labels();
+    all_figs{4} = my_model_fig4_b.plot_colored_reconstruction();
+    view(my_viewpoint)
+    % Now make the colormap match the bar graphs
+    for i=1:length(new_labels_key)
+        all_figs{4}.Children(2).Children(i).CData = ...
+            my_cmap_3d(my_cmap_dict(i),:);
+    end
+    
+    % Reconstruct some individual neurons
+    neur_id = [38, 59];
+    fig_dict = containers.Map({neur_id(1), neur_id(2)}, {5, 6});
+    for i = neur_id
+        [~, all_figs{fig_dict(i)}] = ...
+            my_model_fig4_b.AdaptiveDmdc_obj.plot_reconstruction(true,false,true,i);
+    end
+    
 end
 
 %---------------------------------------------
@@ -299,10 +354,6 @@ settings.global_signal_mode = 'ID_binary_and_grad';
 my_model_fig4_c = CElegansModel(filename, settings);
 
 % Use original control; 3d pca plot
-% NOTE: reconstruction is not really that impressive here!
-% my_model_fig4_c.add_partial_original_control_signal();
-% my_model_fig4_c.plot_reconstruction_user_control();
-% all_figs{7} = my_model_fig4_c.plot_colored_user_control([],false);
 my_model_fig4_c.set_simple_labels();
 all_figs{7} = my_model_fig4_c.plot_colored_reconstruction();
 view(my_viewpoint)
@@ -313,19 +364,46 @@ for i=1:length(new_labels_key)
 end
 
 % Also original data; same for all models
-all_figs{10} = my_model_fig4_c.plot_colored_data(false, 'o');
-for i=1:length(new_labels_key)
-    all_figs{10}.Children(2).Children(i).CData = ...
-        my_cmap_3d(my_cmap_dict(i),:);
-end
-view(my_viewpoint)
+% all_figs{10} = my_model_fig4_c.plot_colored_data(false, 'o');
+% for i=1:length(new_labels_key)
+%     all_figs{10}.Children(2).Children(i).CData = ...
+%         my_cmap_3d(my_cmap_dict(i),:);
+% end
+% view(my_viewpoint)
 
 % Reconstruct some individual neurons
-neur_id = [38, 59];
-fig_dict = containers.Map({neur_id(1), neur_id(2)}, {8, 9});
+neur_id = [38, 59, 90];
+fig_dict = containers.Map(...
+    {neur_id(1), neur_id(2), neur_id(3)},...
+    {8, 9, 10});
 for i = neur_id
     [~, all_figs{fig_dict(i)}] = ...
         my_model_fig4_c.AdaptiveDmdc_obj.plot_reconstruction(true,false,true,i);
+end
+
+%---------------------------------------------
+% Compare with global signals only
+%---------------------------------------------
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    ...'filter_window_dat',3,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_and_grad';
+my_model_fig4_d = CElegansModel(filename, settings);
+
+my_model_fig4_d.set_simple_labels();
+all_figs{11} = my_model_fig4_d.plot_colored_reconstruction();
+view(my_viewpoint)
+% Now make the colormap match the bar graphs
+for i=1:length(new_labels_key)
+    all_figs{11}.Children(2).Children(i).CData = ...
+        my_cmap_3d(my_cmap_dict(i),:);
 end
 
 %---------------------------------------------
@@ -336,9 +414,12 @@ if to_save
         if isempty(all_figs{i})
             continue;
         end
-        fname = sprintf('%sfigure_4_%d', foldername, i);
+        fname = sprintf('%sfigure_4_%d_scratch', foldername, i);
         this_fig = all_figs{i};
+        ax = this_fig.Children(2);
+        ax.Clipping = 'Off';
         prep_figure_no_axis(this_fig)
+        zoom(1.17)
         saveas(this_fig, fname, 'png');
     end
 end
@@ -346,7 +427,7 @@ end
 %==========================================================================
 
 
-%% Figure 4: Fixed points
+%% Figure 5: Fixed points
 
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 all_figs = cell(1,1);
@@ -448,21 +529,21 @@ end
 all_figs = cell(5,1);
 
 filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
-settings = struct(...
-    'to_subtract_mean',false,...
-    'to_subtract_mean_sparse',false,...
-    'to_subtract_mean_global',false,...
-    'dmd_mode','func_DMDc');
 % settings = struct(...
 %     'to_subtract_mean',false,...
 %     'to_subtract_mean_sparse',false,...
 %     'to_subtract_mean_global',false,...
-%     'dmd_mode','func_DMDc',...
-%     'add_constant_signal',false,...
-%     'filter_window_dat',3,...
-%     'use_deriv',true,...
-%     'to_normalize_deriv',true);
-settings.global_signal_mode = 'ID';
+%     'dmd_mode','func_DMDc');
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    'filter_window_dat',3,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true);
+settings.global_signal_mode = 'ID_binary';
 % settings.global_signal_mode = 'ID_binary_and_grad';
 
 %---------------------------------------------
@@ -481,7 +562,8 @@ for i=1:5
     end
     all_models{i} = CElegansModel(filename,settings);
 end
-for i=1:5
+max_err_percent = 0.2;
+    for i=1:5
     % Use the dynamic fixed point
     [all_roles_dynamics{i,1}, all_roles_dynamics{i,2}] = ...
         all_models{i}.calc_neuron_roles_in_transition(true, [], true);
@@ -490,7 +572,7 @@ for i=1:5
         all_models{i}.calc_neuron_roles_in_transition(true, [], false);
     % Global mode actuation
     [all_roles_global{i,1}, all_roles_global{i,2}] = ...
-        all_models{i}.calc_neuron_roles_in_global_modes(true);
+        all_models{i}.calc_neuron_roles_in_global_modes(true, [], max_err_percent);
 end
 
 %---------------------------------------------
@@ -624,8 +706,8 @@ title('Neuron roles using similarity to centroids')
 %---------------------------------------------
 % First make the field names the same
 d = containers.Map(...
-    {'group 1', 'group 2', 'other', ''},...
-    {'simple REVSUS', 'simple FWD', 'other', ''});
+    {'group 1', 'group 2', 'other', '', 'both', 'high error'},...
+    {'simple REVSUS', 'simple FWD', 'other', '', 'both', 'z_error'});
 combined_dat_global = cellfun(@(x) d(x), combined_dat_global,...
     'UniformOutput', false);
 possible_roles = unique(combined_dat_global);
@@ -641,38 +723,50 @@ this_ind = find((sum(role_counts,2)>3).*name_lengths);
 all_figs{3} = figure('DefaultAxesFontSize',14);
 b = bar(role_counts(this_ind,:), 'stacked');
 for i=1:length(b)
-    % Skip the first color (dark blue)
-    b(i).FaceColor = my_cmap_3d(i+1,:);
+    b(i).FaceColor = my_cmap_3d(i,:);
 end
-legend(possible_roles)
-yticks(1:max(role_counts))
+legend([possible_roles(1:end-1); {'high error'}])
+yticks(1:max(max((role_counts))))
 ylabel('Number of times identified')
 xticks(1:length(this_ind));
 xticklabels(all_labels_global(this_ind))
 xtickangle(90)
-title('Neuron roles using similarity to global mode activation')
+title('Neuron roles using global mode activation')
 
 %---------------------------------------------
 % Save figures
 %---------------------------------------------
-for i = 1:length(all_figs)
-    fname = sprintf('%sfigure_s2_%d', foldername, i);
-    this_fig = all_figs{i};
-    set(this_fig, 'Position', get(0, 'Screensize'));
-    saveas(this_fig, fname, 'png');
-    matlab2tikz('figurehandle',this_fig,'filename',[fname '_raw.tex']);
+if to_save
+    for i = 1:length(all_figs)
+        fname = sprintf('%sfigure_s2_%d', foldername, i);
+        this_fig = all_figs{i};
+        if isempty(this_fig)
+            continue
+        end
+        set(this_fig, 'Position', get(0, 'Screensize'));
+        saveas(this_fig, fname, 'png');
+        matlab2tikz('figurehandle',this_fig,'filename',[fname '_w_error.tex']);
+    end
 end
 %==========================================================================
 
 
 %% Supplementary Figure 3: sparse lambda errors for all worms (ID signal)
+warning('Will clear all variables; Press enter if this is okay')
+pause
+clear all
+
+
 num_figures = 1;
 all_figs = cell(num_figures,1);
 
 filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
 
-to_plot_global_only = false;
+% Overall settings... determines how long this will take!
+which_worms = [1, 3, 4];
+num_runs = 100;
 
+% Settings for each object
 model_settings = struct(...
     'to_subtract_mean',false,...
     'to_subtract_mean_sparse',false,...
@@ -688,7 +782,7 @@ model_settings = struct(...
 global_signal_modes = {{'ID_binary_and_grad'}};
 iterate_setting = 'global_signal_mode';
 % lambda_vec = linspace(0.0185, 0.08, 400);
-lambda_vec = linspace(0.03, 0.08, 400);
+lambda_vec = linspace(0.03, 0.08, num_runs);
 % lambda_vec = linspace(0.02, 0.1, 20);
 settings = struct(...
     'base_settings', model_settings,...
@@ -698,9 +792,11 @@ settings = struct(...
     'fields_to_plot',{{{'AdaptiveDmdc_obj','calc_reconstruction_error'},...
                         {'S_sparse_nnz'}}});
 
-this_pareto_obj = cell(num_figures,1);
+% this_pareto_obj = cell(num_figures,1);
 use_baseline = false;
+to_plot_global_only = false;
 % this_scale_factor = 1e-9;
+default_lines = cell(1, length(which_worms));
 this_scale_factor = 2e-10;
 if use_baseline
     baseline_func_persistence = ...
@@ -709,14 +805,15 @@ if use_baseline
         @(x,~) x.run_with_only_global_control(...
         @(x2)x2.AdaptiveDmdc_obj.calc_reconstruction_error() );
 end
-for i=1:num_figures
-    settings.file_or_dat = sprintf(filename_template, i);
-    this_pareto_obj{i} = ParetoFrontObj('CElegansModel', settings);
+for i = 1:length(which_worms)
+    clear this_pareto_obj
+    settings.file_or_dat = sprintf(filename_template, which_worms(i));
+    this_pareto_obj = ParetoFrontObj('CElegansModel', settings);
     
     for i2=1:length(global_signal_modes{1})
         this_global_mode = global_signal_modes{1}{i2};
         % Combine error data and number of nonzeros
-        this_pareto_obj{i}.save_combined_y_val(...
+        this_pareto_obj.save_combined_y_val(...
             sprintf('%s_AdaptiveDmdc_obj_calc_reconstruction_error',this_global_mode),...
             sprintf('%s_S_sparse_nnz',this_global_mode),...
             this_scale_factor);
@@ -725,8 +822,8 @@ for i=1:num_figures
     % Calculate a persistence baseline and combine with nnz
     this_global_mode = global_signal_modes{1}{1};
     if use_baseline
-        this_pareto_obj{i}.save_baseline(this_global_mode, baseline_func_persistence);
-        this_pareto_obj{i}.save_combined_y_val(...
+        this_pareto_obj.save_baseline(this_global_mode, baseline_func_persistence);
+        this_pareto_obj.save_combined_y_val(...
             sprintf('baseline__%s',this_global_mode),...
             sprintf('%s_S_sparse_nnz',this_global_mode),...
             this_scale_factor);
@@ -735,15 +832,26 @@ for i=1:num_figures
     % Calculate the error with only the global control signal, and combine
     if to_plot_global_only
         y_global_str = sprintf('global_only_%s',this_global_mode);
-        this_pareto_obj{i}.save_y_vals(...
+        this_pareto_obj.save_y_vals(...
             iterate_setting, [], y_func_global);
-        this_pareto_obj{i}.save_combined_y_val(...
+        this_pareto_obj.save_combined_y_val(...
             sprintf('%s_custom_func', this_global_mode),...
             sprintf('%s_S_sparse_nnz',this_global_mode),...
             this_scale_factor);
     end
     
-    all_figs{i} = this_pareto_obj{i}.plot_pareto_front('combine');
+    if isempty(all_figs{1})
+        all_figs{1} = this_pareto_obj.plot_pareto_front('combine');
+        leg_cell = ...
+            {sprintf('Behavioral ID (worm %d)',which_worms(i)),...
+            sprintf('Default value (worm %d)',which_worms(i))};
+    else
+        this_pareto_obj.plot_pareto_front('combine', true, all_figs{1});
+        leg_cell = ...
+            [leg_cell ...
+            {sprintf('Behavioral ID (worm %d)',which_worms(i)),...
+            sprintf('Default value (worm %d)',which_worms(i))}]; %#ok<AGROW>
+    end
     xlabel('\lambda')
     ylabel('Weighted Error')
     
@@ -751,18 +859,23 @@ for i=1:num_figures
     hold on
 %     lambda_default = 0.043;
     [min_error, lambda_default] = min(...
-        this_pareto_obj{1}.y_struct.combine__ID_binary__ID_binary_);
-    lambda_default = this_pareto_obj{1}.x_vector(lambda_default);
-    hax = all_figs{i}.Children(2);
-    tmp = line([lambda_default lambda_default],get(hax,'YLim'),...
+        this_pareto_obj.y_struct.combine__ID_binary__ID_binary_);
+    lambda_default = this_pareto_obj.x_vector(lambda_default);
+    hax = all_figs{1}.Children(2);
+    default_lines{i} = line([lambda_default lambda_default],get(hax,'YLim'),...
         'Color',[0 0 0], 'LineWidth',2, 'LineStyle','-.');
-    hLegend = findobj(all_figs{i}, 'Type', 'Legend');
-    legend({'Behavioral ID', 'Default value'});
+    hLegend = findobj(all_figs{1}, 'Type', 'Legend');
+    legend(leg_cell);
     fprintf('The minimum error is %.3f at \lambda=%.3f\n',...
         min_error, lambda_default)
 %     legend({'Full Behavioral ID', 'Simplified ID', 'Default value'});
 end
 
+% Set all the lines to the same height
+hax = all_figs{1}.Children(2);
+for i = 1:length(default_lines)
+    default_lines{i}.YData =  get(hax,'YLim');
+end
 %---------------------------------------------
 % Save figures
 %---------------------------------------------

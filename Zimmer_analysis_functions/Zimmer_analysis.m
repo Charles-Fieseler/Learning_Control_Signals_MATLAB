@@ -4234,10 +4234,10 @@ settings = struct(...
     'add_constant_signal',false,...
     'filter_window_dat',0,...
     'filter_window_global',10,...
-    'filter_aggressiveness',1.5,... % New mode
+    'filter_aggressiveness',1.1,... % New mode
     'use_deriv',true,...
     'to_normalize_deriv',true,...
-    'lambda_sparse',0);
+    'lambda_sparse',0); % NO SPARSE CONTROLLER
 settings.global_signal_mode = 'ID_binary_and_grad';
 % settings.global_signal_mode = 'ID_binary_and_x_times_state';
 % settings.global_signal_mode = 'RPCA_and_grad';
@@ -4335,6 +4335,92 @@ fraction_sparse = sparse_signal_sum./normalize;
 bin_width = 1e-3;
 histogram(fraction_sparse, 'BinWidth',bin_width)
 title('Per-neuron fraction of sparse control signal activity')
+
+% More plots!
+% Look at the reconstructions errors with only the global signal
+% (unfiltered)
+
+figure;
+histogram(global_dat,'BinWidth',1e-2)
+title('Per-neuron reconstruction error')
+
+[global_sorted, global_ind] = sort(global_dat);
+disp(global_ind(end-10:end))
+
+%% Look at different norms: 3d space of L_inf, L2, and "outlier spread"
+obj = my_model_global;
+this_dat = obj.dat;
+this_approx = ...
+    obj.AdaptiveDmdc_obj.calc_reconstruction_control([],[],false);
+
+dat_inf = zeros(num_neurons,1);
+dat_L2 = zeros(num_neurons,1);
+dat_spread = zeros(num_neurons,1);
+
+for i = 1:num_neurons
+    dat_diff = this_dat(i,:) - this_approx(i,:);
+    dat_diff = dat_diff - mean(dat_diff);
+%     dat_diff = dat_diff./std(dat_diff);
+    
+%     outlier_ind = find(isoutlier(dat_diff));
+%     outlier_ind = outlier_ind(2:end-1);
+%     sz = length(outlier_ind);
+%     start_ind = 0;
+%     end_ind = 0;
+%     for i2 = 1:(sz-1)
+%         if sz==1
+%             break
+%         end
+%         % Check to make sure outliers have neighbors (more robust)
+%         if start_ind==0 && ...
+%                 outlier_ind(i2+1)==(outlier_ind(i2)+1)
+%             start_ind = i2;
+%         end
+%         if end_ind==0 && ...
+%                 outlier_ind(end-i2+1)==(outlier_ind(end-i2)+1)
+%             end_ind = i2;
+%         end
+%         if start_ind>0 && end_ind>0
+%             dat_spread(i) = outlier_ind(end-end_ind) - ...
+%                 outlier_ind(start_ind);
+%         end
+%     end
+    
+    dat_diff = abs(dat_diff);
+    dat_inf(i) = norm(dat_diff, Inf);
+    dat_L2(i) = norm(dat_diff, 2);
+%     dat_inf(i) = norm(dat_diff, Inf)/norm(dat_diff, 2);
+%     dat_inf(i) = norm(dat_diff, Inf)/norm(this_approx(i,:), Inf);
+%     dat_L2(i) = norm(dat_diff, 2)/trapz(this_approx(i,:));
+    dat_spread(i) = max(this_dat(i,:))/norm(this_dat(i,:));
+%     dat_spread(i) = max(this_dat(i,:))/std(this_dat(i,:));
+%     dat_spread(i) = max(this_dat(i,:))/max(this_approx(i,:));
+    % Top 10% and bottom 90% of errors
+%     cutoff = quantile(dat_diff, 0.95);
+%     dat_inf(i) = norm(dat_diff(dat_diff>=cutoff), 2);
+%     dat_L2(i) = norm(dat_diff(dat_diff<cutoff), 2);
+    
+    fprintf('Inf norm:%.2f; L2 norm:%.1f; Spread:%d; max/std:%.2f\n',...
+        dat_inf(i), dat_L2(i), dat_spread(i), max(this_dat(i,:))/std(this_dat(i,:)))
+%     obj.plot_reconstruction_interactive(true,i);
+%     pause
+end
+figure;
+groups = {{[2, 15, 121]}, ...
+    {[1, 101, 5, 62, 63, 64]},...
+    {[42, 44, 90]},...
+    {[72, 84, 76, 77, 128]},...
+    {[44, 46, 83, 93, 53, 57, 38, 68, 59]}};
+scatter3(dat_inf, dat_L2, dat_spread);
+hold on
+for i = 1:length(groups)
+    ind = groups{i}{:};
+    scatter3(dat_inf(ind), dat_L2(ind), dat_spread(ind),100,'*');
+end
+legend({'All data', 'Single events','A couple events','Transitions','Noisy state-labels','Clean State Labels'})
+xlabel('Infinity Norm')
+ylabel('L2 Norm')
+zlabel('Spread of outliers')
 %==========================================================================
 
 
@@ -4378,6 +4464,493 @@ bin_width = 1e-3;
 histogram(total_err,'BinWidth',bin_width);
 
 
+%==========================================================================
+
+
+%% Use hold-out cross-validation
+filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
+% dat = importdata(filename);
+% num_neurons = size(dat.traces,2);
+% num_slices = size(dat.traces,1);
+
+% First the baseline settings
+ad_settings = struct('cross_val_fraction',0.15);
+sparsity_goal = 0.6; %Default value
+ad_settings.sparsity_goal = sparsity_goal;
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    ...'dmd_mode','func_DMDc',...
+    'dmd_mode','sparse',...
+    'add_constant_signal',false,...
+    ...'filter_window_dat',6,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true,...
+    'AdaptiveDmdc_settings',ad_settings);
+settings.global_signal_mode = 'ID_binary_and_grad';
+
+num_worms = 5;
+err_train = zeros(100, num_worms);
+err_test = zeros(1,num_worms);
+for i=1:num_worms
+    filename = sprintf(filename_template,i);
+    my_model_crossval = CElegansModel(filename, settings);
+
+    % Use crossvalidation functions
+    err_train(:,i) = my_model_crossval.AdaptiveDmdc_obj.calc_baseline_error();
+    err_test(i) = my_model_crossval.AdaptiveDmdc_obj.calc_test_error();
+    
+    % Print summary statistics
+    fprintf('For worm %d:\n', i)
+    fprintf('Mean of training errors x10^4: %.2f\n',...
+        (1e4)*mean(err_train(:,i)))
+    fprintf('Std of training errors x10^4: %.2f\n',(1e4)*std(err_train(:,i)))
+    fprintf('Test error x10^4: %.2f\n',...
+        (1e4)*err_test(i))
+end
+
+figure
+plot(err_test,'or','LineWidth',2)
+hold on
+boxplot(err_train)
+ylim([0, 1.1*max(err_test)])
+title('Box plot of training errors vs. test data error')
+
+%==========================================================================
+
+
+%% Use external cross-validation object
+filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
+
+% First the baseline settings
+ad_settings = struct('cross_val_fraction',0.15);
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    ...'filter_window_dat',6,...
+    'use_deriv',false,...
+    'to_normalize_deriv',true,...
+    'lambda_sparse',0,...
+    'AdaptiveDmdc_settings',ad_settings);
+settings.global_signal_mode = 'ID_binary_and_grad';
+
+% num_worms = 5;
+num_worms = 1;
+err_train = zeros(100, num_worms);
+err_test = zeros(1,num_worms);
+all_cross_vals = cell(num_worms, 1);
+
+for i=1:num_worms
+    filename = sprintf(filename_template,i);
+    my_model_crossval = CElegansModel(filename, settings);
+
+    % Use crossvalidation functions
+    err_train(:,i) = my_model_crossval.AdaptiveDmdc_obj.calc_baseline_error();
+    err_test(i) = my_model_crossval.AdaptiveDmdc_obj.calc_test_error();
+    
+    % Use external cross validation object
+    dmd_func = @(X1,X2,u,~) ...
+        my_model_crossval.AdaptiveDmdc_obj.calc_one_step_error(X1,X2,u);
+    num_folds = 10;
+    num_trials = 20;
+    cross_val_test_errors = zeros(num_folds, num_trials);
+    cross_val_train_errors = zeros(num_folds, num_trials);
+    for i2 = 1:num_trials
+        settings2 = struct('num_test_columns',5*i2, ...
+            'control_signal',my_model_crossval.control_signal,...
+            'num_folds_to_test', 10);
+        this_cross_val = CrossValidationDmd(...
+            my_model_crossval.dat, dmd_func, settings2);
+        cross_val_test_errors(:,i2) = this_cross_val.test_errors;
+        cross_val_train_errors(:,i2) = this_cross_val.train_errors;
+%         this_cross_val.plot_box();
+    end
+    % Plot these errors
+    fig = figure;
+    boxplot(cross_val_test_errors);
+    test_ylim = ylim;
+    hold on
+    boxplot(cross_val_train_errors);
+    all_limits = [test_ylim ylim];
+    ylim([min(all_limits), max(all_limits)]);
+    
+    % Print summary statistics
+    fprintf('For worm %d:\n', i)
+    fprintf('Mean of training errors x10^4: %.2f\n',...
+        (1e4)*mean(err_train(:,i)))
+    fprintf('Std of training errors x10^4: %.2f\n',(1e4)*std(err_train(:,i)))
+    fprintf('Test error x10^4: %.2f\n',...
+        (1e4)*err_test(i))
+end
+
+figure
+plot(err_test,'or','LineWidth',2)
+hold on
+boxplot(err_train)
+ylim([0, 1.1*max(err_test)])
+title('Box plot of training errors vs. test data error')
+
+
+
+
+
+%==========================================================================
+
+
+%% Add a couple 'spike-like' neurons with NO sparse controller
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+dat = importdata(filename);
+num_neurons = size(dat.traces,2);
+
+% First calculate the baseline model
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'use_deriv',true,...
+    'to_normalize_deriv',true,...
+    'lambda_sparse',0);
+%     'augment_data',6);
+settings.global_signal_mode = 'ID_binary_and_grad';
+my_model_residual = CElegansModel(filename, settings);
+
+% Now add some interesting neurons in
+%   UPDATE: The "DIVERGENCE" notes below were from a bug... actually adding
+%   most of these does better! Adding in all of them does by far the best
+%   relatively.
+
+% All unnamed neurons, but quite cleanly spikey
+%   Result: somewhat better; same w/derivs
+neurons_of_interest = [2, 15, 121];
+
+% Still all unnamed
+%   Result: somewhat better; not as good w/derivs
+% neurons_of_interest = [1, 5, 62:64, 101];
+neurons_of_interest = [neurons_of_interest, [1, 5, 62:64, 101]];
+
+% SMDXX
+%   Result: Actually doesn't help on the L2 error, but looks better by eye
+% neurons_of_interest = [42, 44, 90];
+% neurons_of_interest = [neurons_of_interest, [42, 44, 90]]; % Goes unstable when paired with spikers
+% neurons_of_interest = [42]; % Doesn't help
+% neurons_of_interest = [44]; % Destabilizing a bit
+% neurons_of_interest = [90]; % Doesn't help
+
+% AVB, RIB, unnamed
+%   Result: Helps a goood bit; similar with derivatives
+neurons_of_interest = [72, 84, 76, 77, 128];
+
+% Also add the derivatives
+neurons_of_interest = [neurons_of_interest, neurons_of_interest+num_neurons];
+
+% Make the actual model
+ad_settings = my_model_residual.AdaptiveDmdc_settings;
+ad_settings.x_indices(neurons_of_interest) = [];
+settings.AdaptiveDmdc_settings = ad_settings;
+my_model_residual2 = CElegansModel(filename, settings);
+
+% Exploratory plots and headline error
+fprintf('Error for base model is %f\n',...
+    my_model_residual.AdaptiveDmdc_obj.calc_reconstruction_error())
+fprintf('Error for augmented model is %f\n',...
+    my_model_residual2.AdaptiveDmdc_obj.calc_reconstruction_error())
+
+% my_model_residual.plot_reconstruction_interactive(false);
+% title('Original model')
+% my_model_residual2.plot_reconstruction_interactive(false);
+% title('Augmented model')
+my_model_residual2.plot_colored_reconstruction();
+%==========================================================================
+
+
+%% Use hold-out cross-validation as a function of percent
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+% First the baseline settings
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    ...'filter_window_dat',6,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true...,...
+    );%'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_and_grad';
+
+num_runs = 10;
+cross_val_window_size_percent = 0.7;
+
+% all_percents = linspace(0.3, 0.05, num_runs);
+all_percents = linspace(0.45, 0.15, num_runs);
+err_train = zeros(200, num_runs);
+if cross_val_window_size_percent == 1
+    err_test = zeros(1,num_runs);
+else
+    err_test = zeros(size(err_train));
+end
+all_cross_vals = cell(num_runs, 1);
+
+for i = 1:num_runs
+    ad_settings = struct('hold_out_fraction',all_percents(i),...
+        'cross_val_window_size_percent', cross_val_window_size_percent);
+    settings.AdaptiveDmdc_settings = ad_settings;
+    my_model_crossval = CElegansModel(filename, settings);
+
+    % Use crossvalidation functions
+    err_train(:,i) = my_model_crossval.AdaptiveDmdc_obj.calc_baseline_error();
+    if cross_val_window_size_percent == 1
+        err_test(i) = my_model_crossval.AdaptiveDmdc_obj.calc_test_error();
+    else
+        err_test(:,i) = my_model_crossval.AdaptiveDmdc_obj.calc_test_error();
+    end
+    
+    % Print summary statistics
+%     fprintf('For worm %d:\n', i)
+%     fprintf('Mean of training errors x10^4: %.2f\n',...
+%         (1e4)*mean(err_train(:,i)))
+%     fprintf('Std of training errors x10^4: %.2f\n',(1e4)*std(err_train(:,i)))
+%     fprintf('Test error x10^4: %.2f\n',...
+%         (1e4)*err_test(i))
+end
+
+figure
+if cross_val_window_size_percent == 1
+    plot(err_test,'or','LineWidth',2)
+else
+    boxplot(err_test,'colors',[1 0 0])
+end
+hold on
+boxplot(err_train)
+ylim([0, 1.1*max(max([err_test;err_train]))])
+xticklabels(round(all_percents,2))
+xlabel('Percent of data in hold-out set')
+ylabel('L2 error')
+title('Box plot of training errors vs. test data error')
+
+%==========================================================================
+
+
+%% Use plots from paper plots to look at a subset of bar charts
+all_figs = cell(5,1);
+
+filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
+% settings = struct(...
+%     'to_subtract_mean',false,...
+%     'to_subtract_mean_sparse',false,...
+%     'to_subtract_mean_global',false,...
+%     'dmd_mode','func_DMDc');
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    'filter_window_dat',3,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true);
+settings.global_signal_mode = 'ID_binary';
+% settings.global_signal_mode = 'ID_binary_and_grad';
+
+%---------------------------------------------
+% Calculate 5 worms and get roles
+%---------------------------------------------
+all_models = cell(5,1);
+all_roles_dynamics = cell(5,2);
+all_roles_centroid = cell(5,2);
+all_roles_global = cell(5,2);
+for i=1:5
+    filename = sprintf(filename_template,i);
+    if i==4
+        settings.lambda_sparse = 0.035; % Decided by looking at pareto front
+    else
+        settings.lambda_sparse = 0.05;
+    end
+    all_models{i} = CElegansModel(filename,settings);
+end
+
+%%
+max_err_percent = 0.25;
+only_named_neurons = false;
+num_neurons = size(combined_dat_global,1);
+for i=1:5
+%     % Use the dynamic fixed point
+%     [all_roles_dynamics{i,1}, all_roles_dynamics{i,2}] = ...
+%         all_models{i}.calc_neuron_roles_in_transition(true, [], true);
+%     % Just use centroid of a behavior
+%     [all_roles_centroid{i,1}, all_roles_centroid{i,2}] = ...
+%         all_models{i}.calc_neuron_roles_in_transition(true, [], false);
+    % Global mode actuation
+    [all_roles_global{i,1}, all_roles_global{i,2}] = ...
+        all_models{i}.calc_neuron_roles_in_global_modes(...
+        only_named_neurons, [], max_err_percent);
+end
+
+%---------------------------------------------
+% Data preprocessing
+%---------------------------------------------
+% [ combined_dat_dynamic, all_labels_dynamic ] =...
+%     combine_different_trials( all_roles_dynamics );
+% [ combined_dat_centroid, all_labels_centroid ] =...
+%     combine_different_trials( all_roles_centroid );
+[ combined_dat_global, all_labels_global ] =...
+    combine_different_trials( all_roles_global, ~only_named_neurons );
+
+%---------------------------------------------
+% Roles for global neurons
+%---------------------------------------------
+% First make the field names the same
+d = containers.Map(...
+    {'group 1', 'group 2', 'other', '', 'both', 'high error'},...
+    {'simple REVSUS', 'simple FWD', 'other', '', 'both', 'z_error'});
+combined_dat_global = cellfun(@(x) d(x), combined_dat_global,...
+    'UniformOutput', false);
+possible_roles = unique(combined_dat_global);
+possible_roles(cellfun(@isempty,possible_roles)) = [];
+role_counts = zeros(num_neurons,length(possible_roles));
+for i=1:length(possible_roles)
+    role_counts(:,i) = sum(...
+        strcmp(combined_dat_global, possible_roles{i}),2);
+end
+all_figs{3} = figure('DefaultAxesFontSize',14);
+if only_named_neurons
+    % Long names mean it was an ambiguous identification
+    name_lengths = cellfun(@(x) length(x)<6, all_labels_global)';
+    this_ind = find((sum(role_counts,2)>3).*name_lengths);
+    b = bar(role_counts(this_ind,:), 'stacked');
+    xticks(1:length(this_ind));
+    xticklabels(all_labels_global(this_ind))
+    xtickangle(90)
+else
+    b = bar(role_counts, 'stacked');
+end
+for i=1:length(b)
+    b(i).FaceColor = my_cmap_3d(i,:);
+end
+legend([possible_roles(1:end-1); {'high error'}])
+yticks(1:max(max((role_counts))))
+ylabel('Number of times identified')
+title('Neuron roles using global mode activation')
+
+%---------------------------------------------
+% Look at a model with VERY bad AVB reconstructions
+%---------------------------------------------
+% i=2;
+% tol = 0.001;
+% n = all_models{i}.original_sz(1)/2;
+% tmp = all_models{i}.AdaptiveDmdc_obj.A_separate;
+% tmp(abs(tmp)<tol) = 0;
+% figure
+% imagesc(tmp(1:n,(2*n+1):(2*n+9)))
+% xticklabels(all_models{i}.state_labels_key)
+% all_models{i}.plot_reconstruction_interactive(true, 'AVB');
+%==========================================================================
+
+
+%% Use hold-out cross-validation as a function of truncation rank
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+% First the baseline settings
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true...,...
+    );%'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_and_grad';
+
+cross_val_window_size_percent = 0.7;
+
+% all_ranks = 3:5:75;
+all_ranks = 1:30;
+num_runs = length(all_ranks);
+err_train = zeros(200, num_runs);
+if cross_val_window_size_percent == 1
+    err_test = zeros(1,num_runs);
+else
+    err_test = zeros(size(err_train));
+end
+all_cross_vals = cell(num_runs, 1);
+
+for i = 1:num_runs
+    ad_settings = struct('hold_out_fraction',0.2,...
+        'cross_val_window_size_percent', cross_val_window_size_percent,...
+        'truncation_rank', all_ranks(i),...
+        'truncation_rank_control', all_ranks(i));
+    settings.AdaptiveDmdc_settings = ad_settings;
+    my_model_crossval = CElegansModel(filename, settings);
+
+    % Use crossvalidation functions
+    err_train(:,i) = my_model_crossval.AdaptiveDmdc_obj.calc_baseline_error();
+    if cross_val_window_size_percent == 1
+        err_test(i) = my_model_crossval.AdaptiveDmdc_obj.calc_test_error();
+    else
+        err_test(:,i) = my_model_crossval.AdaptiveDmdc_obj.calc_test_error();
+    end
+end
+
+figure
+if cross_val_window_size_percent == 1
+    plot(err_test,'or','LineWidth',2)
+else
+    boxplot(err_test,'colors',[1 0 0])
+end
+hold on
+boxplot(err_train)
+ylim([0, 1.1*max(max([err_test;err_train]))])
+xticklabels(round(all_ranks,2))
+xlabel('Truncation rank')
+ylabel('L2 error')
+title('Box plot of training errors vs. test data error')
+
+%==========================================================================
+
+
+%% Examine correlation coefficients of data and reconstructions
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+% First the settings and model
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true);
+settings.global_signal_mode = 'ID_binary_and_grad';
+my_model_errors = CElegansModel(filename, settings);
+
+dat = my_model_errors.dat;
+approx = my_model_errors.AdaptiveDmdc_obj.calc_reconstruction_control();
+R = zeros(size(dat,1),1);
+P = zeros(size(dat,1),1);
+for i = 1:size(dat,1)
+    [tmp_R, tmp_P] = corrcoef(dat(i,:), approx(i,:));
+    R(i) = tmp_R(2,1); % Get off-diagonal element
+    P(i) = tmp_P(2,1); % Get off-diagonal element
+end
+
+figure;
+plot(R);
+figure;
+plot(P)
+
+err = find(R(1:129)<0.5);
+my_model_errors.plot_reconstruction_interactive(false, err);
+
+good = find(R(1:129)>0.95);
+my_model_errors.plot_reconstruction_interactive(false, good);
 %==========================================================================
 
 
