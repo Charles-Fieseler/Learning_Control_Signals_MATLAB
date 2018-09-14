@@ -515,7 +515,8 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function calc_AdaptiveDmdc(self)
             % Uses external class AdaptiveDmdc
-            self.AdaptiveDmdc_obj = AdaptiveDmdc(self.dat_with_control,...
+            self.AdaptiveDmdc_obj = AdaptiveDmdc(...
+                [self.dat; self.control_signal],...
                 self.AdaptiveDmdc_settings);
         end
         
@@ -981,7 +982,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             attractor_overlap = attractor_overlap./all_norms;
             % Get names and sort if required
-            neuron_names = self.AdaptiveDmdc_obj.get_names();
+            neuron_names = self.AdaptiveDmdc_obj.get_names([],[],false,false);
             if use_only_known_neurons
                 neuron_ind = ~strcmp(neuron_names,'');
                 neuron_names = neuron_names(neuron_ind);
@@ -1021,23 +1022,52 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function [neuron_roles, neuron_names] = ...
                 calc_neuron_roles_in_global_modes(self,...
-                use_only_known_neurons, abs_tol)
-            if ~exist('use_only_known_neurons','var')
+                use_only_known_neurons, class_tol, max_err_percent)
+            if ~exist('use_only_known_neurons','var') || ...
+                    isempty(use_only_known_neurons)
                 use_only_known_neurons = true;
             end
-            if ~exist('abs_tol','var')
-                abs_tol = 0.001;
+            if ~exist('class_tol','var') || isempty(class_tol)
+                class_tol = 0.001;
+            end
+            if ~exist('max_err_percent','var') || isempty(max_err_percent)
+                max_err_percent = 0;
             end
             
             num_neurons = self.original_sz(1);
-            B_global = self.AdaptiveDmdc_obj.A_original(1:num_neurons,...
-                            (2*num_neurons+1):end-2);
-            % Narrow these down to which neurons are important for which behaviors
-            %   Assume a single control signal (ID); ignore offset
-            group1 = (B_global > abs_tol);
-            group2 = (B_global < -abs_tol);
+            if any(ismember(self.control_signals_metadata.Row,'ID'))
+                ind = self.control_signals_metadata{'ID',:}{:};
+                B_global = self.AdaptiveDmdc_obj.A_original(1:num_neurons,...
+                                ...(2*num_neurons+1):end-2);
+                                num_neurons+ind);
+                % Narrow these down to which neurons are important for which behaviors
+                %   Assume a single control signal (ID); ignore offset
+                group1 = (B_global > class_tol);
+                group2 = (B_global < -class_tol);
+            elseif any(ismember(self.control_signals_metadata.Row,'ID_binary'))
+                ind = self.control_signals_metadata{'ID_binary',:}{:};
+                assert(~any(ismember(self.control_signals_metadata.Row,'constant')),...
+                    'A constant control will give incorrect results')
+                B_global = self.AdaptiveDmdc_obj.A_original(1:num_neurons,...
+                                ...(2*num_neurons+1):end-2);
+                                num_neurons+ind);
+                fwd_ind = contains(self.state_labels_key,...
+                    {'FWD','SLOW'});
+                rev_ind = contains(self.state_labels_key,...
+                    {'REVSUS','REV1','REV2'});
+                if isempty(fwd_ind)
+                    fwd_ind = contains(self.state_labels_key,...
+                        {'simple FWD'});
+                    rev_ind = contains(self.state_labels_key,...
+                        {'simple REVSUS'});
+                end
+                % Narrow these down to which neurons are important for which behaviors
+                %   Assume a single control signal (ID); ignore offset
+                group1 = (sum(B_global(:,rev_ind),2) > class_tol);
+                group2 = (sum(B_global(:,fwd_ind),2) > class_tol);
+            end
             % Get names and sort if required
-            neuron_names = self.AdaptiveDmdc_obj.get_names();
+            neuron_names = self.AdaptiveDmdc_obj.get_names([],[],false, false);
             if use_only_known_neurons
                 neuron_ind = ~strcmp(neuron_names,'');
                 neuron_names = neuron_names(neuron_ind);
@@ -1045,17 +1075,53 @@ classdef CElegansModel < SettingsImportableFromStruct
                 neuron_ind = 1:self.original_sz(1);
             end
             neuron_ind = find(neuron_ind);
+            % Treat high error neurons as a different category
+            %   Error is the reconstruction error normalized by the neuron
+            %   activity L2 norm
+            if max_err_percent>0
+                approx_dat = self.AdaptiveDmdc_obj.calc_reconstruction_control();
+%                 all_err = ...
+%                     sum( (self.dat - approx_dat).^2,2 ) ./...
+%                     sum(self.dat.^2,2);
+                all_err = self.calc_balanced_error(approx_dat);
+                group_error = (all_err>max_err_percent);
+            else
+                group_error = zeros(size(group1));
+            end
             % Cast into strings
             neuron_roles = cell(size(neuron_ind));
             for i = 1:length(neuron_ind)
                 this_neuron = neuron_ind(i);
-                if group1(this_neuron)
+                if group_error(this_neuron)
+                    neuron_roles{i} = 'high error';
+                elseif group1(this_neuron) && group2(this_neuron)
+                    neuron_roles{i} = 'both';
+                elseif group1(this_neuron)
                     neuron_roles{i} = 'group 1';
                 elseif group2(this_neuron)
                     neuron_roles{i} = 'group 2';
                 else
                     neuron_roles{i} = 'other';
                 end
+            end
+        end
+        
+        function err = calc_balanced_error(self, approx_dat)
+            % Calculates the error between the passed reconstruction and
+            % the original data by emphasizing "events" i.e. outliers in
+            % the error vector of each neuron
+            err_mat = real(self.dat - approx_dat);
+            
+%             x = 1:size(self.dat,1);
+            TF_err = isoutlier(err_mat, 'movmedian', 500, 2);
+%             TF_dat = isoutlier(self.dat, 'movmedian', 500, 2);
+            
+            err = zeros(size(self.dat,1),1);
+            for i = 1:length(err)
+                err(i) = ...
+                    ( sum(err_mat(i,TF_err(i,:)).^2,2) + ...
+                    0.5*sum(err_mat(i,:).^2,2) ) / ...
+                    (1 + 1.5*sum(self.dat(i,:).^2,2) );
             end
         end
     end
@@ -1198,6 +1264,19 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             if ~exist('neuron_ind','var')
                 neuron_ind = 0;
+            elseif ischar(neuron_ind)
+                neuron_ind = ...
+                    find(contains(self.AdaptiveDmdc_obj.get_names(...
+                    [],[],false,false),neuron_ind));
+                assert(~isempty(neuron_ind),...
+                    'No neuron of that name found')
+            end
+            if length(neuron_ind)>1
+                for i = 1:length(neuron_ind)
+                    fig = self.plot_reconstruction_interactive(...
+                        include_control_signal, neuron_ind(i));
+                end
+                return
             end
             
             % Plot
@@ -1205,6 +1284,21 @@ classdef CElegansModel < SettingsImportableFromStruct
                 self.AdaptiveDmdc_obj.plot_reconstruction(true, ...
                 include_control_signal, true, neuron_ind);
             title('Data reconstructed with user-defined control signal')
+            
+            % If single neuron and control signal, then do a 2-panel
+            % subplot
+            if include_control_signal && neuron_ind>0 &&...
+                    any(contains(self.control_signals_metadata.Row,'sparse'))
+                ax = fig.Children(2);
+                subplot(2,1,1,ax);
+                subplot(2,1,2);
+                plot(self.control_signal(neuron_ind,:),...
+                    'LineWidth',2)
+                title('Sparse control signal')
+                xlim([0,self.original_sz(2)])
+%                 hold on
+%                 plot(
+            end
             
             % Setup interactivity
             if neuron_ind == 0
@@ -1275,7 +1369,8 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             this_dat = self.AdaptiveDmdc_obj.calc_reconstruction_control();
             modes_3d = self.L_sparse_modes(:,1:3);
-            x = 1:size(modes_3d,1);
+%             x = 1:size(modes_3d,1);
+            x = self.x_indices;
             proj_3d = (modes_3d.')*this_dat(x,:);
             if use_same_fig
                 plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), 'k*')
@@ -1435,7 +1530,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                 case 'mean_and_difference'
                     proj_3d = sum(arrow_length.*proj_3d,2);
                     proj_3d = proj_3d - arrow_base;
-                    arrow_length = 20*ones(size(arrow_length));
+%                     arrow_length = 20*ones(size(arrow_length));
+                    arrow_length = ones(size(arrow_length));
                     
                 otherwise
                     error('Unrecognized arrow_mode')
@@ -1450,7 +1546,9 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function fig = plot_colored_arrow_movie(self,...
                 attractor_view, use_generated_data, movie_filename,...
-                intrinsic_arrow_mode, show_reconstruction, pause_time)
+                intrinsic_arrow_mode, show_reconstruction,...
+                arrow_factor,...
+                end_frame, pause_time, beginning_pause)
             % Plots a movie of the 3 different control signal directions:
             %    Intrinsic dynamics
             %    Sparse controller
@@ -1467,7 +1565,17 @@ classdef CElegansModel < SettingsImportableFromStruct
             %       origin instead of the current data point
             %   show_reconstruction (true) - to show the reconstructed data
             %       point as it travels or not
+            %   arrow_factor (1) - lengthen all arrows
+            %   end_frame (self.original_sz(2)) - how many frames to show
             %   pause_time (0) - pause time between time steps
+            %   beginning_pause (false) - pause at the beginning (i.e. to
+            %       change plot settings/zoom/etc)?
+            %
+            % Summary of algorithm:
+            %   Get the current neuron activities (***_length)
+            %   Get the relevant matrix entries (A or B)
+            %   Multiply to get the next time step, e.g. x_{k+1}=A*x_k
+            %   Plot this arrow, using the current point as a base
             if ~exist('attractor_view','var') || isempty(attractor_view)
                 attractor_view = true;
             end
@@ -1483,9 +1591,19 @@ classdef CElegansModel < SettingsImportableFromStruct
             if ~exist('show_reconstruction','var') || isempty(show_reconstruction)
                 show_reconstruction = true;
             end
+            if ~exist('arrow_factor', 'var')
+                arrow_factor = 1;
+            end
+            if ~exist('end_frame','var')
+                end_frame = self.original_sz(2);
+            end
             if ~exist('pause_time','var')
                 pause_time = 0.00;
             end
+            if ~exist('beginning_pause','var')
+                beginning_pause = false;
+            end
+            % Set up the background data figure
             fig = self.plot_colored_data(false, 'o');
             [~, b] = fig.Children.Children;
             alpha(b, 0.2)
@@ -1498,16 +1616,34 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             num_neurons = self.original_sz(1);
             neuron_ind = 1:num_neurons;
-            arrow_factor = 1;
-            global_ind = ((2*num_neurons+1):self.total_sz(1)) - ...
-                num_neurons;
+            % Get the indices for the global and sparse modes, if any
+            ctr_name = self.global_signal_mode;
+            if contains(ctr_name, '_and_')
+                ind = strfind(ctr_name,'_and_');
+                ctr_name = ctr_name(1:(ind-1));
+            end
+            global_ind = num_neurons + ...
+                self.control_signals_metadata{ctr_name,:}{:};
+            sparse_ctr_id = ...
+                contains(self.control_signals_metadata.Row,'sparse');
+            if any(sparse_ctr_id)
+                use_sparse = true;
+                sparse_ind = ...
+                    self.control_signals_metadata{sparse_ctr_id,:}{:};
+            else
+                use_sparse = false;
+            end
             this_dat = self.dat_without_control - ...
                 mean(self.dat_without_control,2);
+            % Get the control signals associated with the types of
+            % controllers
             if ~use_generated_data
-                this_ctr_sparse = ...
-                    self.dat_with_control((num_neurons+1):(2*num_neurons),:);
-                this_ctr_global = ...
-                    self.dat_with_control((2*num_neurons+1):end,:);
+                if use_sparse
+                    this_ctr_sparse = self.control_signal(sparse_ind,:);
+                else
+                    this_ctr_sparse = [];
+                end
+                this_ctr_global = self.dat_with_control(global_ind,:);
             else
                 this_ctr_sparse = ...
                     self.control_signal_generated(1:num_neurons,:);
@@ -1529,11 +1665,27 @@ classdef CElegansModel < SettingsImportableFromStruct
                 this_reconstruction = this_reconstruction(neuron_ind,:);
                 all_arrow_bases = modes_3d * this_reconstruction;
                 all_dat_projected = modes_3d * this_dat;
+                % Fix axis limits, assuming the intrinsic arrows are the
+                % largest
+                control_direction = ...
+                    self.calc_control_direction(neuron_ind, true);
+                modes_3d = self.L_sparse_modes(:,1:3);
+                proj_3d = (modes_3d.')*control_direction;
+                arrow_length_intrinsic = (this_reconstruction*arrow_factor).';
+                
+                proj_3d = arrow_length_intrinsic*(proj_3d)';
+                self.expand_axes(fig, proj_3d);
             else
                 all_arrow_bases = modes_3d * this_dat;
             end
             
-            for i=1:self.original_sz(2)
+            % Loop through and possibly save a movie, but first pause so
+            % that the user can maximize/etc
+            if beginning_pause
+                disp('Change the figure settings as desired')
+                pause
+            end
+            for i = 1:end_frame
                 arrow_base = all_arrow_bases(:,i);
                 % Intrinsic
                 if show_reconstruction
@@ -1546,16 +1698,19 @@ classdef CElegansModel < SettingsImportableFromStruct
                     neuron_ind, arrow_base, arrow_length_intrinsic, fig,...
                     true, intrinsic_arrow_mode, 'b');
                 % Sparse controller
-                arrow_length_sparse = (this_ctr_sparse(:,i)*arrow_factor).';
-                self.plot_colored_control_arrow(...
-                    neuron_ind, arrow_base, 20*arrow_length_sparse, fig,...
-                    false, 'mean', 'r');
+                if use_sparse
+                    arrow_length_sparse = (this_ctr_sparse(:,i)*arrow_factor).';
+                    self.plot_colored_control_arrow(...
+                        neuron_ind, arrow_base, 20*arrow_length_sparse, fig,...
+                        false, 'mean', 'r');
+                end
                 % Global controller
                 if attractor_view
                     if strcmp(self.global_signal_mode, 'ID')
                         label_ind = this_ctr_global(1,i);
                     elseif contains(self.global_signal_mode, 'ID_binary')
-                        label_ind = find(this_ctr_global(:,i));
+%                         label_ind = find(this_ctr_global(:,i));
+                        label_ind = self.state_labels_ind(i);
                     end
                     label_str = self.state_labels_key{label_ind};
                     self.plot_colored_fixed_point(label_str, true, fig);
@@ -1583,12 +1738,16 @@ classdef CElegansModel < SettingsImportableFromStruct
                 end
                 pause(pause_time)
                 
+                % Prep the figure for the next loop
                 c = fig.Children.Children;
+                num_to_delete = 3;
                 if show_reconstruction
-                    delete(c(1:5));
-                else
-                    delete(c(1:4));
+                    num_to_delete = num_to_delete + 1;
                 end
+                if use_sparse
+                    num_to_delete = num_to_delete + 1;
+                end
+                delete(c(1:num_to_delete));
             end
             
             if ~isempty(movie_filename)
@@ -1934,6 +2093,10 @@ classdef CElegansModel < SettingsImportableFromStruct
                 case 'ID_binary'
                     binary_labels = self.calc_binary_labels(...
                         self.state_labels_ind);
+                    if ~isequal(sum(binary_labels,1),...
+                            ones(1,size(binary_labels,2)))
+                        warning('Not all time frames have state labels')
+                    end
                     % Also filter this so the gradients aren't so sharp
                     if self.filter_window_global>0
                         binary_labels = self.flat_filter(...
@@ -2189,15 +2352,21 @@ classdef CElegansModel < SettingsImportableFromStruct
             % Create the augmented dataset (these might have different
             % amounts of filtering, therefore slightly different sizes)
             L_low_rank = L_low_rank';
-            if ~isempty(sparse_signal)
+            if ~isempty(sparse_signal) && ~isempty(L_low_rank)
                 num_pts = min([size(L_low_rank,2) ...
                     size(sparse_signal,2) size(this_dat,2)]);
                 self.control_signal = ...
                     [sparse_signal(:,1:num_pts);...
                     L_low_rank(:,1:num_pts)];
-            else
+            elseif ~isempty(sparse_signal)
+                num_pts = min([size(sparse_signal,2) size(this_dat,2)]);
+                self.control_signal = sparse_signal(:,1:num_pts);
+            elseif ~isempty(L_low_rank)
                 num_pts = min([size(L_low_rank,2) size(this_dat,2)]);
                 self.control_signal = L_low_rank(:,1:num_pts);
+            else
+                num_pts = size(this_dat,2);
+                self.control_signal = [];
             end
             if ~isempty(self.custom_control_signal)
                 self.control_signal = [self.control_signal;
@@ -2324,6 +2493,9 @@ classdef CElegansModel < SettingsImportableFromStruct
             % Learns a cutoff frequency for each neuron (column)
             if ~exist('aggresiveness','var')
                 aggresiveness = 1.5;
+            else
+                assert(aggresiveness>1.0,...
+                    'Filter aggresiveness must be greater than 1.0')
             end
             sz = size(dat);
             assert(sz(1)>sz(2),...
@@ -2346,10 +2518,12 @@ classdef CElegansModel < SettingsImportableFromStruct
                 f = Fs*(0:(L/2))/L;
                 
                 % Learn a cutoff frequency
-                noise_level = max(P1(round(length(P1)/2):end)) * 1.5;
+                %   The lower the aggressiveness, the higher the
+                %   frequencies that are let through
+                noise_level = max(P1(round(length(P1)/2):end))*aggresiveness;
                 noise_beginning = f(find(P1-noise_level>0,1,'last'));
                 Fpass = noise_beginning;
-                Fstop = Fpass*aggresiveness;
+                Fstop = Fpass*1.5;
                 
                 % Design a low-pass filter 
                 Apass = 0.1;
@@ -2367,7 +2541,6 @@ classdef CElegansModel < SettingsImportableFromStruct
                 dat(:,i) = filtfilt(lpFilt, this_dat);
             end
         end
-        
         
     end
     
@@ -2434,6 +2607,23 @@ classdef CElegansModel < SettingsImportableFromStruct
             for i = 1:sz(1)
                 binary_labels(i,:) = (these_states==all_states(i));
             end
+        end
+        
+        function expand_axes(fig, dat)
+            % Expands axes for data that will be plotted, e.g. for a movie
+            figure(fig);
+            x = xlim;
+            x1 = min([dat(:,1); x(1)]);
+            x2 = max([dat(:,1); x(2)]);
+            xlim([x1 x2]);
+            y = ylim;
+            y1 = min([dat(:,2); y(1)]);
+            y2 = max([dat(:,2); y(2)]);
+            ylim([y1 y2]);
+            z = zlim;
+            z1 = min([dat(:,3); z(1)]);
+            z2 = max([dat(:,3); z(2)]);
+            zlim([z1 z2]);
         end
     end
     
