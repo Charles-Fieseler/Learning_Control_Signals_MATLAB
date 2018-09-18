@@ -49,10 +49,11 @@ my_model_state_labels = CElegansModel(filename, settings);
 
 % Plot the original data
 all_figs{1} = my_model_state_labels.plot_reconstruction_interactive(false, 45);
+my_model_state_labels.plot_colored_reconstruction();
 
-movie_filename = '';
+movie_filename = 'movie_state_labels';
 my_model_state_labels.plot_colored_arrow_movie(...
-                [], [], movie_filename, [], [], [], true);
+        [], [], movie_filename, [], [], 3, 1000, [], true);
 
 % Save figures
 if to_save
@@ -61,6 +62,16 @@ if to_save
     prep_figure_no_axis(this_fig);
     saveas(this_fig, fname, 'png');
 end
+
+%==========================================================================
+
+
+%% Interactive: Full model (movie)
+% Reuse the object from above
+movie_filename = 'movie_full_model';
+my_model_fixed_points.plot_colored_arrow_movie(...
+        [], [], movie_filename, [], [], 2, 1000, [], true);
+
 
 %==========================================================================
 
