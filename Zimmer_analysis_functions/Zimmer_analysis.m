@@ -3687,8 +3687,8 @@ my_model_residual.plot_colored_user_control([],false);
 
 
 %% Look at suspiciously spike-like neurons
-% filename4 = '../../Zimmer_data/WildType_adult/simplewt4/wbdataset.mat';
-filename4 = '../../Zimmer_data/WildType_adult/simplewt3/wbdataset.mat';
+filename4 = '../../Zimmer_data/WildType_adult/simplewt4/wbdataset.mat';
+% filename4 = '../../Zimmer_data/WildType_adult/simplewt3/wbdataset.mat';
 dat4 = importdata(filename4);
 
 labels_of_interest = {'RIVL','RIVR', 'SMDVR', 'SMDVL', 'SMBDR',...
@@ -4952,6 +4952,290 @@ my_model_errors.plot_reconstruction_interactive(false, err);
 good = find(R(1:129)>0.95);
 my_model_errors.plot_reconstruction_interactive(false, good);
 %==========================================================================
+
+
+%% Look at the eigenvalues for motor neurons (updated)
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true,...
+    'dmd_mode','func_DMDc');
+settings.global_signal_mode = 'ID_binary_and_grad';
+my_model_eigen = CElegansModel(filename, settings);
+
+% Find motor neurons
+num_neurons = my_model_eigen.original_sz(1)/2;
+all_names = my_model_eigen.AdaptiveDmdc_obj.get_names(1:num_neurons);
+class_A = contains(all_names, {'A0','A1'});
+class_A = class_A(1:num_neurons);
+class_B = contains(all_names, {'B0','B1'});
+class_B = class_B(1:num_neurons);
+
+% Get eigenvectors and eigenvalues of intrinsic dynamics
+A = my_model_eigen.AdaptiveDmdc_obj.A_separate(1:num_neurons,1:num_neurons);
+[V, D] = eig(A, 'vector');
+tol = 1e-3;
+actual_values = abs(D)>tol;
+V = V(:,actual_values);
+D = D(actual_values);
+
+% Get columns that have appreciable loading on motor neurons
+% tol = 0.1;
+% for i=1:length(D)
+%     A_loading = sum(real(V(class_A,i)));
+%     if abs(A_loading)>tol
+%         fprintf('Eigenvalue for class_A eigenvector: %f+%f (loading: %f)\n',...
+%             real(D(i)), imag(D(i)), A_loading)
+%     end
+%     B_loading = sum(real(V(class_B,i)));
+%     if abs(B_loading)>tol
+%         fprintf('Eigenvalue for class_B eigenvector: %f+%f (loading: %f)\n',...
+%             real(D(i)), imag(D(i)), B_loading)
+%     end
+% end
+
+% Scatterplots of absolute weighting
+figure;
+subplot(2,1,1)
+my_colormap = sum(real(V(class_A,:)).*abs(V(class_A,:)),1);
+scatter(real(D),imag(D),[],my_colormap,'filled')
+title('Colored by A-class loading')
+colorbar
+subplot(2,1,2)
+my_colormap = sum(real(V(class_B,:)).*abs(V(class_B,:)),1);
+scatter(real(D),imag(D),[],my_colormap,'filled')
+title('Colored by B-class loading')
+colorbar
+xlabel('Real part (decay/growth)')
+ylabel('Imaginary part (1/Hz)')
+
+% Only plot dots with high loadings
+tol = 1e-5;
+A_colormap = sum(real(V(class_A,:)).*abs(V(class_A,:)),1);
+A_ind = (abs(A_colormap)>tol);
+B_colormap = sum(real(V(class_B,:)).*abs(V(class_B,:)),1);
+B_ind = (abs(B_colormap)>tol);
+
+f = figure;
+subplot(2,1,1)
+scatter(real(D(A_ind)),imag(D(A_ind)),[],A_colormap(A_ind),'filled')
+title('Colored by A-class loading')
+colorbar
+subplot(2,1,2)
+scatter(real(D(B_ind)),imag(D(B_ind)),[],B_colormap(B_ind),'filled')
+title('Colored by B-class loading')
+colorbar
+xlabel('Real part (decay/growth)')
+ylabel('Imaginary part (1/Hz)')
+
+%==========================================================================
+
+
+%% Use Isomap to visualize data
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat = importdata(filename);
+
+% Only do the first couple PCA dimensions because the dataset is too big!
+[U, S, V] = svd(dat.traces);
+svd_dims = 20;
+X = U(:,1:svd_dims);
+labels = dat.SevenStates;
+
+% figure
+% scatter3(X(:,1), X(:,2), X(:,3), 5, labels); 
+plot_colored(X,labels,dat.SevenStatesKey)
+title('Original dataset'), drawnow
+no_dims = round(intrinsic_dim(X, 'MLE'));
+disp(['MLE estimate of intrinsic dimensionality: ' num2str(no_dims)]);
+
+[mappedX, mapping] = compute_mapping(X, 'Isomap', no_dims);
+% figure
+% scatter3(mappedX(:,1), mappedX(:,2), mappedX(:,3), 5, labels); 
+plot_colored(mappedX,labels,dat.SevenStatesKey)
+title('Result of Isomap')
+
+
+
+%==========================================================================
+
+
+%% Eigenvalues for motor neurons (built-in function)
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true,...
+    'dmd_mode','func_DMDc');
+settings.global_signal_mode = 'ID_binary_and_grad';
+my_model_eigen = CElegansModel(filename, settings);
+
+% DB01
+my_model_eigen.plot_eigenvalues_and_frequencies(114);
+%==========================================================================
+
+
+%% Look at sparse matrices
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+ad_settings = struct('sparsity_goal',0.6); % Default
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true,...
+    'dmd_mode','sparse',...
+    'AdaptiveDmdc_settings',ad_settings);
+settings.global_signal_mode = 'ID_binary_and_grad';
+my_model_sparse = CElegansModel(filename, settings);
+
+settings.global_signal_mode = 'ID_binary';
+my_model_sparse2 = CElegansModel(filename, settings);
+
+% EVEN SPARSER
+ad_settings = struct('sparsity_goal',0.25);
+settings.AdaptiveDmdc_settings = ad_settings;
+my_model_very_sparse = CElegansModel(filename, settings);
+
+% Look at matrices
+my_model_sparse.plot_matrix_A(true,true,true);
+my_model_sparse.plot_matrix_A(false,true,true);
+
+my_model_sparse.plot_matrix_B(true,'ID_binary',true);
+
+my_model_sparse2.plot_matrix_B(false,'ID_binary',true);
+my_model_sparse2.plot_matrix_B(true,'ID_binary',true);
+
+%==========================================================================
+
+
+%% Sparse matrices with augmented data
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+ad_settings = struct('sparsity_goal',0.35);
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'to_normalize_deriv',true,...
+    'dmd_mode','sparse',...
+    'augment_data',2,...
+    'lambda_sparse',0,...
+    'AdaptiveDmdc_settings',ad_settings);
+settings.global_signal_mode = 'ID_binary';
+my_model_sparse_aug2 = CElegansModel(filename, settings);
+
+%==========================================================================
+
+
+%% Look at reversal bout lengths for regularities
+filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
+
+num_worms = 5;
+bout_lengths = cell(num_worms,1);
+figure;
+for individual = 1:num_worms
+    dat_struct = importdata(sprintf(filename_template,individual));
+    dat = dat_struct.traces';
+
+    % Get the bout lengths
+    rev_label = find(strcmp(dat_struct.SevenStatesKey,'REVSUS'));
+    rev_ind_vec = (dat_struct.SevenStates==rev_label);
+    rev_ind_cumsum = cumsum(rev_ind_vec);
+    rev_ind_diff = diff(rev_ind_vec);
+    for i = 1:(length(rev_ind_vec)-1)
+        if rev_ind_diff(i) == -1
+            rev_ind_cumsum(i:end) = rev_ind_cumsum(i:end) - rev_ind_cumsum(i);
+        end
+    end
+
+    rev_ind_cumsum_diff = diff(rev_ind_cumsum);
+    bout_lengths{individual} = rev_ind_cumsum(rev_ind_cumsum_diff<0);
+    
+    subplot(num_worms, 1, individual)
+    histogram(bout_lengths{individual},'BinWidth',10)
+    title(sprintf('Worm %d',individual))
+    xlim([0,150])
+    ylim([0 10])
+end
+    
+% Histograms
+% figure;
+% histogram(bout_lengths,'BinWidth',10)
+
+
+%==========================================================================
+
+
+%% Look at offsetting the data by different amounts
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+% First the baseline settings
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'to_normalize_deriv',true,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_and_grad';
+
+cross_val_window_size_percent = 0.7;
+
+% all_ranks = 3:5:75;
+all_offsets = 1:30;
+num_runs = length(all_offsets);
+err_train = zeros(200, num_runs);
+if cross_val_window_size_percent == 1
+    err_test = zeros(1,num_runs);
+else
+    err_test = zeros(size(err_train));
+end
+all_cross_vals = cell(num_runs, 1);
+
+for i = 1:num_runs
+    ad_settings = struct('hold_out_fraction',0.2,...
+        'cross_val_window_size_percent', cross_val_window_size_percent,...
+        'dmd_offset', all_offsets(i));
+    settings.AdaptiveDmdc_settings = ad_settings;
+    my_model_crossval = CElegansModel(filename, settings);
+
+    % Use crossvalidation functions
+    err_train(:,i) = my_model_crossval.AdaptiveDmdc_obj.calc_baseline_error();
+    if cross_val_window_size_percent == 1
+        err_test(i) = my_model_crossval.AdaptiveDmdc_obj.calc_test_error();
+    else
+        err_test(:,i) = my_model_crossval.AdaptiveDmdc_obj.calc_test_error();
+    end
+end
+
+figure
+if cross_val_window_size_percent == 1
+    plot(err_test,'or','LineWidth',2)
+else
+    boxplot(err_test,'colors',[1 0 0])
+end
+hold on
+boxplot(err_train)
+ylim([0, 1.1*max(max([err_test;err_train]))])
+xticklabels(round(all_offsets,2))
+xlabel('DMD data offset')
+ylabel('L2 error')
+title('Box plot of training errors vs. test data error')
+
+%==========================================================================
+
+
 
 
 
