@@ -1303,8 +1303,8 @@ classdef CElegansModel < SettingsImportableFromStruct
             % Setup interactivity
             if neuron_ind == 0
                 [~, im1, ~, im2] = fig.Children.Children;
-                im1.ButtonDownFcn = @(x,y) self.callback_plotter(x,y);
-                im2.ButtonDownFcn = @(x,y) self.callback_plotter(x,y);
+                im1.ButtonDownFcn = @(x,y) self.callback_plotter_reconstruction(x,y);
+                im2.ButtonDownFcn = @(x,y) self.callback_plotter_reconstruction(x,y);
             end
             
         end
@@ -1789,6 +1789,235 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'Interpreter','None')
             
         end
+        
+        function fig = plot_eigenvalues_and_frequencies(self, ...
+                neuron, tol_eigen)
+            % Plots two scatter plots:
+            %   - The real and imaginary parts of the eigenvalues, colored
+            %   by the weighting of the eigenvector on the chosen neuron
+            %   - A power spectrum of frequencies, weighted by the real
+            %   part to the power of the period (i.e. how much the next
+            %   loop around has decayed/grown); colored in the same way
+            %
+            %  The eigenvalues have a callback function which plots the
+            %  eigenvector (heatmap) with the neuron names as ticks
+            if ~exist('tol_eigen','var')
+                tol_eigen = 1e-3;
+            end
+            if ischar(neuron)
+                neuron = self.name2num(neuron);
+            end
+            
+            % Get eigenvectors and eigenvalues of intrinsic dynamics
+            n = self.original_sz(1);
+%             if self.use_deriv
+%                 n = n/2;
+%             end
+            A = self.AdaptiveDmdc_obj.A_separate(1:n,1:n);
+            [V, D] = eig(A, 'vector');
+
+%             neuron_colormap = sum(real(V(neuron,:)).*abs(V(neuron,:)),1);
+            neuron_colormap = abs(V(neuron,:));
+            neuron_ind = (abs(neuron_colormap)>tol_eigen);
+            
+            fig = figure;
+            subplot(2,1,1)
+            scatter(real(D(neuron_ind)),imag(D(neuron_ind)),...
+                [],neuron_colormap(neuron_ind),'filled')
+            title(sprintf('Colored by neuron %d loading',neuron))
+            colorbar
+            xlabel('Real part (growth/decay)')
+            ylabel('Imaginary part (oscillation)')
+            
+            subplot(2,1,2)
+            all_periods = abs(2*pi./angle(D(neuron_ind)));
+            p_max = self.original_sz(2);
+            all_periods(all_periods>p_max) = 0;
+            all_factors = abs(D(neuron_ind));
+            for i = 1:length(all_periods)
+                if all_periods(i)~=0
+                    all_factors(i) = all_factors(i)^all_periods(i);
+                end
+            end
+%             nonzero_ind = logical( (all_factors>tol_eigen).*...
+%                 abs(all_periods)>tol_eigen );
+            nonzero_ind = logical(all_factors>tol_eigen);
+            scatter(all_periods(nonzero_ind),all_factors(nonzero_ind),...
+                [],neuron_colormap(nonzero_ind),'filled')
+            colorbar
+            title('Period of 0 means constant')
+            xlabel('Period (frames)')
+            ylabel('Amplitude after one period')
+            
+            % Setup interactivity
+            [~, ~, ~, im2] = fig.Children.Children;
+%             im1.ButtonDownFcn = @(x,y) self.callback_plotter_eigenvector(x,y,V,D);
+            im2.ButtonDownFcn = @(x,y) self.callback_plotter_eigenvector(x,y,V,D);
+
+        end
+        
+        function fig = plot_initial_condition(self,...
+            x0, u, tspan)
+            % Plots a heatmap of the system evolving from an initial
+            % condition
+            
+            n = self.original_sz(1);
+            dat_approx = zeros(n, length(tspan));
+            dat_approx(:,1) = x0;
+            for i = 2:length(tspan)
+                dat_approx = ...
+                    self.AdaptiveDmdc_obj.calc_reconstruction_manual(...
+                    dat_approx(:,i-1), u(:,i));
+            end
+            
+            % Plot a heatmap
+            error('Not yet implemented')
+            
+        end
+        
+        function fig = plot_matrix_A(self, ...
+                named_only, zero_diag, only_neurons, only_deriv,...
+                num_clusters)
+            % Plot a heatmap of the dynamic matrix
+            if ~exist('named_only', 'var')
+                named_only = false;
+            end
+            if ~exist('zero_diag', 'var')
+                zero_diag = false;
+            end
+            if ~exist('only_neurons', 'var')
+                only_neurons = true;
+            end
+            if ~exist('only_deriv', 'var')
+                only_deriv = false;
+            end
+            if ~exist('num_clusters', 'var')
+                num_clusters = 0;
+            end
+            
+            n = (self.original_sz(1)*max([self.augment_data,1]));
+            ind = 1:n;
+            if self.use_deriv
+                n = n/2;
+                if only_neurons
+                    ind = 1:n;
+                elseif only_deriv
+                    ind = (n+1):(2*n);
+                end
+            end
+            
+            % Get the names and maybe a subset
+            names = self.AdaptiveDmdc_obj.get_names([],[],false,false);
+            if named_only
+                ind(cellfun(@isempty,names(ind))) = [];
+            end
+            
+            A = self.AdaptiveDmdc_obj.A_separate(ind,ind);
+            if zero_diag
+                A(logical(eye(length(A)))) = 0;
+                title_str = 'Matrix with diagonals set to 0';
+            else
+                title_str = 'Matrix of dynamics';
+            end
+            
+            % Rearrange the matrix and names by a dynamic clustering
+            if num_clusters > 0
+                c = clusterdata(A, 'linkage', 'ward','maxclust',num_clusters);
+                tmp = zeros(size(A));
+                tmp_names = cell(size(names));
+                i_start = 1;
+                names = names(ind);
+                all_ind = 1:length(A);
+                for i = 1:num_clusters
+                    these_ind = (c==i);
+                    tmp_ind = i_start:(i_start + length(find(these_ind)) - 1);
+                    i_start = i_start + length(find(these_ind));
+%                     tmp(tmp_ind, all_ind) = A(these_ind, all_ind);
+%                     tmp(all_ind, tmp_ind) = A(all_ind, tmp_ind);
+                    tmp(tmp_ind, tmp_ind) = A(these_ind, these_ind);
+                    tmp_names(tmp_ind) = names(these_ind);
+                end
+                A = tmp;
+                names = tmp_names;
+            end
+            
+            % Actually plot
+            fig = figure;
+            imagesc(real(A));
+            xticks(1:length(ind))
+            xtickangle(90)
+            yticks(1:length(ind))
+            title(title_str)
+            colorbar
+            
+            if num_clusters > 0
+                xticklabels(names)
+                yticklabels(names)
+            else
+                xticklabels(names(ind))
+                yticklabels(names(ind))
+            end
+        end
+        
+        
+        function fig = plot_matrix_B(self, ...
+                named_only, which_controller, neuron_mode)
+            % Plot a heatmap of the dynamic matrix
+            if ~exist('named_only', 'var')
+                named_only = false;
+            end
+            if ~exist('which_controller', 'var') || isempty(which_controller)
+                which_controller = self.control_signals_metadata.Row{1};
+            else
+                assert(ismember(...
+                    which_controller,self.control_signals_metadata.Row),...
+                    'Control signal not found')
+            end
+            if ~exist('neuron_mode', 'var')
+                neuron_mode = 'neurons_only';
+            end
+            
+            n = self.original_sz(1);
+            if self.use_deriv
+                if strcmp(neuron_mode,'neurons_only') 
+                    n = n/2;
+                    row_ind = 1:n;
+                elseif strcmp(neuron_mode,'derivs_only')
+                    n = n/2;
+                    row_ind = (n+1):(2*n);
+                end
+            else
+                row_ind = 1:n;
+            end
+            % Get rows and columns
+            col_ind = self.original_sz(1) + ...
+                (self.control_signals_metadata{which_controller,:}{:});
+            
+            % Get the names and maybe a subset
+            names = self.AdaptiveDmdc_obj.get_names([],[],false,false);
+            if named_only
+                row_ind(cellfun(@isempty,names(row_ind))) = [];
+            end
+            
+            B = self.AdaptiveDmdc_obj.A_separate(row_ind, col_ind);
+            title_str = sprintf('Matrix of controllers (%s; %s)',...
+                which_controller, neuron_mode);
+            
+            % Actually plot
+            fig = figure;
+            imagesc(real(B));
+            xticks(1:length(row_ind))
+            xtickangle(90)
+            yticks(1:length(row_ind))
+            title(title_str, 'Interpreter','None')
+            colorbar
+            
+            if contains(which_controller, 'ID_binary')
+                xticklabels(self.state_labels_key)
+            end
+            yticklabels(names(row_ind))
+        end
+        
     end
     
     methods %(Access=private)
@@ -2448,7 +2677,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
         end
         
-        function callback_plotter(self, ~, evt)
+        function callback_plotter_reconstruction(self, ~, evt)
             % On left click:
             %   Plots the original data and the reconstruction
             % On right click:
@@ -2460,6 +2689,28 @@ classdef CElegansModel < SettingsImportableFromStruct
                 warning('With a custom control signal the names might be off...')
             else
                 self.AdaptiveDmdc_obj.get_names(this_neuron);
+            end
+        end
+        
+        function callback_plotter_eigenvector(self, ~, evt, V, D)
+            % On left click:
+            %   Plots the eigenvector associated with the eigenvalue
+            %   clicked
+            this_eig = evt.IntersectionPoint;
+            tol = 1e-6;
+            this_ind = find(abs(this_eig(1)+1i*this_eig(2) - D)<tol);
+            if evt.Button==1
+                figure;
+                imagesc(real(V(:,this_ind)))
+                title(sprintf('Eigenvector for eigenvalue %d',this_ind))
+                if self.use_deriv
+                    yticks(1:(self.original_sz(1)/2))
+                else
+                    yticks(1:self.original_sz(1))
+                end
+                yticklabels(self.AdaptiveDmdc_obj.get_names([],[],false,false))
+                xticks([])
+                colorbar
             end
         end
         
