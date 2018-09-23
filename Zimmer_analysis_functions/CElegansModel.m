@@ -482,9 +482,9 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             %% Import data
             if ischar(file_or_dat)
-                %     self.filename = file_or_dat;
                 tmp_dat = importdata(file_or_dat);
                 if isstruct(tmp_dat)
+                    % Assume a "classic" Zimmer struct
                     self.import_from_struct(tmp_dat);
                 elseif isnumeric(tmp_dat)
                     self.raw = tmp_dat;
@@ -494,7 +494,14 @@ classdef CElegansModel < SettingsImportableFromStruct
             elseif isnumeric(file_or_dat)
                 self.raw = file_or_dat;
             elseif isstruct(file_or_dat)
+                % Assume a "classic" Zimmer struct
                 self.import_from_struct(file_or_dat);
+            elseif iscell(file_or_dat)
+                % Assume a "raw" (i.e. Kato) Zimmer struct
+                assert(length(file_or_dat)==2,...
+                    'Must pass two strings for Kato-type import')
+                self.import_from_struct(...
+                    convertKato2Zimmer(file_or_dat));
             else
                 error('Must pass data matrix or filename')
             end
@@ -1296,8 +1303,6 @@ classdef CElegansModel < SettingsImportableFromStruct
                     'LineWidth',2)
                 title('Sparse control signal')
                 xlim([0,self.original_sz(2)])
-%                 hold on
-%                 plot(
             end
             
             % Setup interactivity
@@ -1822,12 +1827,13 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             fig = figure;
             subplot(2,1,1)
-            scatter(real(D(neuron_ind)),imag(D(neuron_ind)),...
-                [],neuron_colormap(neuron_ind),'filled')
-            title(sprintf('Colored by neuron %d loading',neuron))
-            colorbar
-            xlabel('Real part (growth/decay)')
-            ylabel('Imaginary part (oscillation)')
+            polarplot(D, 'o')
+%             scatter(real(D(neuron_ind)),imag(D(neuron_ind)),...
+%                 [],neuron_colormap(neuron_ind),'filled')
+%             title(sprintf('Colored by neuron %d loading',neuron))
+%             colorbar
+%             xlabel('Real part (growth/decay)')
+%             ylabel('Imaginary part (oscillation)')
             
             subplot(2,1,2)
             all_periods = abs(2*pi./angle(D(neuron_ind)));
@@ -1850,9 +1856,9 @@ classdef CElegansModel < SettingsImportableFromStruct
             ylabel('Amplitude after one period')
             
             % Setup interactivity
-            [~, ~, ~, im2] = fig.Children.Children;
+%             [~, ~, ~, im2] = fig.Children.Children;
 %             im1.ButtonDownFcn = @(x,y) self.callback_plotter_eigenvector(x,y,V,D);
-            im2.ButtonDownFcn = @(x,y) self.callback_plotter_eigenvector(x,y,V,D);
+%             im2.ButtonDownFcn = @(x,y) self.callback_plotter_eigenvector(x,y,V,D);
 
         end
         
@@ -1959,7 +1965,6 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
         end
         
-        
         function fig = plot_matrix_B(self, ...
                 named_only, which_controller, neuron_mode)
             % Plot a heatmap of the dynamic matrix
@@ -2016,6 +2021,24 @@ classdef CElegansModel < SettingsImportableFromStruct
                 xticklabels(self.state_labels_key)
             end
             yticklabels(names(row_ind))
+        end
+        
+        function fig = plot_data_RPCA(self, which_mode)
+            % Either plots the sparse signal or the robustified data
+            
+            fig = figure;
+            if strcmp(which_mode,'L')
+                imagesc(self.L_sparse)
+            else
+                imagesc(self.S_sparse, [min(min(self.S_sparse))*0.2,max(max(self.S_sparse))*0.2])
+            end
+            yticks(1:self.original_sz(1))
+            yticklabels(self.AdaptiveDmdc_obj.get_names([],[],false,false))
+            colorbar
+            
+            % Set up interactivity
+            [~, im1] = fig.Children.Children;
+            im1.ButtonDownFcn = @(x,y) self.callback_plotter_reconstruction(x,y);
         end
         
     end
@@ -2198,9 +2221,13 @@ classdef CElegansModel < SettingsImportableFromStruct
                 deriv = deriv .* (std(self.raw,[],2) ./ std(deriv,[],2));
             end
             
-            % Derivative is one frame short, so throw out the last frame
+            % Derivative might be one frame short, so throw out the last frame
             if ~self.use_only_deriv
-                new_raw = [self.raw(:,1:end-1); deriv];
+                try 
+                    new_raw = [self.raw; deriv];
+                catch 
+                    new_raw = [self.raw(:,1:end-1); deriv];
+                end
             else
                 new_raw = deriv;
             end
@@ -2688,7 +2715,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                     true, true, this_neuron, true);
                 warning('With a custom control signal the names might be off...')
             else
-                self.AdaptiveDmdc_obj.get_names(this_neuron);
+                self.plot_reconstruction_interactive(true, this_neuron);
             end
         end
         
