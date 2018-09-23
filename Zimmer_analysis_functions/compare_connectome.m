@@ -1,4 +1,4 @@
-classdef compare_connectome < settings_importable_from_struct
+classdef compare_connectome < SettingsImportableFromStruct
     % Class for comparing experimental and dynamic connectomes
     
     properties (SetAccess=private, Hidden=true)
@@ -19,7 +19,7 @@ classdef compare_connectome < settings_importable_from_struct
         sorted_names
     end
     
-    properties (SetAccess={?settings_importable_from_struct}, Hidden=true)
+    properties (SetAccess={?SettingsImportableFromStruct}, Hidden=true)
         id_array
         
         gap_to_chem_weight
@@ -44,13 +44,21 @@ classdef compare_connectome < settings_importable_from_struct
                 self.dyn_adj = importdata(file_or_dat);
             elseif isnumeric(file_or_dat)
                 self.dyn_adj = file_or_dat;
-            elseif isa(file_or_dat, 'adaptive_dmdc')
+            elseif isa(file_or_dat, 'AdaptiveDmdc')
                 % Extract the connectomic dynamics
                 %   TODO: also import and deal with the control matrix
                 x = 1:file_or_dat.x_len;
                 self.dyn_adj = file_or_dat.A_original(x,x);
-                self.id_array = file_or_dat.get_names(x, [], false);
+                self.id_array = file_or_dat.get_names(x, [], false, false);
                 self.ctr_adj = file_or_dat.A_original(x,x(end):end);
+            elseif isa(file_or_dat, 'CElegansModel')
+                % Extract the connectomic dynamics
+                %   TODO: also import and deal with the control matrix
+                obj = file_or_dat.AdaptiveDmdc_obj;
+                x = 1:obj.x_len;
+                self.dyn_adj = obj.A_original(x,x);
+                self.id_array = obj.get_names(x, [], false, false);
+                self.ctr_adj = obj.A_original(x,x(end):end);
             else
                 error('Must pass data matrix or filename')
             end
