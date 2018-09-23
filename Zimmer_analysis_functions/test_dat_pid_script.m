@@ -31,7 +31,7 @@ set_points = [-1 -0.1, 1.3];
 initial_condition_dependence = zeros(size(set_points));
 % initial_condition_dependence(1,1) = 1;
 
-noise = 0.1;
+noise = 0.01;
 
 % transition_mat = [[0.99 0.01];
 %                   [0.01 0.99]];

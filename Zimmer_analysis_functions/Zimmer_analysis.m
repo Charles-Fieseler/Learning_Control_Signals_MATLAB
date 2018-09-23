@@ -3687,12 +3687,12 @@ my_model_residual.plot_colored_user_control([],false);
 
 
 %% Look at suspiciously spike-like neurons
-filename4 = '../../Zimmer_data/WildType_adult/simplewt4/wbdataset.mat';
+filename4 = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 % filename4 = '../../Zimmer_data/WildType_adult/simplewt3/wbdataset.mat';
 dat4 = importdata(filename4);
 
 labels_of_interest = {'RIVL','RIVR', 'SMDVR', 'SMDVL', 'SMBDR',...
-    'RIMR','RIML',...
+    'RIMR','RIML','RIS','ALA',...
     'SAAVR','SAAVL', 'ASKL','ASKR'};
 neurons_of_interest = zeros(size(labels_of_interest));
 for i = 1:length(labels_of_interest)
@@ -5040,10 +5040,12 @@ filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 dat = importdata(filename);
 
 % Only do the first couple PCA dimensions because the dataset is too big!
-[U, S, V] = svd(dat.traces);
-svd_dims = 20;
+% [U, S, V] = svd(dat.traces);
+% svd_dims = 20;
+[U, S, V] = svd([dat.traces(1:end-1,:), dat.tracesDif]);
+svd_dims = 40;
 X = U(:,1:svd_dims);
-labels = dat.SevenStates;
+labels = dat.SevenStates(1:size(X,1));
 
 % figure
 % scatter3(X(:,1), X(:,2), X(:,3), 5, labels); 
@@ -5052,7 +5054,7 @@ title('Original dataset'), drawnow
 no_dims = round(intrinsic_dim(X, 'MLE'));
 disp(['MLE estimate of intrinsic dimensionality: ' num2str(no_dims)]);
 
-[mappedX, mapping] = compute_mapping(X, 'Isomap', no_dims);
+[mappedX, mapping] = compute_mapping(X, 'Isomap', 3);
 % figure
 % scatter3(mappedX(:,1), mappedX(:,2), mappedX(:,3), 5, labels); 
 plot_colored(mappedX,labels,dat.SevenStatesKey)
@@ -5236,15 +5238,104 @@ title('Box plot of training errors vs. test data error')
 %==========================================================================
 
 
+%% Try tls dmd
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+ad_settings = struct('what_to_do_dmd_explosion','project');
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true,...
+    'dmd_mode','tdmd',...
+    'lambda_sparse',0,...
+    'AdaptiveDmdc_settings',ad_settings);
+settings.global_signal_mode = 'None';
+my_model_tls = CElegansModel(filename, settings);
+
+my_model_tls.plot_colored_reconstruction();
+my_model_tls.plot_eigenvalues_and_frequencies(114)
+
+%==========================================================================
+
+
+%% Build models to look at each data set
+filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true);
+settings.global_signal_mode = 'ID_binary';
+% settings.global_signal_mode = 'ID_binary_and_grad';
+
+%---------------------------------------------
+% Calculate 5 worms
+%---------------------------------------------
+all_models = cell(5,1);
+for i=1:5
+    filename = sprintf(filename_template,i);
+%     if i==4
+%         settings.lambda_sparse = 0.035; % Decided by looking at pareto front
+%     else
+%         settings.lambda_sparse = 0.05;
+%     end
+    all_models{i} = CElegansModel(filename,settings);
+end
+
+
+%==========================================================================
+
+
+%% Look at Kato-type raw-ish (?) data
+% filename_both = {...
+%     'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\wbdataKato2015\wbdata\sevenStateColoring.mat',...
+%     'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\wbdataKato2015\wbdata\TS20140715e_lite-1_punc-31_NLS3_2eggs_56um_1mMTet_basal_1080s.mat'};
+% filename_both = {...
+%     'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\wbdataKato2015\wbdata\sevenStateColoring.mat',...
+%     'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\wbdataKato2015\wbdata\TS20140715f_lite-1_punc-31_NLS3_3eggs_56um_1mMTet_basal_1080s.mat'};
+% filename_both = {...
+%     'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\wbdataKato2015\wbdata\sevenStateColoring.mat',...
+%     'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\wbdataKato2015\wbdata\TS20140905c_lite-1_punc-31_NLS3_AVHJ_0eggs_1mMTet_basal_1080s.mat'};
+% filename_both = {...
+%     'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\wbdataKato2015\wbdata\sevenStateColoring.mat',...
+%     'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\wbdataKato2015\wbdata\TS20140926d_lite-1_punc-31_NLS3_RIV_2eggs_1mMTet_basal_1080s.mat'};
+filename_both = {...
+    'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\wbdataKato2015\wbdata\sevenStateColoring.mat',...
+    'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\wbdataKato2015\wbdata\TS20141221b_THK178_lite-1_punc-31_NLS3_6eggs_1mMTet_basal_1080s.mat'};
+
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    ...'lambda_sparse', 0,...
+    'use_deriv',false,...
+    'to_normalize_deriv',true);
+settings.global_signal_mode = 'ID_binary';
+
+% First no derivative (note: they should be much better)
+my_model_Kato_no_deriv = CElegansModel(filename_both, settings);
+
+% First no derivative (note: they should be much better)
+%   However, the derivatives are discontinuous!
+settings.use_deriv = true;
+my_model_Kato_with_deriv = CElegansModel(filename_both, settings);
+
+% Basic plots
+my_model_Kato_no_deriv.plot_reconstruction_interactive(false);
+title('No derivative Kato model')
+my_model_Kato_with_deriv.plot_reconstruction_interactive(false);
+title('With derivative Kato model')
 
 
 
-
-
-
-
-
-
+%==========================================================================
 
 
 
