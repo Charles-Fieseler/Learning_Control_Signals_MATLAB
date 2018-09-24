@@ -707,7 +707,7 @@ combined_dat_global = cellfun(@(x) d(x), combined_dat_global,...
     'UniformOutput', false);
 possible_roles = unique(combined_dat_global);
 possible_roles(cellfun(@isempty,possible_roles)) = [];
-role_counts = zeros(num_neurons,length(possible_roles));
+role_counts = zeros(size(combined_dat_global,1),length(possible_roles));
 for i=1:length(possible_roles)
     role_counts(:,i) = sum(...
         strcmp(combined_dat_global, possible_roles{i}),2);
@@ -777,7 +777,7 @@ for i=1:5
     all_models{i} = CElegansModel(filename,settings);
 end
 %% Now we have the models
-max_err_percent = 0.2;
+max_err_percent = 0.4;
 for i=1:5
     % Global mode actuation
     [all_roles_global{i,1}, all_roles_global{i,2}] = ...

@@ -451,13 +451,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         normalize_cumsum_x_times_state
         normalize_cumtrapz_x_times_state
         normalize_length_count
-    end
-    
-    properties (SetAccess=private)
-        control_signal
-        control_signals_metadata
         
-        AdaptiveDmdc_obj
         % Changing the control signals and/or matrix
         user_control_matrix
         user_control_input
@@ -465,6 +459,14 @@ classdef CElegansModel < SettingsImportableFromStruct
         user_control_reconstruction
         
         pareto_struct
+    end
+    
+    properties (SetAccess=private)
+        control_signal
+        control_signals_metadata
+        
+        AdaptiveDmdc_obj
+        
     end
     
     properties (Dependent)
@@ -1046,7 +1048,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 max_err_percent = 0;
             end
             if ~exist('use_derivs', 'var')
-                use_derivs = false;
+                use_derivs = true;
             end
             
             num_neurons = self.original_sz(1);
