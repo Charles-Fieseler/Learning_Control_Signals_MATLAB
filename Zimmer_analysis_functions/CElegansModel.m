@@ -418,6 +418,8 @@ classdef CElegansModel < SettingsImportableFromStruct
         dat_sz
         total_sz
         num_data_pts
+        time_vec
+        fps
         
         A_old
         dat_old
@@ -439,6 +441,8 @@ classdef CElegansModel < SettingsImportableFromStruct
         state_labels_ind_old
         state_labels_key
         state_labels_key_old
+        
+        stimulus_struct
         
         % Generative model
         cecoc_model
@@ -1029,7 +1033,8 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function [neuron_roles, neuron_names] = ...
                 calc_neuron_roles_in_global_modes(self,...
-                use_only_known_neurons, class_tol, max_err_percent)
+                use_only_known_neurons, class_tol, max_err_percent, ...
+                use_derivs)
             if ~exist('use_only_known_neurons','var') || ...
                     isempty(use_only_known_neurons)
                 use_only_known_neurons = true;
@@ -1040,13 +1045,19 @@ classdef CElegansModel < SettingsImportableFromStruct
             if ~exist('max_err_percent','var') || isempty(max_err_percent)
                 max_err_percent = 0;
             end
+            if ~exist('use_derivs', 'var')
+                use_derivs = false;
+            end
             
             num_neurons = self.original_sz(1);
+            if self.use_deriv && ~use_derivs
+                num_neurons = num_neurons/2;
+            end
             if any(ismember(self.control_signals_metadata.Row,'ID'))
                 ind = self.control_signals_metadata{'ID',:}{:};
                 B_global = self.AdaptiveDmdc_obj.A_original(1:num_neurons,...
                                 ...(2*num_neurons+1):end-2);
-                                num_neurons+ind);
+                                self.original_sz(1)+ind);
                 % Narrow these down to which neurons are important for which behaviors
                 %   Assume a single control signal (ID); ignore offset
                 group1 = (B_global > class_tol);
@@ -1076,7 +1087,13 @@ classdef CElegansModel < SettingsImportableFromStruct
             % Get names and sort if required
             neuron_names = self.AdaptiveDmdc_obj.get_names([],[],false, false);
             if use_only_known_neurons
-                neuron_ind = ~strcmp(neuron_names,'');
+                % Also get rid of ambiguous neurons, which will have long
+                % (concatenated) names
+                neuron_ind = logical( ...
+                    (~strcmp(neuron_names,'')).*...
+                    (cellfun(@(x)length(x)<6, neuron_names)));
+                neuron_ind = neuron_ind(1:num_neurons);
+                neuron_names = neuron_names(1:num_neurons);
                 neuron_names = neuron_names(neuron_ind);
             else
                 neuron_ind = 1:self.original_sz(1);
@@ -1086,11 +1103,12 @@ classdef CElegansModel < SettingsImportableFromStruct
             %   Error is the reconstruction error normalized by the neuron
             %   activity L2 norm
             if max_err_percent>0
-                approx_dat = self.AdaptiveDmdc_obj.calc_reconstruction_control();
+%                 approx_dat = self.AdaptiveDmdc_obj.calc_reconstruction_control();
+%                 all_err = self.calc_balanced_error(approx_dat);
+                all_err = 1-self.calc_correlation_matrix(true);
 %                 all_err = ...
 %                     sum( (self.dat - approx_dat).^2,2 ) ./...
 %                     sum(self.dat.^2,2);
-                all_err = self.calc_balanced_error(approx_dat);
                 group_error = (all_err>max_err_percent);
             else
                 group_error = zeros(size(group1));
@@ -1129,6 +1147,25 @@ classdef CElegansModel < SettingsImportableFromStruct
                     ( sum(err_mat(i,TF_err(i,:)).^2,2) + ...
                     0.5*sum(err_mat(i,:).^2,2) ) / ...
                     (1 + 1.5*sum(self.dat(i,:).^2,2) );
+            end
+        end
+        
+        function [corr_diag, corr_mat] = calc_correlation_matrix(self,...
+                return_derivatives)
+            % Calculates the correlation matrix between the data and the
+            % reconstruction, returning the diagonal values first
+            if ~exist('return_derivatives','var')
+                return_derivatives = false;
+            end
+            corr_mat = corrcoef([self.dat' ...
+                self.AdaptiveDmdc_obj.calc_reconstruction_control()']);
+            
+            n = self.original_sz(1);
+            if self.use_deriv && ~return_derivatives
+                n = n/2;
+                corr_diag = diag( corr_mat((2*n+1):(3*n),1:n) );
+            else
+                corr_diag = diag( corr_mat((n+1):end,1:n) );
             end
         end
     end
@@ -2090,6 +2127,23 @@ classdef CElegansModel < SettingsImportableFromStruct
             if self.use_deriv || self.use_only_deriv
                 self.raw_deriv = Zimmer_struct.tracesDif.';
             end
+            % Save stimulus information
+            if isfield(Zimmer_struct, 'stimulus')
+                self.stimulus_struct = Zimmer_struct.stimulus;
+            else
+                self.stimulus_struct = struct();
+            end
+            % Get time information
+            if isfield(Zimmer_struct, 'timeVectorSeconds')
+                self.time_vec = Zimmer_struct.timeVectorSeconds;
+            elseif isfield(Zimmer_struct, 'tv')
+                self.time_vec = Zimmer_struct.tv;
+            end
+            if isfield(Zimmer_struct, 'fps')
+                self.fps = Zimmer_struct.fps;
+            else
+                self.fps = 1/(self.time_vec(2) - self.time_vec(1));
+            end
             % Get label vectors and names
             %   Struct has field names like "SevenStates" or "FiveStates"
             fnames = fieldnames(Zimmer_struct);
@@ -2238,6 +2292,8 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.calc_sparse_signal();
             self.calc_global_signal();
             self.add_custom_control_signal();
+            self.add_stimulus_signal();
+            
             self.calc_dat_and_control_signal();
         end
         
@@ -2586,6 +2642,40 @@ classdef CElegansModel < SettingsImportableFromStruct
                 custom_control_signal];
         end
         
+        function add_stimulus_signal(self)
+            % Adds environmental stimulus to the control signal, if any
+            try
+                s_times = self.stimulus_struct.switchtimes;
+            catch
+                return
+            end
+            if isempty(s_times)
+                return
+            else
+                s_times = round(s_times*self.fps);
+                assert(length(s_times)==2,...
+                    'Can only import an external stimulus with 2 switchtimes')
+                assert(strcmp(self.stimulus_struct.type,'binarysteps'),...
+                    'Can only import an external stimulus with binary switches')
+            end
+            
+            id_signal = self.stimulus_struct.identity;
+            if self.verbose
+                fprintf('Found external control signal (%s; %s)',...
+                    id_signal, self.stimulus_struct.type)
+            end
+            
+            ctr_signal = zeros(1, self.original_sz(2));
+            ctr0 = self.stimulus_struct.initialstate;
+            ctr_signal(1:s_times(1)) = ctr0;
+            ctr_signal(s_times(1)+1:s_times(2)) = ctr0 + 1;
+            ctr_signal(s_times(2)+1:end) = ctr0;
+            
+            ctr_signal_binary = self.calc_binary_labels(ctr_signal);
+            self.add_custom_control_signal(ctr_signal_binary,...
+                sprintf('Stimulus_%s',id_signal));
+        end
+        
         function calc_dat_and_control_signal(self)
             % Uses results from 2 different Robust PCA runs
             
@@ -2765,7 +2855,6 @@ classdef CElegansModel < SettingsImportableFromStruct
                 [self.control_signals_metadata;
                 new_metadata];
         end
-        
         
         function dat = smart_filter(self, dat, aggresiveness)
             % Learns a cutoff frequency for each neuron (column)
