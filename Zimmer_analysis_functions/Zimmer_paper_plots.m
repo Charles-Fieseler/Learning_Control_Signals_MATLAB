@@ -529,11 +529,6 @@ end
 all_figs = cell(5,1);
 
 filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
-% settings = struct(...
-%     'to_subtract_mean',false,...
-%     'to_subtract_mean_sparse',false,...
-%     'to_subtract_mean_global',false,...
-%     'dmd_mode','func_DMDc');
 settings = struct(...
     'to_subtract_mean',true,...
     'to_subtract_mean_sparse',false,...
@@ -563,7 +558,7 @@ for i=1:5
     all_models{i} = CElegansModel(filename,settings);
 end
 max_err_percent = 0.2;
-    for i=1:5
+for i=1:5
     % Use the dynamic fixed point
     [all_roles_dynamics{i,1}, all_roles_dynamics{i,2}] = ...
         all_models{i}.calc_neuron_roles_in_transition(true, [], true);
@@ -721,6 +716,101 @@ end
 name_lengths = cellfun(@(x) length(x)<6, all_labels_global)';
 this_ind = find((sum(role_counts,2)>3).*name_lengths);
 all_figs{3} = figure('DefaultAxesFontSize',14);
+b = bar(role_counts(this_ind,:), 'stacked');
+for i=1:length(b)
+    b(i).FaceColor = my_cmap_3d(i,:);
+end
+legend([possible_roles(1:end-1); {'high error'}])
+yticks(1:max(max((role_counts))))
+ylabel('Number of times identified')
+xticks(1:length(this_ind));
+xticklabels(all_labels_global(this_ind))
+xtickangle(90)
+title('Neuron roles using global mode activation')
+
+%---------------------------------------------
+% Save figures
+%---------------------------------------------
+if to_save
+    for i = 1:length(all_figs)
+        fname = sprintf('%sfigure_s2_%d', foldername, i);
+        this_fig = all_figs{i};
+        if isempty(this_fig)
+            continue
+        end
+        set(this_fig, 'Position', get(0, 'Screensize'));
+        saveas(this_fig, fname, 'png');
+        matlab2tikz('figurehandle',this_fig,'filename',[fname '_w_error.tex']);
+    end
+end
+%==========================================================================
+
+
+%% Supplementary Figure 2 (simple): Neuron classifications
+all_figs = cell(1,1);
+
+filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    'filter_window_dat',3,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true);
+settings.global_signal_mode = 'ID_binary';
+% settings.global_signal_mode = 'ID_binary_and_grad';
+
+%---------------------------------------------
+% Calculate 5 worms and get roles
+%---------------------------------------------
+all_models = cell(5,1);
+all_roles_global = cell(5,2);
+for i=1:5
+    filename = sprintf(filename_template,i);
+    if i==4
+        settings.lambda_sparse = 0.035; % Decided by looking at pareto front
+    else
+        settings.lambda_sparse = 0.05;
+    end
+    all_models{i} = CElegansModel(filename,settings);
+end
+%% Now we have the models
+max_err_percent = 0.2;
+for i=1:5
+    % Global mode actuation
+    [all_roles_global{i,1}, all_roles_global{i,2}] = ...
+        all_models{i}.calc_neuron_roles_in_global_modes(true, [], max_err_percent);
+end
+
+%---------------------------------------------
+% Data preprocessing
+%---------------------------------------------
+[ combined_dat_global, all_labels_global ] =...
+    combine_different_trials( all_roles_global );
+num_neurons = size(combined_dat_global,1);
+
+%---------------------------------------------
+% Roles for global neurons
+%---------------------------------------------
+% First make the field names the same
+d = containers.Map(...
+    {'group 1', 'group 2', 'other', '', 'both', 'high error'},...
+    {'simple REVSUS', 'simple FWD', 'other', '', 'both', 'z_error'});
+combined_dat_global = cellfun(@(x) d(x), combined_dat_global,...
+    'UniformOutput', false);
+possible_roles = unique(combined_dat_global);
+possible_roles(cellfun(@isempty,possible_roles)) = [];
+role_counts = zeros(num_neurons,length(possible_roles));
+for i=1:length(possible_roles)
+    role_counts(:,i) = sum(...
+        strcmp(combined_dat_global, possible_roles{i}),2);
+end
+% Long names mean it was an ambiguous identification
+name_lengths = cellfun(@(x) length(x)<6, all_labels_global)';
+this_ind = find((sum(role_counts,2)>3).*name_lengths);
+all_figs{1} = figure('DefaultAxesFontSize',14);
 b = bar(role_counts(this_ind,:), 'stacked');
 for i=1:length(b)
     b(i).FaceColor = my_cmap_3d(i,:);

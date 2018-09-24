@@ -4463,7 +4463,6 @@ figure;
 bin_width = 1e-3;
 histogram(total_err,'BinWidth',bin_width);
 
-
 %==========================================================================
 
 
@@ -5338,7 +5337,153 @@ title('With derivative Kato model')
 %==========================================================================
 
 
+%% Look at data with Oxygen stimulus
+folder_name = 'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\npr1_1_PreLet\AN20140730a_ZIM575_PreLet_6m_O2_21_s_1TF_47um_1330_\';
+filename = [folder_name 'wbdataset.mat'];
+% Calculate the model
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary';
+my_model_stimulus = ...
+    CElegansModel(filename, settings);
 
+%==========================================================================
+
+
+%% Reprise: Use dynamics from worm5 on worm3
+% Note: learn the control signal from the worm though
+filename5 = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+filename3 = '../../Zimmer_data/WildType_adult/simplewt3/wbdataset.mat';
+
+% Get first model and error
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true,...
+    'lambda_sparse', 0);
+settings.global_signal_mode = 'ID_binary';
+
+my_model5 = CElegansModel(filename5, settings);
+fprintf('Reconstruction error for worm 5: %f\n',...
+    my_model5.AdaptiveDmdc_obj.calc_reconstruction_error());
+% my_model5.AdaptiveDmdc_obj.plot_reconstruction(true);
+
+% Get second model and initial error
+my_model3 = CElegansModel(filename3, settings);
+fprintf('Reconstruction error for worm 3: %f\n',...
+    my_model3.AdaptiveDmdc_obj.calc_reconstruction_error());
+my_model3.AdaptiveDmdc_obj.plot_reconstruction(true);
+
+% Get the overlapping neurons
+names5 = my_model5.AdaptiveDmdc_obj.get_names([], false, false);
+names3 = my_model3.AdaptiveDmdc_obj.get_names([], false, false);
+% Indices are different for worms 3 and 5
+[ind3] = ismember(names3, names5);
+ind3 = logical(ind3.*(~strcmp(names3, '')));
+[ind5] = ismember(names5, names3);
+ind5 = logical(ind5.*(~strcmp(names5, '')));
+
+% Truncate the data and redo the worms
+dat_struct5 = importdata(filename5);
+if length(ind5) > size(dat_struct5.traces,2)
+    % Then we're using derivatives too, but the indices should be shorter
+    ind5 = ind5(1:(length(ind5)/2));
+    dat_struct5.tracesDif(:,~ind5) = [];
+end
+dat_struct5.traces(:,~ind5) = [];
+for i={'ID','ID2','ID3'}
+    tmp = dat_struct5.(i{1});
+    tmp(~ind5) = [];
+    dat_struct5.(i{1}) = tmp;
+end
+% settings.lambda_global = 0.01;
+% settings.lambda_sparse = 0.07;
+my_model5_truncate = CElegansModel(dat_struct5, settings);
+my_model5_truncate.plot_reconstruction_interactive(true);
+
+dat_struct3 = importdata(filename3);
+if length(ind3) > size(dat_struct3.traces,2)
+    % Then we're using derivatives too, but the indices should be shorter
+    ind3 = ind3(1:(length(ind3)/2));
+    dat_struct3.tracesDif(:,~ind3) = [];
+end
+dat_struct3.traces(:,~ind3) = [];
+for i={'ID','ID2','ID3'}
+    tmp = dat_struct3.(i{1});
+    tmp(~ind3) = [];
+    dat_struct3.(i{1}) = tmp;
+end
+my_model3_truncate = CElegansModel(dat_struct3, settings);
+my_model3_truncate.plot_reconstruction_interactive(true);
+title('Truncated model with original dynamics')
+
+% Get errors and apply worm5 dynamics to worm3
+fprintf('Reconstruction error for truncated worm 3: %f\n',...
+    my_model3_truncate.AdaptiveDmdc_obj.calc_reconstruction_error());
+fprintf('Reconstruction error for truncated worm 5: %f\n',...
+    my_model5_truncate.AdaptiveDmdc_obj.calc_reconstruction_error());
+
+my_model3_truncate.AdaptiveDmdc_obj.A_original = ...
+    my_model5_truncate.AdaptiveDmdc_obj.A_original;
+my_model3_truncate.AdaptiveDmdc_obj.A_separate = ...
+    my_model5_truncate.AdaptiveDmdc_obj.A_separate;
+my_model3_truncate.plot_reconstruction_interactive(true);
+title("Reconstruction using alternate dynamics")
+
+fprintf('Reconstruction error for worm 3 data and worm 5 A matrix: %f\n',...
+    my_model3_truncate.AdaptiveDmdc_obj.calc_reconstruction_error());
+%==========================================================================
+
+
+%% Reprise: Examine correlation coefficients of data and reconstructions
+% filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+filename = {...
+    'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\wbdataKato2015\wbdata\sevenStateColoring.mat',...
+    'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\wbdataKato2015\wbdata\TS20141221b_THK178_lite-1_punc-31_NLS3_6eggs_1mMTet_basal_1080s.mat'};
+
+% First the settings and model
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true);
+settings.global_signal_mode = 'ID_binary_and_grad';
+my_model_errors = CElegansModel(filename, settings);
+
+% Also get a no-sparse model
+settings.lambda_sparse = 0;
+my_model_global_only = CElegansModel(filename, settings);
+
+% Get correlation matrices
+[R_full, A_full] = my_model_errors.calc_correlation_matrix();
+[R_global, A_global] = my_model_global_only.calc_correlation_matrix();
+
+% Plot matrix and diagonals
+% figure;
+% imagesc(A);
+% title('Full correlation matrix')
+% figure;
+% imagesc(A(1:n2,1:n2) - A((n+1):(3*n2),1:n2))
+% title('Missing Correlation between data and reconstruction')
+% colorbar
+figure;
+histogram(R_full, 'BinWidth', 0.05)
+hold on
+histogram(R_global, 'BinWidth', 0.05)
+title('Correlation of diagonals')
+
+%==========================================================================
 
 
 
