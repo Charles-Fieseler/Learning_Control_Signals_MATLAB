@@ -12,14 +12,14 @@
 %               [1 -1]];
           
 % 1 Neuron
-sz = [1, 3000];
-kp = [0.5];
-ki = [0];
-% ki = [0.8];
-kd = [];
-set_points = [-1 0.5];
+% sz = [1, 3000];
+% kp = [0.5];
+% ki = [0];
+% % ki = [0.8];
+% kd = [];
+% set_points = [-1 0.5];
 
-% 1 Neuron, 4 states
+% 1 Neuron, 3 states
 sz = [1, 3000];
 kp = [0.5];
 ki = [0];
@@ -51,7 +51,7 @@ num_neurons = sz(1);
 %% Get data
 [dat, ctr_signal, state_vec] = ...
     test_dat_pid(sz, kp, ki, kd, set_points, transition_mat,...
-    perturbation_mat, [], [], initial_condition_dependence, noise);
+    perturbation_mat, [], [], [], initial_condition_dependence, noise);
 % Simple plots
 % figure; plot(dat')
 % title('Data')
@@ -63,6 +63,7 @@ num_neurons = sz(1);
 %% Put in the right format, save, and create a model
 ID = {{'1','2'}};
 grad = gradient([dat; ctr_signal]');
+% grad = gradient(dat');
 dat_struct = struct(...
     ...'traces', {[dat; ctr_signal]'},...
     'traces', [dat; ctr_signal]',...
@@ -71,7 +72,8 @@ dat_struct = struct(...
     'ID2',ID,...
     'ID3',ID,...
     'TwoStates', state_vec,...
-    'TwoStatesKey',{{'State 1','State 2','State 3'}});
+    'TwoStatesKey',{{'State 1','State 2','State 3'}},...
+    'fps',1);
 
 use_deriv = false;
 augment_data = 0;
@@ -130,7 +132,7 @@ end
 % my_model_PID3 = CElegansModel(dat_struct, settings);
 
 %% A different model for matrices with unknown states (but good segmentation)
-tol = 1e-5;
+tol = 1e-3;
 % noise = 3e-5;
 cascade_ind = cumsum(...
     abs(noise*(2*rand(size(state_vec))-1) + ...
@@ -150,7 +152,8 @@ dat_struct2 = struct(...
     'ID2',ID,...
     'ID3',ID,...
     'TwoStates', cascade_ind,...
-    'TwoStatesKey',{state_key});
+    'TwoStatesKey',{state_key},...
+    'fps',1);
 
 settings.global_signal_mode = 'ID_binary';
 if isfield(settings,'dependent_signals')
@@ -207,9 +210,9 @@ if ~any(any(initial_condition_dependence))
         'to_plot_nothing',true,...
         'sort_mode','user_set', 'x_indices',1:num_neurons,...
         'to_subtract_mean',false);
-    my_model_true = AdaptiveDmdc(obj.dat_with_control, set_true);
-
-    my_model_true.plot_reconstruction(true,true,true,1);
+%     my_model_true = AdaptiveDmdc(obj.dat_with_control, set_true);
+% 
+%     my_model_true.plot_reconstruction(true,true,true,1);
 end
 
 %% Plots

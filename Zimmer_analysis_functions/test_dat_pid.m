@@ -1,7 +1,7 @@
 function [dat, ctr_signal, state_vec] = ...
     test_dat_pid(sz, kp, ki, kd, set_points, transition_mat,...
     perturbation_mat,...
-    x0, z0, initial_condition_dependence, noise)
+     A, x0, z0, initial_condition_dependence, noise)
 %Produces data for a pid-type system
 %   Switches between different internal states via a HMM.
 % Input:
@@ -10,8 +10,9 @@ function [dat, ctr_signal, state_vec] = ...
 %   ki - vector of integral controller coefficients for EACH state
 %   kd - vector of derivative controller coefficients for EACH state
 %   set_points - vector of set points for EACH state
-%   transition_mat - HMM transition matrix
+%   transition_mat - HMM transition matrix (Format: row=from, col=to)
 %   perturbation_mat - vector for each channel perturbations
+%   A - intrinsic dynamics
 %   x0 - initial condition, size=sz(1) by 1
 %   z0 - initial discrete state
 %   initial_condition_dependence - whether any set points are dependent on
@@ -22,6 +23,9 @@ function [dat, ctr_signal, state_vec] = ...
 %   dat - matrix of size sz
 %   ctr_signal - control signal, size=[1, sz(1)], i.e. the state vector
 
+if ~exist('A', 'var') || isempty(A)
+    A = eye(sz(1));
+end
 if ~exist('x0','var') || isempty(x0)
     x0 = rand([sz(1),1]);
 end
@@ -41,10 +45,14 @@ assert(size(set_points,1)==sz(1),...
 num_states = size(set_points,2);
 assert(size(transition_mat,1)==num_states,...
     'Set points must be equal to the number of states')
-assert(size(kp,1)==sz(1),...
-    'Controller coefficients must be equal to the number of channels')
-assert(size(ki,1)==sz(1),...
-    'Controller coefficients must be equal to the number of channels')
+if size(kp,1) > 1
+    assert(size(kp,1)==sz(1),...
+        'Controller coefficients must be equal to the number of channels')
+end
+if size(ki,1) > 1
+    assert(size(ki,1)==sz(1),...
+        'Controller coefficients must be equal to the number of channels')
+end
 
 seed = 1;
 rng(seed);
@@ -59,12 +67,10 @@ state_vec(1) = z0;
 this_set_point = set_points(:,z0) + x0.*initial_condition_dependence(:,z0);
 for i = 2:sz(2)
     x = dat(:,i-1);
-%     z = state_vec(i-1);
     % Add PID control signal
-    % TODO: intrinsic dynamics as well
     [u, int_error(:,i)] = calc_pid_ctr_signal(...
         x, kp, ki, this_set_point, int_error(:,i-1));
-    dat(:,i) = x + u + perturbation_mat(:,i-1);
+    dat(:,i) = A*x + u + perturbation_mat(:,i-1);
     
     % Possibly transition states
     %   i.e. determine the state for the CURRENT timestep
@@ -87,6 +93,9 @@ dat = dat + normrnd(0, noise, size(dat));
         error = x - sp;
         int_error = int_error + error;
         u = -kp.*error - ki.*int_error;
+        % Use NaN to refer to neurons with no control
+        u(isnan(u)) = 0;
+        int_error(isnan(int_error)) = 0;
     end
 
     function [new_state, did_switch] = ...
@@ -98,7 +107,7 @@ dat = dat + normrnd(0, noise, size(dat));
             other_states(z) = [];
             for i2 = other_states
                 % Format: row=from, col=to
-                current_prob = current_prob + transition_mat(z,i2);
+                current_prob = current_prob + transition_mat(i2, z);
                 if trans < current_prob
                     new_state = i2;
                     break
