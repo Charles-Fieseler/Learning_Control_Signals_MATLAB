@@ -1036,7 +1036,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         function [neuron_roles, neuron_names] = ...
                 calc_neuron_roles_in_global_modes(self,...
                 use_only_known_neurons, class_tol, max_err_percent, ...
-                use_derivs)
+                use_derivs, combine_derivs)
             if ~exist('use_only_known_neurons','var') || ...
                     isempty(use_only_known_neurons)
                 use_only_known_neurons = true;
@@ -1048,7 +1048,10 @@ classdef CElegansModel < SettingsImportableFromStruct
                 max_err_percent = 0;
             end
             if ~exist('use_derivs', 'var')
-                use_derivs = true;
+                use_derivs = self.use_deriv;
+            end
+            if ~exist('combine_derivs', 'var')
+                combine_derivs = self.use_deriv;
             end
             
             num_neurons = self.original_sz(1);
@@ -1071,23 +1074,38 @@ classdef CElegansModel < SettingsImportableFromStruct
                 B_global = self.AdaptiveDmdc_obj.A_original(1:num_neurons,...
                                 ...(2*num_neurons+1):end-2);
                                 num_neurons+ind);
+                if combine_derivs
+                    num_neurons = num_neurons/2;
+                    B_global = B_global(1:num_neurons,:) + ...
+                        B_global((num_neurons+1):end,:);
+                end
                 fwd_ind = contains(self.state_labels_key,...
                     {'FWD','SLOW'});
                 rev_ind = contains(self.state_labels_key,...
                     {'REVSUS','REV1','REV2'});
-                if isempty(fwd_ind)
+                if isempty(find(fwd_ind, 1))
                     fwd_ind = contains(self.state_labels_key,...
                         {'simple FWD'});
                     rev_ind = contains(self.state_labels_key,...
                         {'simple REVSUS'});
                 end
+                if isempty(find(fwd_ind, 1))
+                    fwd_ind = contains(self.state_labels_key,...
+                        {'Forward'});
+                    rev_ind = contains(self.state_labels_key,...
+                        {'Reversal'});
+                end
+                if isempty(find(fwd_ind, 1))
+                    error('Could not find any foward indices...')
+                end
                 % Narrow these down to which neurons are important for which behaviors
-                %   Assume a single control signal (ID); ignore offset
+                %   Assume a single one-hot encoded control signal (ID_binary)
                 group1 = (sum(B_global(:,rev_ind),2) > class_tol);
                 group2 = (sum(B_global(:,fwd_ind),2) > class_tol);
             end
             % Get names and sort if required
             neuron_names = self.AdaptiveDmdc_obj.get_names([],[],false, false);
+            neuron_names = neuron_names(1:num_neurons);
             if use_only_known_neurons
                 % Also get rid of ambiguous neurons, which will have long
                 % (concatenated) names
@@ -1098,7 +1116,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 neuron_names = neuron_names(1:num_neurons);
                 neuron_names = neuron_names(neuron_ind);
             else
-                neuron_ind = 1:self.original_sz(1);
+                neuron_ind = 1:num_neurons;
             end
             neuron_ind = find(neuron_ind);
             % Treat high error neurons as a different category
@@ -1112,6 +1130,10 @@ classdef CElegansModel < SettingsImportableFromStruct
 %                     sum( (self.dat - approx_dat).^2,2 ) ./...
 %                     sum(self.dat.^2,2);
                 group_error = (all_err>max_err_percent);
+                if combine_derivs
+                    group_error = (group_error(1:num_neurons) + ...
+                        group_error((num_neurons+1):end))/2;
+                end
             else
                 group_error = zeros(size(group1));
             end
@@ -1366,6 +1388,23 @@ classdef CElegansModel < SettingsImportableFromStruct
                 self.state_labels_ind(end-size(proj3d,2)+1:end),...
                 self.state_labels_key, plot_opt);
             title('Dynamics of the low-rank component (data)')
+        end
+        
+        function fig = plot_colored_neuron(self, neuron)
+            if ischar(neuron)
+                neuron_name = neuron;
+                neuron = find(cellfun(...
+                    @(x) strcmp(x,neuron_name), ...
+                    self.AdaptiveDmdc_obj.get_names([],[],false,false)));
+                neuron = neuron(1); % Do not get derivatives
+            elseif isnumeric(neuron)
+                neuron_name = ...
+                    self.AdaptiveDmdc_obj.get_names(neuron,[],false,false);
+            end
+            
+            fig = plot_colored(self.dat(neuron, :),...
+                self.state_labels_ind, self.state_labels_key);
+            title(sprintf('Neuron ID: %s', neuron_name))
         end
         
         function fig = plot_colored_user_control(self, fig, use_same_fig)
@@ -2663,7 +2702,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             id_signal = self.stimulus_struct.identity;
             if self.verbose
-                fprintf('Found external control signal (%s; %s)',...
+                fprintf('Found external control signal (%s; %s)\n',...
                     id_signal, self.stimulus_struct.type)
             end
             
@@ -2732,8 +2771,9 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.num_data_pts = num_pts;
             assert(num_pts>0,...
                 'Something went wrong with a data signal...')
+            self.dat = this_dat;
             dat_to_shorten = {'L_global','L_sparse','S_global','S_sparse',...
-                'L_global_modes', 'custom_control_signal'};
+                'L_global_modes', 'custom_control_signal', 'dat'};
             for fname = dat_to_shorten
                 tmp = self.(fname{1});
                 if isempty(tmp)
@@ -2745,7 +2785,6 @@ classdef CElegansModel < SettingsImportableFromStruct
                     self.(fname{1}) = tmp(1:num_pts,:);
                 end
             end
-            self.dat = this_dat;
         end
         
         function postprocess(self)
@@ -2859,7 +2898,8 @@ classdef CElegansModel < SettingsImportableFromStruct
         end
         
         function dat = smart_filter(self, dat, aggresiveness)
-            % Learns a cutoff frequency for each neuron (column)
+            % Learns a cutoff frequency for each neuron (column) in 'dat'
+            % 'aggressiveness' (1.5) should be > 1.0
             if ~exist('aggresiveness','var')
                 aggresiveness = 1.5;
             else
@@ -2941,7 +2981,6 @@ classdef CElegansModel < SettingsImportableFromStruct
         function dat = flat_filter(dat, window_size)
             w = window_size;
             dat = filtfilt(ones(w,1)/w,1,dat);
-%             dat = filter(ones(w,1)/w,1,dat);
         end
         
         function out = state_length_count(states)
