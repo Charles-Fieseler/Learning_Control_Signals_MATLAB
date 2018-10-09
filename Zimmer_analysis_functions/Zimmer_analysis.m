@@ -1548,180 +1548,6 @@ title('Error vs threshold values')
 %==========================================================================
 
 
-%% Use cvx to do sparse DMD
-% Import data
-filename = '../../Collaborations/Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
-dat5 = importdata(filename);
-this_dat = dat5.traces';
-X1 = this_dat(:,1:end-1);
-X2 = this_dat(:,2:end);
-
-% Do naive dmd as a check
-A_original = X2/X1;
-
-% solver variables
-n = size(this_dat,1);
-gamma = 0.1;
-
-cvx_begin
-    variable A_sparse(n,n)
-    minimize( norm(A_sparse*X1-X2,2) + gamma*norm(A_sparse,1) )
-cvx_end
-
-
-%==========================================================================
-
-
-%% cvx tests: sparsity in matrices
-n = 20;
-tol = 0.9;
-rng default;
-X1 = rand(n,5*n);
-A_true = rand(n,n);
-% Make the matrix and data sparse
-X1(abs(X1)<tol) = 0;
-A_true(abs(A_true)<tol) = 0;
-spread = 3*(2*rand(size(A_true))-1);
-spread(abs(spread)<0.5) = 0; % Make sure no entries are noise-level
-A_true = A_true.*spread;
-% This isn't necessarily sparse and is used as data
-noise = 0.5;
-min_tol = 2*noise + 1e-6;
-X2 = A_true*X1 + normrnd(0.0,noise,size(X1));
-gamma_list = linspace(0,noise*10,11);
-A_sparse_nnz = zeros(size(gamma_list));
-for i=1:length(gamma_list)
-    % sparsity term
-    gamma = gamma_list(i);
-    % Actually solve
-    cvx_begin quiet
-        variable A_sparse(n,n)
-        minimize( norm(A_sparse*X1-X2,2) + ...
-            gamma*norm(A_sparse,1))
-%          + (1-gamma)*norm(A_sparse,2)
-    cvx_end
-    % Postprocess a bit because there are some tiny terms that survive
-    A_sparse(abs(A_sparse)<min_tol) = 0;
-    
-    A_sparse_nnz(i) = nnz(A_sparse);
-    if  (A_sparse_nnz(i) == nnz(A_true)) ||...
-            A_sparse_nnz(i) > A_sparse_nnz(1)
-        A_sparse_nnz(i+1:end) = NaN;
-        break
-    end
-    
-end
-% Also get backslash solution for comparison
-A_matlab = X2/X1;
-A_matlab(abs(A_matlab)<min_tol) = 0;
-% Plot
-figure;
-plot(gamma_list, nnz(A_true)*ones(size(gamma_list)), 'LineWidth',2)
-hold on
-plot(gamma_list, A_sparse_nnz, 'o')
-plot(gamma_list, nnz(A_matlab)*ones(size(gamma_list)), '--',...
-    'LineWidth',2)
-title('Number of nnz elements vs. sparsity penalty')
-legend('nnz of fit', 'nnz of backslash')
-
-figure;
-subplot(2,1,1);
-spy(A_sparse);
-title(sprintf('Solved with gamma=%.1f',gamma))
-subplot(2,1,2);
-spy(A_true);
-title('True matrix')
-plot_2imagesc_colorbar(A_true,A_sparse,'2 1')
-%figure;
-%subplot(2,1,1);spy(X1);
-%subplot(2,1,2);spy(X2);
-%==========================================================================
-
-
-%% cvx tests: sequential thresholding for sparsity in matrices
-n = 50;
-tol = 0.9;
-rng default;
-X1 = rand(n,5*n);
-A_true = rand(n,n);
-% Make the matrix and data sparse
-X1(abs(X1)<tol) = 0;
-A_true(abs(A_true)<tol) = 0;
-spread = 3*(2*rand(size(A_true))-1);
-spread(abs(spread)<0.5) = 0; % Make sure no entries are noise-level
-A_true = A_true.*spread;
-% This isn't necessarily sparse and is used as data
-noise = 0.5;
-% min_tol = 2*noise + 1e-6;
-min_tol = 3e-1;
-max_iter = 10;
-X2 = A_true*X1 + normrnd(0.0,noise,size(X1));
-% gamma_list = linspace(0,noise*10,2);
-gamma_list = [0.1];
-A_sparse_nnz = zeros(size(gamma_list));
-% sparsity_pattern = abs(A_true)==0;
-sparsity_pattern = false(size(A_true));
-num_nnz = zeros(max_iter,1);
-for i=1:length(gamma_list)
-    % sparsity term
-    gamma = gamma_list(i);
-    for i2=1:max_iter
-        num_nnz(i2) = numel(A_true) - length(find(sparsity_pattern));
-        fprintf('Iteration %d; %d nonzero-entries\n',...
-            i2, num_nnz(i2))
-        if i2>1 && (num_nnz(i2-1)==num_nnz(i2))
-            disp('Stall detected; quitting early')
-            break
-        end
-        % Actually solve
-        cvx_begin quiet
-            variable A_sparse(n,n)
-%             minimize( norm(A_sparse*X1-X2,2) + ...
-%                 gamma*norm(A_sparse,1))
-            minimize( norm(A_sparse*X1-X2,2) )
-            A_sparse(sparsity_pattern) == 0
-        cvx_end
-        % Postprocess a bit because there are some tiny terms that survive
-        sparsity_pattern = abs(A_sparse)<min_tol;
-%         A_sparse(abs(A_sparse)<min_tol) = 0;
-
-        A_sparse_nnz(i) = nnz(A_sparse);
-        if  (A_sparse_nnz(i) == nnz(A_true)) ||...
-                A_sparse_nnz(i) > A_sparse_nnz(1)
-            A_sparse_nnz(i+1:end) = NaN;
-            break
-        end
-    end
-    A_sparse(abs(A_sparse)<1e-6) = 0;
-    
-end
-% Also get backslash solution for comparison
-A_matlab = X2/X1;
-A_matlab(abs(A_matlab)<min_tol) = 0;
-% Plot
-figure;
-plot(gamma_list, nnz(A_true)*ones(size(gamma_list)), 'LineWidth',2)
-hold on
-plot(gamma_list, A_sparse_nnz, 'o')
-plot(gamma_list, nnz(A_matlab)*ones(size(gamma_list)), '--',...
-    'LineWidth',2)
-title('Number of nnz elements vs. sparsity penalty')
-legend('nnz of fit', 'nnz of backslash')
-
-figure;
-subplot(2,1,1);
-spy(A_sparse);
-title(sprintf('Solved with gamma=%.1f',gamma))
-subplot(2,1,2);
-spy(A_true);
-title('True matrix')
-plot_2imagesc_colorbar(A_true,A_sparse,'2 1')
-%figure;
-%subplot(2,1,1);spy(X1);
-%subplot(2,1,2);spy(X2);
-%==========================================================================
-
-
 %% Reconstruct partial augmented data; sparseDMD
 filename = '../../Collaborations/Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 dat5 = importdata(filename);
@@ -3664,12 +3490,14 @@ my_model_residual.plot_colored_user_control([],false);
 
 %% Test the new RPCA_one_step_residual signal mode
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat_struct = importdata(filename);
 
 settings = struct(...
     'to_subtract_mean',true,...
     'to_subtract_mean_sparse',false,...
     'to_subtract_mean_global',false,...
     'dmd_mode','func_DMDc',...
+    'filter_window_dat', 0,...
     'lambda_sparse', 0.04,...
     'lambda_global', 0.0115,...
     'max_rank_global', 2,...
@@ -3683,17 +3511,40 @@ my_model_residual.plot_reconstruction_user_control();
 my_model_residual.set_simple_labels();
 my_model_residual.plot_colored_user_control([],false);
 
+% Plot the RPCA learned signal
+ind = my_model_residual.control_signals_metadata{'RPCA_one_step_residual',:}{:};
+figure;
+plot(my_model_residual.control_signal(ind,:)');
+
+% Just look at the residual in PCA space
+X1 = my_model_residual.dat(:,1:end-1);
+X2 = my_model_residual.dat(:,2:end);
+this_dat = X2 - (X2/X1)*X1; %Naive DMD residual 
+
+[~, ~, ~, proj3d] = plotSVD(this_dat);
+plot_colored(proj3d, dat_struct.SevenStates(1:size(proj3d,2)),...
+    dat_struct.SevenStatesKey);
+
 %==========================================================================
 
 
 %% Look at suspiciously spike-like neurons
-filename4 = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
-% filename4 = '../../Zimmer_data/WildType_adult/simplewt3/wbdataset.mat';
+% Has very good SMB oscillations
+filename4 = '../../Zimmer_data/WildType_adult/simplewt4/wbdataset.mat';
+
+% filename4 = '../../Zimmer_data/WildType_adult/simplewt4/wbdataset.mat';
 dat4 = importdata(filename4);
 
-labels_of_interest = {'RIVL','RIVR', 'SMDVR', 'SMDVL', 'SMBDR',...
-    'RIMR','RIML','RIS','ALA',...
-    'SAAVR','SAAVL', 'ASKL','ASKR'};
+labels_of_interest = {...'RIVL','RIVR', ...
+    ...'SMDVR', 'SMDVL',...
+    'SMBDR', 'SMBDL',...
+    'RIBR', 'RIBL',...
+    ...'RID',...
+    ...'RIMR','RIML',...
+    ...'AVAL', 'AVAR',...
+    ...'RIS','ALA',...
+    ...'SAAVR','SAAVL', 'ASKL','ASKR'};
+    };
 neurons_of_interest = zeros(size(labels_of_interest));
 for i = 1:length(labels_of_interest)
     this_neuron = find(cellfun(...
@@ -4737,74 +4588,77 @@ title('Box plot of training errors vs. test data error')
 %==========================================================================
 
 
+%% PLOT ME
 %% Use plots from paper plots to look at a subset of bar charts
-all_figs = cell(5,1);
+all_figs = cell(1,1);
 
-filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
-% settings = struct(...
-%     'to_subtract_mean',false,...
-%     'to_subtract_mean_sparse',false,...
-%     'to_subtract_mean_global',false,...
-%     'dmd_mode','func_DMDc');
 settings = struct(...
-    'to_subtract_mean',true,...
+    'to_subtract_mean',false,...
     'to_subtract_mean_sparse',false,...
     'to_subtract_mean_global',false,...
     'dmd_mode','func_DMDc',...
     'add_constant_signal',false,...
-    'filter_window_dat',3,...
-    'use_deriv',true,...
+    'filter_window_dat',0,...
+    ...'use_deriv',true,...
+    'use_deriv',false,...
     'to_normalize_deriv',true);
 settings.global_signal_mode = 'ID_binary';
 % settings.global_signal_mode = 'ID_binary_and_grad';
 
 %---------------------------------------------
-% Calculate 5 worms and get roles
+% Build filename array (different data formats...)
 %---------------------------------------------
-all_models = cell(5,1);
-all_roles_dynamics = cell(5,2);
-all_roles_centroid = cell(5,2);
-all_roles_global = cell(5,2);
-for i=1:5
-    filename = sprintf(filename_template,i);
-    if i==4
-        settings.lambda_sparse = 0.035; % Decided by looking at pareto front
+n = 15;
+all_filenames = cell(n, 1);
+foldername1 = '../../Zimmer_data/WildType_adult/';
+filename1_template = 'simplewt%d/wbdataset.mat';
+num_type_1 = 5;
+foldername2 = 'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\npr1_1_PreLet\';
+filename2_template = 'wbdataset.mat';
+
+for i = 1:n
+    if i <= num_type_1
+        all_filenames{i} = sprintf([foldername1, filename1_template], i);
     else
-        settings.lambda_sparse = 0.05;
+        subfolder = dir(foldername2);
+        all_filenames{i} = [foldername2, ...
+            subfolder(i-num_type_1+2).name, '\', filename2_template];
     end
+end
+
+%---------------------------------------------
+% Calculate all worms and get roles
+%---------------------------------------------
+all_models = cell(n,1);
+all_roles_dynamics = cell(n,2);
+all_roles_centroid = cell(n,2);
+all_roles_global = cell(n,2);
+for i = 1:n
+    filename = all_filenames{i};
     all_models{i} = CElegansModel(filename,settings);
 end
 
-%%
-max_err_percent = 0.25;
-only_named_neurons = false;
-num_neurons = size(combined_dat_global,1);
-for i=1:5
-%     % Use the dynamic fixed point
-%     [all_roles_dynamics{i,1}, all_roles_dynamics{i,2}] = ...
-%         all_models{i}.calc_neuron_roles_in_transition(true, [], true);
-%     % Just use centroid of a behavior
-%     [all_roles_centroid{i,1}, all_roles_centroid{i,2}] = ...
-%         all_models{i}.calc_neuron_roles_in_transition(true, [], false);
-    % Global mode actuation
+%% Use above models to produce a bar chart
+disp('Calculating roles...')
+max_err_percent = 0.20;
+class_tol = 0.02;
+only_named_neurons = true;
+for i = 1:n
     [all_roles_global{i,1}, all_roles_global{i,2}] = ...
         all_models{i}.calc_neuron_roles_in_global_modes(...
-        only_named_neurons, [], max_err_percent);
+        only_named_neurons, class_tol, max_err_percent);
 end
 
 %---------------------------------------------
 % Data preprocessing
 %---------------------------------------------
-% [ combined_dat_dynamic, all_labels_dynamic ] =...
-%     combine_different_trials( all_roles_dynamics );
-% [ combined_dat_centroid, all_labels_centroid ] =...
-%     combine_different_trials( all_roles_centroid );
 [ combined_dat_global, all_labels_global ] =...
-    combine_different_trials( all_roles_global, ~only_named_neurons );
+    combine_different_trials( all_roles_global, false );
 
 %---------------------------------------------
 % Roles for global neurons
 %---------------------------------------------
+disp('Producing bar chart...')
 % First make the field names the same
 d = containers.Map(...
     {'group 1', 'group 2', 'other', '', 'both', 'high error'},...
@@ -4813,12 +4667,13 @@ combined_dat_global = cellfun(@(x) d(x), combined_dat_global,...
     'UniformOutput', false);
 possible_roles = unique(combined_dat_global);
 possible_roles(cellfun(@isempty,possible_roles)) = [];
+num_neurons = size(combined_dat_global,1);
 role_counts = zeros(num_neurons,length(possible_roles));
 for i=1:length(possible_roles)
     role_counts(:,i) = sum(...
         strcmp(combined_dat_global, possible_roles{i}),2);
 end
-all_figs{3} = figure('DefaultAxesFontSize',14);
+all_figs{1} = figure('DefaultAxesFontSize',14);
 if only_named_neurons
     % Long names mean it was an ambiguous identification
     name_lengths = cellfun(@(x) length(x)<6, all_labels_global)';
@@ -5484,6 +5339,591 @@ histogram(R_global, 'BinWidth', 0.05)
 title('Correlation of diagonals')
 
 %==========================================================================
+
+
+%% Optimized DMD (real data)
+filename = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+% dat_struct = importdata(filename);
+
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    ...'dmd_mode','func_DMDc',...
+    'dmd_mode','optdmd',...
+    'add_constant_signal',false,...
+    'filter_window_dat',0,...
+    'use_deriv',false,...
+    'to_normalize_deriv',true);
+settings.global_signal_mode = 'ID_binary';
+my_model_opt = CElegansModel(filename, settings);
+
+%==========================================================================
+
+
+%% Look at correlation coefficients between d(state)/dt and turning neurons
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat_struct = importdata(filename);
+
+% Get the indices of some neurons
+labels_of_interest = {'AIBL','AIBR', ...
+    'SMDVL', 'SMDVR', 'SMBDL', 'SMBDR',...
+    'RIML','RIMR',...
+    'AVAL', 'AVAR',...
+    'AVEL','AVER',...
+    'RMED','RMEV',...
+    'AVBL','AVBR'};
+neurons_of_interest = zeros(size(labels_of_interest));
+for i = 1:length(labels_of_interest)
+    this_neuron = find(cellfun(...
+        @(x) strcmp(x,labels_of_interest{i}), dat_struct.ID));
+    if isempty(this_neuron)
+        continue
+    end
+    neurons_of_interest(i) = this_neuron;
+end
+
+% Look at neuron differences and a spiking one
+all_traces = zeros(length(neurons_of_interest), size(dat_struct.traces,1));
+for i=1:length(neurons_of_interest)
+    if neurons_of_interest(i)==0
+        continue
+    end
+%     plot_colored(dat_struct.traces(:,neurons_of_interest(i)),...
+%         dat_struct.SevenStates,dat_struct.SevenStatesKey);
+%     figure;
+%     plot(dat_struct.traces(:,neurons_of_interest(i)))
+%     title(sprintf('Neuron ID: %s',...
+%         dat_struct.ID{neurons_of_interest(i)}))
+    all_traces(i,:) = dat_struct.traces(:,neurons_of_interest(i));
+end
+% Get rid of neurons that weren't in this dataset
+bad_ind = (neurons_of_interest==0);
+all_traces(bad_ind,:) = [];
+labels_of_interest(bad_ind) = [];
+% Small filter
+all_traces = CElegansModel.flat_filter(all_traces', 5)';
+
+% Get all possible pairwise differences
+sz = size(all_traces);
+% all_diff_sz = 0;
+% for i = 1:(sz(1)-1)
+%     all_diff_sz = all_diff_sz + i;
+% end
+% all_diffs = zeros(all_diff_sz, sz(2));
+all_diffs = [];
+all_names = [];
+for i = 1:sz(1)
+    for j = (i+1):sz(1)
+        if isempty(all_diffs)
+            all_diffs = all_traces(i,:) - all_traces(j,:);
+        else
+            all_diffs = [all_diffs; all_traces(i,:) - all_traces(j,:)];
+        end
+        if isempty(all_names)
+            all_names = {[labels_of_interest{i} '-' labels_of_interest{j}]};
+        else
+            all_names = [all_names ...
+                {[labels_of_interest{i} '-' labels_of_interest{j}]} ];
+        end
+    end
+end
+
+% Get the cross correlation between all of these differences and the
+% spiking neurons, i.e. SMDXX
+all_dat_and_traces = [all_diffs' all_traces'];
+all_names_with_diffs = [all_names labels_of_interest];
+
+all_corrs = corrcoef(all_dat_and_traces);
+fig = figure;
+imagesc(all_corrs)
+yticks(1:size(all_corrs,1))
+yticklabels(all_names_with_diffs)
+xticks(1:size(all_corrs,1))
+xticklabels(all_names_with_diffs)
+xtickangle(90)
+
+c = fig.Children.Children;
+t = 1:sz(2);
+c.ButtonDownFcn = @(~,x) ...
+    evalin('base',sprintf(...
+    'figure;plot(all_dat_and_traces(:,%d));hold on;plot(all_dat_and_traces(:,%d));',...
+    round(x.IntersectionPoint(1)),round(x.IntersectionPoint(2))));
+% c.ButtonDownFcn = @(~,x) ...
+%     evalin('base',sprintf(...
+%     'figure;plot(all_dat_and_traces(:,%d));hold on;plot(all_dat_and_traces(:,%d)); legend([{%s}, {%s}])',...
+%     round(x.IntersectionPoint(1)),round(x.IntersectionPoint(2)),...
+%     all_names_with_diffs{round(x.IntersectionPoint(1))},...
+%     all_names_with_diffs{round(x.IntersectionPoint(2))} ));
+
+%==========================================================================
+
+
+%% Use cubic spline to interpolate data and derivatives
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat_struct = importdata(filename);
+
+t = dat_struct.timeVectorSeconds;
+dat = dat_struct.traces;
+dat = CElegansModel.flat_filter(dat,3);
+pp = spline(t, dat');
+
+% pd is the polynomial degree of the polynomial segments,
+% so for a spline created by spline, we have pd=3.
+pd = pp.order - 1; 
+D = diag(pd:-1:1,1);
+% given deriv as the order of the derivative to compute
+% just loop
+pprime = pp;
+pprime.coefs = pp.coefs*D;
+
+% Sample plot
+figure;
+% t_interp = linspace(0,t(end),length(t)*2);
+t_interp = t;
+plot(t, dat(:,46))
+hold on
+smooth_dat = ppval(pp,t_interp);
+plot(t_interp, smooth_dat(46,:))
+title('Data')
+
+figure
+plot(t(1:end-1), dat_struct.tracesDif(:,46))
+hold on
+smooth_deriv = ppval(pprime,t_interp);
+plot(t_interp, smooth_deriv(46,:))
+% plot(t_interp(1:end-1),diff(smooth_dat(46,:)))
+title('Derivatives')
+
+% Now make a model
+dat_struct.traces = smooth_dat';
+dat_struct.tracesDif = smooth_deriv';
+
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    'filter_window_dat',0,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true);
+settings.global_signal_mode = 'ID_binary';
+my_model_smooth = CElegansModel(dat_struct, settings);
+
+my_model_smooth.plot_colored_reconstruction();
+disp(my_model_smooth.AdaptiveDmdc_obj.calc_reconstruction_error())
+%==========================================================================
+
+
+%% Try to get stable no-derivative models
+close all
+
+% filename = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+foldername = 'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\npr1_1_PreLet\';
+filename = [foldername ...
+    ...'AN20140730a_ZIM575_PreLet_6m_O2_21_s_1TF_47um_1330_\'...
+    ...'AN20140730b_ZIM575_PreLet_6m_O2_21_s_1TF_47um_1600_\'...
+    ...'AN20140730c_ZIM575_PreLet_6m_O2_21_s_1TF_47um_1600_\'...
+    ...'AN20140730e_ZIM575_PreLet_6m_O2_21_s_1TF_47um_1840_\'...
+    ...'AN20140730g_ZIM575_PreLet_6m_O2_21_s_1TF_47um_1840_\'...
+    ...'AN20140730i_ZIM575_PreLet_6m_O2_21_s_1TF_47um_2015_\'...
+    ...'AN20140807b_ZIM575_PreLet_6m_O2_21_s_1mMTF_47um_1440_\'...
+    ...'AN20140807d_ZIM575_PreLet_6m_O2_21_s_1mMTF_47um_1540_\'...
+    ...'AN20150910a_ZIM1027_1mMTF_O2_21_s_47um_1610_PreLet_\'...
+    'AN20150917a_ZIM1027_1mMTF_O2_21_s_47um_1345_PreLet_\'...
+    'wbdataset.mat'];
+dat_struct = importdata(filename);
+
+ad_settings = struct('sparsity_goal', 0.4);
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    ...'dmd_mode','sparse',...
+    'add_constant_signal',false,...
+    'filter_window_dat',0,...
+    ...'AdaptiveDmdc_settings', ad_settings,...
+    ...'lambda_sparse',0,...
+    ...'filter_aggressiveness', 1.01,...
+    'use_deriv',false,...
+    'to_normalize_deriv',true);
+settings.global_signal_mode = 'ID_binary';
+my_model_smooth = CElegansModel(dat_struct, settings);
+
+% my_model_smooth.plot_colored_reconstruction();
+my_model_smooth.plot_reconstruction_interactive(false);
+disp(my_model_smooth.AdaptiveDmdc_obj.calc_reconstruction_error())
+
+fprintf('Truncation rank (control): %d (%d)\n',...
+    my_model_smooth.AdaptiveDmdc_obj.truncation_rank,...
+    my_model_smooth.AdaptiveDmdc_obj.truncation_rank_control);
+%==========================================================================
+
+
+%% Plot the histograms of neuron errors across models
+all_figs = cell(4,1);
+
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    'filter_window_dat',0,...
+    'use_deriv',false);
+
+% First, a no-control model
+settings.lambda_sparse = 0;
+settings.global_signal_mode = 'None';
+my_model_naive = CElegansModel(filename, settings);
+
+% Second, a global-control only model
+settings.lambda_sparse = 0;
+settings.global_signal_mode = 'ID_binary';
+my_model_global = CElegansModel(filename, settings);
+
+% Third, a global+sparse control model
+settings = rmfield(settings,'lambda_sparse');
+settings.global_signal_mode = 'ID_binary';
+my_model_full = CElegansModel(filename, settings);
+
+% Fourth, a model that uses filtering and the derivatives
+settings.use_deriv = true;
+settings.normalize_deriv = true;
+settings.filter_window_dat = 3;
+settings.global_signal_mode = 'ID_binary';
+my_model_deriv = CElegansModel(filename, settings);
+
+% Now plot the histograms of ALL neurons 
+corr_naive = my_model_naive.calc_correlation_matrix();
+corr_global = my_model_global.calc_correlation_matrix();
+corr_full = my_model_full.calc_correlation_matrix();
+corr_deriv = my_model_deriv.calc_correlation_matrix();
+
+figure;
+bin_width = 0.05;
+subplot(4,1,1)
+histogram(corr_naive, 'BinWidth',bin_width)
+xlim([0,1]);ylim([0,25])
+title('All neurons: No control')
+subplot(4,1,2)
+histogram(corr_global, 'BinWidth',bin_width)
+xlim([0,1]);ylim([0,25])
+title('Add global state labels')
+subplot(4,1,3)
+histogram(corr_full, 'BinWidth',bin_width)
+xlim([0,1]);ylim([0,25])
+title('Add sparse control signals')
+subplot(4,1,4)
+histogram(corr_deriv, 'BinWidth',bin_width)
+xlim([0,1]);ylim([0,25])
+title('Add derivatives and filter the data')
+xlabel('Correlation coefficient (data and reconstruction)')
+
+% Now just do the named neurons
+names = my_model_naive.AdaptiveDmdc_obj.get_names([],[],false,false);
+ind = ~cellfun(@isempty, names);
+
+all_figs{1} = figure;
+bin_width = 0.05;
+histogram(corr_naive(ind), 'BinWidth',bin_width)
+xlim([0,1]);ylim([0,10])
+title('Named neurons: No control')
+all_figs{2} = figure;
+histogram(corr_global(ind), 'BinWidth',bin_width)
+xlim([0,1]);ylim([0,10])
+title('Add global state labels')
+all_figs{3} = figure;
+histogram(corr_full(ind), 'BinWidth',bin_width)
+xlim([0,1]);ylim([0,10])
+title('Add sparse control signals')
+all_figs{4} = figure;
+histogram(corr_deriv(ind), 'BinWidth',bin_width)
+xlim([0,1]);ylim([0,10])
+title('Add derivatives and filter the data')
+xlabel('Correlation coefficient (data and reconstruction)')
+
+% Save figures
+if to_save
+    for i = 1:length(all_figs)
+        fname = sprintf('%sfigure_s5_%d', foldername, i);
+        this_fig = all_figs{i};
+        if isempty(this_fig)
+            continue
+        end
+        set(this_fig, 'Position', get(0, 'Screensize'));
+        saveas(this_fig, fname, 'png');
+        matlab2tikz('figurehandle',this_fig,'filename',[fname '_named_neurons.tex']);
+    end
+end
+%==========================================================================
+
+
+%% Perturb state labels and check model statistics
+filename = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+dat_struct = importdata(filename);
+
+ad_settings = struct(...
+    'hold_out_fraction', 0.15,...
+    'cross_val_window_size_percent', 0.7);
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    'filter_window_dat',0,...
+    ...'lambda_sparse', 0,... % For a quick look at the sensitivity
+    'AdaptiveDmdc_settings', ad_settings,...
+    'use_deriv',false,...
+    'to_normalize_deriv',true);
+settings.global_signal_mode = 'ID_binary';
+
+n = 10;
+all_models = cell(n, 1);
+
+max_perturb = 10;
+num_perturb_single_u = 5;
+all_u = perturb_state_labels(dat_struct.SevenStates, [],...
+    max_perturb, num_perturb_single_u, n);
+
+err_train = zeros(200, n);
+err_test = zeros(200, n);
+
+for i = 1:n
+    dat_struct.SevenStates = all_u{i};
+    all_models{i} = CElegansModel(dat_struct, settings);
+    err_train(:, i) = all_models{i}.AdaptiveDmdc_obj.calc_baseline_error();
+    err_test(:, i) = all_models{i}.AdaptiveDmdc_obj.calc_test_error();
+end
+
+figure
+boxplot(err_test,'Colors',[1 0 0])
+hold on
+boxplot(err_train)
+ylim([0, 1.1*max(max([err_test;err_train]))])
+title(sprintf('Training errors vs. test data error (max_perturb=%d; num_perturb_single_u=%d)',...
+    max_perturb, num_perturb_single_u))
+
+%==========================================================================
+
+
+%% Basic: Use Slow Feature Analysis on the data
+filename = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+dat_struct = importdata(filename);
+
+% Linear sfa
+y1 = sfa1(dat_struct.traces);
+
+% Quadratic sfa
+y2 = sfa2(dat_struct.traces);
+
+% Plot
+i = 1;
+
+figure;
+subplot(2,1,1)
+plot(y1(:,i))
+title(sprintf('Feature %d (linear sfa)', i))
+subplot(2,1,2)
+plot(y2(:,i))
+title(sprintf('Feature %d (quadratic sfa)', i))
+% Plot colored
+plot_colored(y1(:,i), dat_struct.SevenStates, dat_struct.SevenStatesKey);
+
+plot_colored(y1(:,1:3), dat_struct.SevenStates, dat_struct.SevenStatesKey);
+%==========================================================================
+
+
+%% Basic: Use Slow Feature Analysis on RPCA filtered data
+filename = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+dat_struct = importdata(filename);
+
+% Use model as filter
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    'filter_window_dat',0,...
+    'use_deriv',false);
+
+% Don't bother with state labels
+settings.global_signal_mode = 'None';
+my_model_filter = CElegansModel(filename, settings);
+
+% Linear sfa
+[y, hdl] = sfa1(my_model_filter.dat');
+
+% Quadratic sfa
+% y2 = sfa2(dat_struct.traces);
+
+% Plot
+% i = 1;
+%  
+% figure;
+% subplot(2,1,1)
+% plot(y1(:,i))
+% title(sprintf('Feature %d (linear sfa)', i))
+% subplot(2,1,2)
+% plot(y2(:,i))
+% title(sprintf('Feature %d (quadratic sfa)', i))
+% Plot colored
+plot_colored(y1(:,i), dat_struct.SevenStates, dat_struct.SevenStatesKey);
+
+plot_colored(y1(:,1:3), dat_struct.SevenStates, dat_struct.SevenStatesKey);
+%==========================================================================
+
+
+%% Network: Use Slow Feature Analysis on RPCA filtered data
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat_struct = importdata(filename);
+
+% Use model as filter
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    'filter_window_dat',2,...
+    'lambda_sparse', 0.04,...
+    'use_deriv',false);
+
+% Don't bother with state labels
+settings.global_signal_mode = 'None';
+my_model_filter = CElegansModel(filename, settings);
+
+% 1st Linear sfa (kind of like PCA)
+[y1, hdl] = sfa1(my_model_filter.dat(:,5:end-4)');
+
+% 2nd: Quadratic sfa
+r = 40;
+y2 = sfa2(y1(:,1:r));
+
+% 3rd: Quadratic sfa
+y3 = sfa2(y2(:,1:r));
+
+% 4th: Quadratic sfa
+y4 = sfa2(y3(:,1:r));
+% 5th-8th: Quadratic sfa
+y5 = sfa2(y4(:,1:r));
+y6 = sfa2(y5(:,1:r));
+y7 = sfa2(y6(:,1:r));
+y8 = sfa2(y7(:,1:r));
+
+% Plot
+i = 1;
+
+figure;
+subplot(2,1,1)
+plot(y1(:,i))
+title(sprintf('Feature %d (linear sfa)', i))
+subplot(2,1,2)
+plot(y2(:,i))
+title(sprintf('Feature %d (quadratic sfa)', i))
+
+% Plot colored
+% plot_colored(y1(:,i), dat_struct.SevenStates, dat_struct.SevenStatesKey);
+
+plot_colored(y1(:,1:3), dat_struct.SevenStates, dat_struct.SevenStatesKey);
+title('First sfa1')
+plot_colored(y2(:,1:3), dat_struct.SevenStates, dat_struct.SevenStatesKey);
+title('Second sfa1-2')
+plot_colored(y1(:,1:3), dat_struct.SevenStates, dat_struct.SevenStatesKey);
+title('Third sfa1-2-2')
+%==========================================================================
+
+
+%% Ignoring some neurons: autocorrelation
+filename = '../../Zimmer_data/WildType_adult/simplewt4/wbdataset.mat';
+dat_struct = importdata(filename);
+dat = dat_struct.traces;
+n = size(dat,2);
+
+for i = 1:n
+    f = figure;
+    subplot(2,1,1)
+    plot(dat(:,i))
+    title(sprintf('Neuron %d (%s)',...
+        i, my_model_filter.AdaptiveDmdc_obj.get_names(i)))
+    subplot(2,1,2)
+    acf(dat(:,i), 100);
+    pause
+    close(f)
+end
+
+%==========================================================================
+
+
+%% Ignoring some neurons: autocorrelation within a behavior
+filename = '../../Zimmer_data/WildType_adult/simplewt4/wbdataset.mat';
+dat_struct = importdata(filename);
+dat = dat_struct.traces;
+
+% Use model as filter
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    'lambda_sparse', 0,...
+    'use_deriv',false);
+
+% Don't bother with state labels
+settings.global_signal_mode = 'None';
+my_model_filter = CElegansModel(filename, settings);
+
+which_label = 'REVSUS';
+[~, ~, ~, ind] = my_model_filter.get_control_signal_during_label(which_label);
+interesting_neurons = {'SMBDL', 'SMBDR', 'AVAL', 'AVAR'};
+interesting_neurons = find(contains(...
+    my_model_filter.AdaptiveDmdc_obj.get_names(), interesting_neurons));
+n = length(interesting_neurons);
+
+for i = 1:n
+    this_n = interesting_neurons(i);
+    
+    figure;
+    subplot(2,1,1)
+    plot(ind, dat(ind,this_n))
+    title(sprintf('Neuron %d (%s) during %s',...
+        i, my_model_filter.AdaptiveDmdc_obj.get_names(this_n), which_label))
+    subplot(2,1,2)
+    acf(dat(ind,this_n), 100);
+end
+
+% SMD subset
+ind = 1000:1600;
+this_n = 125;
+figure;
+subplot(2,1,1)
+plot(ind, dat(ind,this_n))
+title(sprintf('Neuron %d (%s) during %s',...
+    i, my_model_filter.AdaptiveDmdc_obj.get_names(this_n), 'SLOW'))
+subplot(2,1,2)
+acf(dat(ind,this_n), 200);
+% AVA subset
+ind = 700:1100;
+this_n = 46;
+figure;
+subplot(2,1,1)
+plot(ind, dat(ind,this_n))
+title(sprintf('Neuron %d (%s) during %s',...
+    i, my_model_filter.AdaptiveDmdc_obj.get_names(this_n), 'REVSUS'))
+subplot(2,1,2)
+acf(dat(ind,this_n), 200);
+%==========================================================================
+
+
+
+
+
 
 
 
