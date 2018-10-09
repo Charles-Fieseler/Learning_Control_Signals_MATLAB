@@ -234,7 +234,7 @@ end
 
 %% Figure 4,5: Reconstructions (multiple methods)
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
-all_figs = cell(11,1);
+all_figs = cell(12,1);
 
 to_calc_double_RPCA = false;
 %---------------------------------------------
@@ -403,6 +403,31 @@ view(my_viewpoint)
 % Now make the colormap match the bar graphs
 for i=1:length(new_labels_key)
     all_figs{11}.Children(2).Children(i).CData = ...
+        my_cmap_3d(my_cmap_dict(i),:);
+end
+
+%---------------------------------------------
+% Simplest comparison: no control at all!
+%---------------------------------------------
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','tdmd',...
+    'add_constant_signal',false,...
+    ...'filter_window_dat',3,...
+    'use_deriv',true,...
+    'to_normalize_deriv',true,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'None';
+my_model_fig4_e = CElegansModel(filename, settings);
+
+my_model_fig4_e.set_simple_labels();
+all_figs{12} = my_model_fig4_e.plot_colored_reconstruction();
+view(my_viewpoint)
+% Now make the colormap match the bar graphs
+for i=1:length(new_labels_key)
+    all_figs{12}.Children(2).Children(i).CData = ...
         my_cmap_3d(my_cmap_dict(i),:);
 end
 
@@ -769,11 +794,11 @@ all_models = cell(5,1);
 all_roles_global = cell(5,2);
 for i=1:5
     filename = sprintf(filename_template,i);
-    if i==4
-        settings.lambda_sparse = 0.035; % Decided by looking at pareto front
-    else
-        settings.lambda_sparse = 0.05;
-    end
+%     if i==4
+%         settings.lambda_sparse = 0.035; % Decided by looking at pareto front
+%     else
+%         settings.lambda_sparse = 0.05;
+%     end
     all_models{i} = CElegansModel(filename,settings);
 end
 %% Now we have the models
