@@ -4444,10 +4444,6 @@ boxplot(err_train)
 ylim([0, 1.1*max(err_test)])
 title('Box plot of training errors vs. test data error')
 
-
-
-
-
 %==========================================================================
 
 
@@ -5907,7 +5903,7 @@ plot(ind, dat(ind,this_n))
 title(sprintf('Neuron %d (%s) during %s',...
     i, my_model_filter.AdaptiveDmdc_obj.get_names(this_n), 'SLOW'))
 subplot(2,1,2)
-acf(dat(ind,this_n), 200);
+acf(dat(ind,this_n), 600);
 % AVA subset
 ind = 700:1100;
 this_n = 46;
@@ -5919,6 +5915,73 @@ title(sprintf('Neuron %d (%s) during %s',...
 subplot(2,1,2)
 acf(dat(ind,this_n), 200);
 %==========================================================================
+
+
+%% Ignoring neurons: test autocorrelation threshold
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat_struct = importdata(filename);
+dat = dat_struct.traces;
+
+% Use model as filter
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal',false,...
+    ...'lambda_sparse', 0,...
+    'autocorrelation_noise_threshold', 0.5,...
+    'use_deriv',false);
+
+settings.global_signal_mode = 'ID_binary';
+my_model_prune = CElegansModel(filename, settings);
+
+% Easy measure of quality
+my_model_prune.plot_colored_reconstruction();
+
+%==========================================================================
+
+
+%% Adding neurons to controller: O2 sensory
+folder_name = 'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\npr1_1_PreLet\AN20140730a_ZIM575_PreLet_6m_O2_21_s_1TF_47um_1330_\';
+filename = [folder_name 'wbdataset.mat'];
+
+% First calculate the baseline model
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'use_deriv',false,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary';
+
+% Get the baseline model
+my_model_sensory = CElegansModel(filename, settings);
+
+% Find the neurons to add
+neurons_of_interest_labels = {'AQR', 'URXL', 'URXR', 'BAGL', 'BAGR'};
+neurons_of_interest = find(contains(...
+    my_model_sensory.AdaptiveDmdc_obj.get_names([], [], false, false),...
+    neurons_of_interest_labels));
+
+% Make the sensory-aware model
+ad_settings = my_model_sensory.AdaptiveDmdc_settings;
+ad_settings.x_indices(neurons_of_interest) = [];
+settings.AdaptiveDmdc_settings = ad_settings;
+my_model_sensory2 = CElegansModel(filename, settings);
+
+% General plots
+my_model_sensory.plot_reconstruction_interactive(false);
+title('Original model')
+my_model_sensory2.plot_reconstruction_interactive(true);
+title('O2 sensory neurons added')
+
+%==========================================================================
+
+
+
+
 
 
 

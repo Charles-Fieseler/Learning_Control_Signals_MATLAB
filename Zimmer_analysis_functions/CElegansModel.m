@@ -382,6 +382,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         filter_window_dat
         filter_window_global
         filter_aggressiveness
+        autocorrelation_noise_threshold
         augment_data
         to_subtract_mean
         to_subtract_mean_sparse
@@ -2133,9 +2134,10 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'global_signal_mode', 'RPCA',...
                 'custom_control_signal',[],...
                 ...% Data processing
-                'filter_window_dat', 3,...
+                'filter_window_dat', 0,...
                 'filter_window_global', 10,...
                 'filter_aggressiveness', 0,...
+                'autocorrelation_noise_threshold', 0,...
                 'AdaptiveDmdc_settings', struct(),...
                 'augment_data', 0,...
                 'to_subtract_mean',false,...
@@ -2267,11 +2269,35 @@ classdef CElegansModel < SettingsImportableFromStruct
             if self.use_deriv || self.use_only_deriv
                 self.raw = self.preprocess_deriv();
             end
-            self.dat_sz = size(self.raw);
+            
+            % Remove neurons if they are under the autocorrelation
+            % threshold
+            if self.autocorrelation_noise_threshold > 0
+                assert(self.autocorrelation_noise_threshold < 1,...
+                    'Autocorrelation cannot be greater than 1')
+                n = size(self.raw,1);
+                all_acf = zeros(n, 1);
+                for i = 1:n
+                    all_acf(i) = acf(self.raw(i,:)', 1, false);
+                end
+                to_keep = all_acf > ...
+                    self.autocorrelation_noise_threshold;
+                self.raw = self.raw(to_keep,:);
+                % Also remove the corresponding metadata
+                z = self.AdaptiveDmdc_settings.id_struct;
+                id_struct = struct('ID',{z.ID(to_keep)},...
+                    'ID2',{z.ID2(to_keep)}, 'ID3',{z.ID3(to_keep)});
+                self.AdaptiveDmdc_settings.id_struct = id_struct;
+                assert( isequal(self.AdaptiveDmdc_settings.x_indices,...
+                    1:n), 'Custom x_indices not supported with autocorrelation pruning')
+                self.AdaptiveDmdc_settings.x_indices = 1:length(find(to_keep));
+                
+            end
             
             %If augmenting, stack data offset by 1 column on top of itself;
             %note that this decreases the overall number of columns (time
             %slices)
+            self.dat_sz = size(self.raw);
             aug = self.augment_data;
             self.original_sz = self.dat_sz;
             if aug>1
