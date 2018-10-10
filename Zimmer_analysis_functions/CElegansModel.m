@@ -997,7 +997,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             attractor_overlap = attractor_overlap./all_norms;
             % Get names and sort if required
-            neuron_names = self.AdaptiveDmdc_obj.get_names([],[],false,false);
+            neuron_names = self.get_names();
             if use_only_known_neurons
                 neuron_ind = ~strcmp(neuron_names,'');
                 neuron_names = neuron_names(neuron_ind);
@@ -1106,7 +1106,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 group2 = (sum(B_global(:,fwd_ind),2) > class_tol);
             end
             % Get names and sort if required
-            neuron_names = self.AdaptiveDmdc_obj.get_names([],[],false, false);
+            neuron_names = self.get_names();
             neuron_names = neuron_names(1:num_neurons);
             if use_only_known_neurons
                 % Also get rid of ambiguous neurons, which will have long
@@ -1387,9 +1387,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             if ~exist('neuron_ind','var')
                 neuron_ind = 0;
             elseif ischar(neuron_ind)
-                neuron_ind = ...
-                    find(contains(self.AdaptiveDmdc_obj.get_names(...
-                    [],[],false,false),neuron_ind));
+                neuron_ind = self.name2ind(neuron_ind);
                 assert(~isempty(neuron_ind),...
                     'No neuron of that name found')
             end
@@ -1447,13 +1445,10 @@ classdef CElegansModel < SettingsImportableFromStruct
         function fig = plot_colored_neuron(self, neuron)
             if ischar(neuron)
                 neuron_name = neuron;
-                neuron = find(cellfun(...
-                    @(x) strcmp(x,neuron_name), ...
-                    self.AdaptiveDmdc_obj.get_names([],[],false,false)));
+                neuron = self.name2ind(neuron);
                 neuron = neuron(1); % Do not get derivatives
             elseif isnumeric(neuron)
-                neuron_name = ...
-                    self.AdaptiveDmdc_obj.get_names(neuron,[],false,false);
+                neuron_name = self.get_names(neuron);
             end
             
             fig = plot_colored(self.dat(neuron, :),...
@@ -2045,7 +2040,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             
             % Get the names and maybe a subset
-            names = self.AdaptiveDmdc_obj.get_names([],[],false,false);
+            names = self.get_names();
             if named_only
                 ind(cellfun(@isempty,names(ind))) = [];
             end
@@ -2131,7 +2126,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 (self.control_signals_metadata{which_controller,:}{:});
             
             % Get the names and maybe a subset
-            names = self.AdaptiveDmdc_obj.get_names([],[],false,false);
+            names = self.get_names();
             if named_only
                 row_ind(cellfun(@isempty,names(row_ind))) = [];
             end
@@ -2165,7 +2160,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 imagesc(self.S_sparse, [min(min(self.S_sparse))*0.2,max(max(self.S_sparse))*0.2])
             end
             yticks(1:self.original_sz(1))
-            yticklabels(self.AdaptiveDmdc_obj.get_names([],[],false,false))
+            yticklabels(self.get_names())
             colorbar
             
             % Set up interactivity
@@ -2994,7 +2989,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 else
                     yticks(1:self.original_sz(1))
                 end
-                yticklabels(self.AdaptiveDmdc_obj.get_names([],[],false,false))
+                yticklabels(self.get_names())
                 xticks([])
                 colorbar
             end
