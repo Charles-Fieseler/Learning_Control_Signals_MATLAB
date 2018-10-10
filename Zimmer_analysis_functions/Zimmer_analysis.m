@@ -5980,6 +5980,42 @@ title('O2 sensory neurons added')
 %==========================================================================
 
 
+%% Adding neurons to controller: use new input method
+folder_name = 'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\npr1_1_PreLet\AN20140730a_ZIM575_PreLet_6m_O2_21_s_1TF_47um_1330_\';
+filename = [folder_name 'wbdataset.mat'];
+
+% First calculate the baseline model
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'dmd_mode','func_DMDc',...
+    'add_constant_signal', false,...
+    'use_deriv',false,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary';
+
+% Get the baseline model
+my_model_sensory = CElegansModel(filename, settings);
+
+% Find the neurons to add
+neurons_of_interest_labels = {'AQR', 'URXL', 'URXR', 'BAGL', 'BAGR'};
+neurons_of_interest = find(contains(...
+    my_model_sensory.AdaptiveDmdc_obj.get_names([], [], false, false),...
+    neurons_of_interest_labels));
+
+% Make the sensory-aware model (NEW)
+settings.designated_controller_channels = ...
+    {{'O2_sensory'}, {neurons_of_interest}};
+my_model_sensory2 = CElegansModel(filename, settings);
+
+% General plots
+my_model_sensory.plot_reconstruction_interactive(false);
+title('Original model')
+my_model_sensory2.plot_reconstruction_interactive(true);
+title('O2 sensory neurons added')
+
+%==========================================================================
 
 
 

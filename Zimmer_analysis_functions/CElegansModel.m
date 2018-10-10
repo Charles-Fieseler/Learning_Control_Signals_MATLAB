@@ -372,6 +372,7 @@ classdef CElegansModel < SettingsImportableFromStruct
     properties (SetAccess={?SettingsImportableFromStruct}, Hidden=true)
         verbose
         % Getting the control signal
+        designated_controller_channels
         lambda_global
         max_rank_global
         global_signal_mode
@@ -2128,6 +2129,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             defaults = struct(...
                 'verbose',true,...
                 ...% Getting the control signal
+                'designated_controller_channels', {{}},...
                 'lambda_global', 0.0065,...
                 'max_rank_global', 4,...
                 'lambda_sparse', 0.043,...
@@ -2280,18 +2282,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                 for i = 1:n
                     all_acf(i) = acf(self.raw(i,:)', 1, false);
                 end
-                to_keep = all_acf > ...
-                    self.autocorrelation_noise_threshold;
-                self.raw = self.raw(to_keep,:);
-                % Also remove the corresponding metadata
-                z = self.AdaptiveDmdc_settings.id_struct;
-                id_struct = struct('ID',{z.ID(to_keep)},...
-                    'ID2',{z.ID2(to_keep)}, 'ID3',{z.ID3(to_keep)});
-                self.AdaptiveDmdc_settings.id_struct = id_struct;
-                assert( isequal(self.AdaptiveDmdc_settings.x_indices,...
-                    1:n), 'Custom x_indices not supported with autocorrelation pruning')
-                self.AdaptiveDmdc_settings.x_indices = 1:length(find(to_keep));
-                
+                to_remove = all_acf < self.autocorrelation_noise_threshold;
+                self.remove_neurons_and_metadata(to_remove, 'raw');
             end
             
             %If augmenting, stack data offset by 1 column on top of itself;
@@ -2335,6 +2327,30 @@ classdef CElegansModel < SettingsImportableFromStruct
                 self.state_labels_ind_raw(end-size(self.dat,2)+1:end);
         end
         
+        function remove_neurons_and_metadata(self, to_remove, field)
+            if strcmp(field, 'raw') || strcmp(field, 'dat')
+                tmp = self.(field);
+                n = size(tmp,1);
+                to_keep = 1:n;
+                to_keep(to_remove) = [];
+                assert(~isempty(to_keep),...
+                    'Something has gone wrong; attempting to remove all data...')
+                self.(field) = tmp(to_keep,:);
+            else
+                error('Unrecognized field')
+            end
+            % Also remove the corresponding metadata
+            z = self.AdaptiveDmdc_settings.id_struct;
+            id_struct = struct('ID',{z.ID(to_keep)},...
+                'ID2',{z.ID2(to_keep)}, 'ID3',{z.ID3(to_keep)});
+            self.AdaptiveDmdc_settings.id_struct = id_struct;
+            assert( isequal(self.AdaptiveDmdc_settings.x_indices,...
+                1:n), 'Custom x_indices not supported with neuron removal')
+            self.AdaptiveDmdc_settings.x_indices = 1:length(find(to_keep));
+            
+            warning('Metadata removal only works before AdaptiveDmdc object is defined')
+        end
+        
         function new_raw = preprocess_deriv(self)
             % Aligns and optionally normalizes the derivative signal
             deriv = self.raw_deriv;
@@ -2356,12 +2372,46 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function calc_all_control_signals(self)
             % Calls subfunctions to calculate control signals
+            self.partition_data_into_controllers();
+            
             self.calc_sparse_signal();
             self.calc_global_signal();
             self.add_custom_control_signal();
             self.add_stimulus_signal();
             
             self.calc_dat_and_control_signal();
+        end
+        
+        function partition_data_into_controllers(self)
+            % Partitions data into control signals based on external
+            % designations
+            %   Uses "designated_controller_channels" field which is by
+            %   default empty
+            if isempty(self.designated_controller_channels)
+                return
+            end
+            assert(iscell(self.designated_controller_channels),...
+                'Designated controllers must be input as a cell array')
+            n = length(self.designated_controller_channels);
+            assert(mod(n,2)==0,...
+                'Designated controllers must be input as a name-index pair')
+            
+            all_ind = [];
+            for i = n/2
+                this_name = self.designated_controller_channels{2*i-1}{:};
+                this_ind = self.designated_controller_channels{2*i}{:};
+                if ~isnumeric(this_ind)
+%                     tmp = zeros(size(this_ind));
+                    assert('Not yet')
+                end
+                this_ctr = self.dat(this_ind,:);
+                
+                self.add_custom_control_signal(this_ctr, this_name);
+                
+                all_ind = [all_ind, this_ind]; %#ok<AGROW>
+            end
+            
+            self.remove_neurons_and_metadata(all_ind, 'dat');
         end
         
         function calc_global_signal(self, global_signal_mode)
