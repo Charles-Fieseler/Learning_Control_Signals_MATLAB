@@ -1194,6 +1194,58 @@ classdef CElegansModel < SettingsImportableFromStruct
                 corr_diag = diag( corr_mat((n+1):end,1:n) );
             end
         end
+        
+        function names = get_names(self, neuron_ind)
+            % Calls sub-object AdaptiveDmdc method of the same name in most
+            % cases, but also works if that object has not been
+            % initialized
+            %   Note that this still uses a static function from the
+            %   AdaptiveDmdc class
+            if ~exist('neuron_ind', 'var')
+                neuron_ind = [];
+            end
+            try 
+                names = self.AdaptiveDmdc_obj.get_names(neuron_ind,...
+                    true, false, false, true);
+            catch
+                % Call recursively if a list is input
+                if ~isscalar(neuron_ind)
+                    names = cell(size(neuron_ind));
+                    for n=1:length(neuron_ind)
+                        this_neuron = neuron_ind(n);
+                        names{n} = self.get_names(this_neuron);
+                    end
+                    return
+                end
+                % Actually get the name
+                id_struct = self.AdaptiveDmdc_settings.id_struct;
+                if neuron_ind > length(id_struct.ID)
+                    neuron_ind = neuron_ind - length(id_struct.ID);
+                    if neuron_ind > length(id_struct.ID)
+                        names = '';
+                        return
+                    end
+                end
+                names = {id_struct.ID{neuron_ind},...
+                    id_struct.ID2{neuron_ind},...
+                    id_struct.ID3{neuron_ind}};
+                names = AdaptiveDmdc.parse_names({names});
+                if length(names)==1 % i.e. a single neuron
+                    names = names{1};
+                end
+            end % try
+        end %function
+        
+        function ind = name2ind(self, neuron_names)
+            % Finds the indices of a neuron or cell array of neurons
+            %
+            % 2 important notes: 
+            %   If the name is found in more than one neuron, all will be
+            %   returned
+            %   The order of the indices doesn't correspond to the order of
+            %   the input names (if a cell array)
+            ind = find(contains(self.get_names(), neuron_names));
+        end
     end
     
     methods % Building predictive model
