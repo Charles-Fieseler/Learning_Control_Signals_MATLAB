@@ -3,9 +3,17 @@
 # Matlab figures
 *.fig
 
-# Other pictures and movies (from MATLAB)
+# Other pictures/movies/figures/data (from MATLAB)
 *.png
 *.avi
+*.fig
+*.mat
+
+# MATLAB temporary files
+*.asv
 
 # Documentation folder
 html/
+
+# Self explanatory
+scratch/
