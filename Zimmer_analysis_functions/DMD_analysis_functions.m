@@ -707,13 +707,13 @@ imagesc(real(dat_high_clean))
 title('Clean data')
 subplot(4,1,3)
 imagesc(real(dat_exp_matrix))
-title('Reconstruction: Exponential DMD (matrix multiplication)')
+title('Reconstruction: Geometric DMD (matrix multiplication)')
 subplot(4,1,4)
 imagesc(real(dat_opt_matrix))
 title('Reconstruction: Optimized DMD (matrix multiplication)')
 
 
-figure;
+fig = figure('DefaultAxesFontSize', 14);
 subplot(6,1,1)
 imagesc(real(dat_high))
 title('Noisy data')
@@ -722,16 +722,22 @@ imagesc(real(dat_high_clean))
 title('Clean data')
 subplot(6,1,3)
 imagesc(real(dat_exp))
-title('Reconstruction: Exponential DMD')
+title('Reconstruction: Geometric DMD')
 subplot(6,1,4)
 imagesc(real(dat_exp_matrix))
-title('Reconstruction: Exponential DMD (matrix multiplication)')
+title('Reconstruction: Geometric DMD (matrix multiplication)')
 subplot(6,1,5)
 imagesc(real(dat_opt))
 title('Reconstruction: Optimized DMD')
 subplot(6,1,6)
 imagesc(real(dat_opt_matrix))
 title('Reconstruction: Optimized DMD (matrix multiplication)')
+
+% Save, with a pause
+pause
+foldername = 'C:\Users\charl\Documents\Current_work\Infinite_Series_DMD\';
+saveas(fig, sprintf('%s/geometric_optimized_dmd_comparison',...
+    foldername), 'png')
 
 %==========================================================================
 
@@ -968,3 +974,56 @@ plotSVD(this_dat');%, struct('PCA3d',true, 'PCA_opt', 'o'));
 plot_colored(proj3d, state_vec(1:end-1), {'1', '2', '3'});
 
 %==========================================================================
+
+
+%% Plots for the coefficients of isDMD (exponential)
+foldername = 'C:\Users\charl\Documents\Current_work\Infinite_Series_DMD\';
+
+t = 1:20;
+n = 10;
+lambda_vec = linspace(1,5,n);
+
+fig = figure;
+func = @(lambda, i) (lambda.^i).*(1./factorial(i));
+leg_str = cell(n,1);
+for i = 1:n
+    semilogy(t, func(lambda_vec(i), t))
+    leg_str{i} = sprintf('lambda=%.2f', lambda_vec(i));
+    hold on
+end
+ylabel('Residual')
+xlabel('truncation parameter (d)')
+legend(leg_str, 'Location', 'southwest');
+title('Coefficients for exponential series data')
+
+saveas(fig, sprintf('%s/exponential_coefficients',...
+    foldername), 'png')
+%==========================================================================
+
+
+%% Plots for the coefficients of isDMD (geometric)
+foldername = 'C:\Users\charl\Documents\Current_work\Infinite_Series_DMD\';
+
+t = 1:20;
+n = 10;
+lambda_vec = linspace(0.1,1,n+1);
+lambda_vec = lambda_vec(1:end-1);
+
+fig = figure;
+func = @(lambda, i) (lambda.^i);
+leg_str = cell(n,1);
+for i = 1:n
+    semilogy(t, func(lambda_vec(i), t))
+    leg_str{i} = sprintf('lambda=%.2f', lambda_vec(i));
+    hold on
+end
+ylabel('Residual')
+xlabel('truncation parameter (d)')
+legend(leg_str, 'Location', 'southwest');
+title('Coefficients for geometric series data')
+
+saveas(fig, sprintf('%s/geometric_coefficients',...
+    foldername), 'png')
+%==========================================================================
+
+
