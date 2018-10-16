@@ -373,6 +373,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         verbose
         % Getting the control signal
         designated_controller_channels
+        to_add_stimulus_signal
         lambda_global
         max_rank_global
         global_signal_mode
@@ -588,9 +589,21 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function set_simple_labels(self, label_dict, new_labels_key)
             if ~exist('label_dict','var')
-                label_dict = containers.Map(...
-                    {1,2,3,4,5,6,7,8},...
-                    {1,1,2,3,4,4,4,5});
+                if length(self.state_labels_key) == 8
+                    % Classic format
+                    label_dict = containers.Map(...
+                        {1,2,3,4,5,6,7,8},...
+                        {1,1,2,3,4,4,4,5});
+                elseif length(self.state_labels_key) == 6
+                    % Prelet format
+                    label_dict = containers.Map(...
+                        {0,1,2,3,4,5},...
+                        {1,5,2,3,4,5});
+                elseif length(self.state_labels_key) == 5
+                    return
+                else
+                    error('Unknown state label format')
+                end
             end
             if ~exist('new_labels_key','var')
                 new_labels_key = ...
@@ -891,6 +904,8 @@ classdef CElegansModel < SettingsImportableFromStruct
             ad_obj = self.AdaptiveDmdc_obj;
             x_dat = 1:ad_obj.x_len;
             x_ctr = (ad_obj.x_len+1):self.total_sz(1);
+%             x_ctr = ad_obj.x_len + ...
+%                 self.control_signals_metadata{which_label,:}{:};
             A = ad_obj.A_original(x_dat, x_dat);
             B = ad_obj.A_original(x_dat, x_ctr);
             if strcmp(which_label,'all')
@@ -912,6 +927,13 @@ classdef CElegansModel < SettingsImportableFromStruct
                     which_label, self.state_labels_key));
                 u(end-1) = 1; % This channel is just constant
                 u(end) = mean(self.dat_with_control(end,:)); % time signal
+                error('Old code for determing controller... need to update')
+            elseif strcmp(self.global_signal_mode, 'ID_binary')
+                u = 1;
+                % The input is just the index directly, but we need to
+                % shrink the B matrix to just the relevant row
+                ind = strcmp(which_label, self.state_labels_key);
+                B = B(:, ind);
             else
                 error('use_only_global only implemented for global_signal_mode=ID')
             end
@@ -1038,6 +1060,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         function [neuron_roles, neuron_names] = ...
                 calc_neuron_roles_in_global_modes(self,...
                 use_only_known_neurons, class_tol, max_err_percent, ...
+                to_include_turns,...
                 use_derivs, combine_derivs)
             if ~exist('use_only_known_neurons','var') || ...
                     isempty(use_only_known_neurons)
@@ -1048,6 +1071,9 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             if ~exist('max_err_percent','var') || isempty(max_err_percent)
                 max_err_percent = 0;
+            end
+            if ~exist('to_include_turns', 'var')
+                to_include_turns = false;
             end
             if ~exist('use_derivs', 'var')
                 use_derivs = self.use_deriv;
@@ -1061,6 +1087,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                 num_neurons = num_neurons/2;
             end
             if any(ismember(self.control_signals_metadata.Row,'ID'))
+                assert(~to_include_turns,...
+                    'Turns not implemented for ID signal (only ID_binary)')
                 ind = self.control_signals_metadata{'ID',:}{:};
                 B_global = self.AdaptiveDmdc_obj.A_original(1:num_neurons,...
                                 ...(2*num_neurons+1):end-2);
@@ -1069,6 +1097,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 %   Assume a single control signal (ID); ignore offset
                 group1 = (B_global > class_tol);
                 group2 = (B_global < -class_tol);
+                all_groups = [group1, group2];
             elseif any(ismember(self.control_signals_metadata.Row,'ID_binary'))
                 ind = self.control_signals_metadata{'ID_binary',:}{:};
                 assert(~any(ismember(self.control_signals_metadata.Row,'constant')),...
@@ -1084,7 +1113,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                 fwd_ind = contains(self.state_labels_key,...
                     {'FWD','SLOW'});
                 rev_ind = contains(self.state_labels_key,...
-                    {'REVSUS','REV1','REV2'});
+                    ...{'REVSUS','REV1','REV2'});
+                    'REVSUS');
                 if isempty(find(fwd_ind, 1))
                     fwd_ind = contains(self.state_labels_key,...
                         {'simple FWD'});
@@ -1101,9 +1131,35 @@ classdef CElegansModel < SettingsImportableFromStruct
                     error('Could not find any foward indices...')
                 end
                 % Narrow these down to which neurons are important for which behaviors
-                %   Assume a single one-hot encoded control signal (ID_binary)
                 group1 = (sum(B_global(:,rev_ind),2) > class_tol);
                 group2 = (sum(B_global(:,fwd_ind),2) > class_tol);
+                all_groups = [group1, group2];
+                % Also do turns, if checked
+                if to_include_turns
+                    dt_ind = contains(self.state_labels_key, 'DT');
+                    vt_ind = contains(self.state_labels_key, 'VT');
+                    if isempty(find(dt_ind, 1))
+                        dt_ind = contains(self.state_labels_key,...
+                            {'Dorsal turn'});
+                        dt_ind = dt_ind(1:end-1);
+                        vt_ind = contains(self.state_labels_key,...
+                            {'Ventral turn'});
+                        vt_ind = vt_ind(1:end-1);
+                    end
+                    if isempty(find(dt_ind, 1)) && isempty(find(vt_ind, 1))
+                        assert('No turn indices found...')
+                    end
+                    group3 = (sum(B_global(:,dt_ind),2) > class_tol);
+                    group4 = (sum(B_global(:,vt_ind),2) > class_tol);
+                    all_groups = [all_groups, group3, group4];
+                    % Make the turns dominate the group designation;
+                    % otherwise there are too many groups
+                    for i = 1:size(group3,1)
+                        if group3(i) || group4(i)
+                            all_groups(i, 1:2) = 0;
+                        end
+                    end
+                end
             end
             % Get names and sort if required
             neuron_names = self.get_names();
@@ -1145,15 +1201,18 @@ classdef CElegansModel < SettingsImportableFromStruct
                 this_neuron = neuron_ind(i);
                 if group_error(this_neuron)
                     neuron_roles{i} = 'high error';
-                elseif group1(this_neuron) && group2(this_neuron)
-                    neuron_roles{i} = 'both';
-                elseif group1(this_neuron)
-                    neuron_roles{i} = 'group 1';
-                elseif group2(this_neuron)
-                    neuron_roles{i} = 'group 2';
-                else
-                    neuron_roles{i} = 'other';
+                    continue
                 end
+                this_str = 'group';
+                for iG = 1:size(all_groups,2)
+                    if all_groups(this_neuron, iG)
+                        this_str = [this_str ' ' num2str(iG)]; %#ok<AGROW>
+                    end
+                end
+                if strcmp(this_str, 'group')
+                    this_str = 'other';
+                end
+                neuron_roles{i} = this_str;
             end
         end
         
@@ -1202,7 +1261,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             %   Note that this still uses a static function from the
             %   AdaptiveDmdc class
             if ~exist('neuron_ind', 'var')
-                neuron_ind = [];
+                neuron_ind = 1:self.original_sz(1);
             end
             try 
                 names = self.AdaptiveDmdc_obj.get_names(neuron_ind,...
@@ -1383,6 +1442,9 @@ classdef CElegansModel < SettingsImportableFromStruct
             %   Note: You can use zoom without triggering the GUI
             if ~exist('include_control_signal','var')
                 include_control_signal = true;
+            else
+                assert(islogical(include_control_signal),...
+                    'First argument should be boolean')
             end
             if ~exist('neuron_ind','var')
                 neuron_ind = 0;
@@ -1446,9 +1508,16 @@ classdef CElegansModel < SettingsImportableFromStruct
             if ischar(neuron)
                 neuron_name = neuron;
                 neuron = self.name2ind(neuron);
-                neuron = neuron(1); % Do not get derivatives
+%                 neuron = neuron(1); % Do not get derivatives
             elseif isnumeric(neuron)
                 neuron_name = self.get_names(neuron);
+            end
+            
+            if length(neuron) > 1
+                for i = 1:length(neuron)
+                    fig = self.plot_colored_neuron(neuron(i));
+                end
+                return
             end
             
             fig = plot_colored(self.dat(neuron, :),...
@@ -1497,6 +1566,10 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             if ~exist('fig','var') || isempty(fig)
                 fig = self.plot_colored_data(false, plot_opt);
+            end
+            if isempty(self.L_sparse_modes)
+                self.L_sparse_modes = plotSVD(self.L_sparse,...
+                    struct('PCA3d',false,'sigma',false));
             end
             
             this_dat = self.AdaptiveDmdc_obj.calc_reconstruction_control();
@@ -2095,6 +2168,12 @@ classdef CElegansModel < SettingsImportableFromStruct
         function fig = plot_matrix_B(self, ...
                 named_only, which_controller, neuron_mode)
             % Plot a heatmap of the dynamic matrix
+            % Input:
+            %   named_only (false) - to plot only named (ID'ed) neurons
+            %   which_controller (first one) - which control signal to
+            %       plot; listed in self.control_signals_metadata.Row; e.g.
+            %       'ID_binary' 'sparse'
+            %   neuron_mode ('neurons_only') - to plot derivatives or not
             if ~exist('named_only', 'var')
                 named_only = false;
             end
@@ -2177,6 +2256,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'verbose',true,...
                 ...% Getting the control signal
                 'designated_controller_channels', {{}},...
+                'to_add_stimulus_signal', true,...
                 'lambda_global', 0.0065,...
                 'max_rank_global', 4,...
                 'lambda_sparse', 0.043,...
@@ -2424,7 +2504,9 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.calc_sparse_signal();
             self.calc_global_signal();
             self.add_custom_control_signal();
-            self.add_stimulus_signal();
+            if self.to_add_stimulus_signal
+                self.add_stimulus_signal();
+            end
             
             self.calc_dat_and_control_signal();
         end
@@ -2445,11 +2527,10 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             all_ind = [];
             for i = n/2
-                this_name = self.designated_controller_channels{2*i-1}{:};
-                this_ind = self.designated_controller_channels{2*i}{:};
+                this_name = self.designated_controller_channels{2*i-1};
+                this_ind = self.designated_controller_channels{2*i};
                 if ~isnumeric(this_ind)
-%                     tmp = zeros(size(this_ind));
-                    assert('Not yet')
+                    this_ind = self.name2ind(this_ind);
                 end
                 this_ctr = self.dat(this_ind,:);
                 
@@ -2568,7 +2649,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                     
                 case 'ID_binary'
                     binary_labels = self.calc_binary_labels(...
-                        self.state_labels_ind);
+                        self.state_labels_ind, length(self.state_labels_key));
                     if ~isequal(sum(binary_labels,1),...
                             ones(1,size(binary_labels,2)))
                         warning('Not all time frames have state labels')
@@ -2632,7 +2713,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                     
                 case 'x_times_state' % Not called alone
                     binary_labels = self.calc_binary_labels(...
-                        self.state_labels_ind);
+                        self.state_labels_ind, length(self.state_labels_key));
                     tmp = [];
                     ind = 1:size(binary_labels,2);
                     for i=1:size(binary_labels,1)
@@ -2643,7 +2724,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                     
                 case 'cumsum_x_times_state' % Not called alone
                     binary_labels = self.calc_binary_labels(...
-                        self.state_labels_ind);
+                        self.state_labels_ind, length(self.state_labels_key));
                     tmp = [];
                     for i=1:size(binary_labels,1)
                         tmp = [tmp; self.dat.*binary_labels(i,:)]; %#ok<AGROW>
@@ -2665,7 +2746,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                     
                 case 'cumtrapz_x_times_state' % Not called alone
                     binary_labels = self.calc_binary_labels(...
-                        self.state_labels_ind);
+                        self.state_labels_ind, length(self.state_labels_key));
                     tmp = [];
                     for i=1:size(binary_labels,1)
                         tmp = [tmp; self.dat.*binary_labels(i,:)]; %#ok<AGROW>
@@ -2835,7 +2916,8 @@ classdef CElegansModel < SettingsImportableFromStruct
             ctr_signal(s_times(1)+1:s_times(2)) = ctr0 + 1;
             ctr_signal(s_times(2)+1:end) = ctr0;
             
-            ctr_signal_binary = self.calc_binary_labels(ctr_signal);
+            ctr_signal_binary = self.calc_binary_labels(ctr_signal, ...
+                length(self.state_labels_key));
             self.add_custom_control_signal(ctr_signal_binary,...
                 sprintf('Stimulus_%s',id_signal));
         end
@@ -3131,10 +3213,32 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
         end
         
-        function binary_labels = calc_binary_labels(these_states)
-            all_states = sort(unique(these_states));
-            sz = [length(all_states), 1];
+        function [binary_labels, all_states] = ...
+                calc_binary_labels(these_states, to_add_zeros)
+            % Calculates a one-hot encoding of the input
+            % Input:
+            %   these_states - integer labels
+            %   to_add_zeros (0) - to add rows of zeros if integer
+            %       states are missing, up to the given value
+            % Output:
+            %   binary_labels - one-hot encoding of the labels
+            %   all_states - all states that were found, indexing the rows
+            if ~exist('to_add_zeros', 'var')
+                to_add_zeros = 0;
+            end
+            
+            if to_add_zeros > 0
+                % Assume that the minimum value is present; others may be
+                % missing
+                state0 = min(these_states);
+                all_states = state0:(state0 + to_add_zeros);
+                sz = [to_add_zeros, 1];
+            else
+                all_states = sort(unique(these_states));
+                sz = [length(all_states), 1];
+            end
             binary_labels = zeros(sz(1),size(these_states,2));
+            
             for i = 1:sz(1)
                 binary_labels(i,:) = (these_states==all_states(i));
             end
