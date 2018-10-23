@@ -4440,33 +4440,31 @@ my_model_bu = CElegansModel(filename, settings);
 my_model_bu.plot_reconstruction_interactive();
 title('Reconstruction with no dynamics')
 
-figure
+fig = figure('DefaultAxesFontSize', 14);
 subplot(2,1,1)
-all_corr_bu = my_model_bu.calc_correlation_matrix();
-histogram(all_corr_bu, 'BinWidth', 0.05);
+my_model_bu.plot_correlation_histogram(false, [], fig);
 xlim([0,1])
 ylim([0,25])
 title('Correlation coefficients for the no-dynamics model (+sparse)')
 subplot(2,1,2)
-all_corr_base = my_model_base.calc_correlation_matrix();
-histogram(all_corr_base, 'BinWidth', 0.05);
+my_model_base.plot_correlation_histogram(false, [], fig);
 xlim([0,1])
 ylim([0,25])
 title('Correlation coefficients for the base model (+sparse)')
 
-names = my_model_bu.get_names();
-ind = ~cellfun(@isempty, names);
-figure
-subplot(2,1,1)
-histogram(all_corr_bu(ind), 'BinWidth', 0.05);
-xlim([0,1])
-ylim([0,10])
-title('Correlation coefficients for the no-dynamics model (named only) (+sparse)')
-subplot(2,1,2)
-histogram(all_corr_base(ind), 'BinWidth', 0.05);
-xlim([0,1])
-ylim([0,10])
-title('Correlation coefficients for the base model (named only) (+sparse)')
+% names = my_model_bu.get_names();
+% ind = ~cellfun(@isempty, names);
+% figure
+% subplot(2,1,1)
+% histogram(all_corr_bu(ind), 'BinWidth', 0.05);
+% xlim([0,1])
+% ylim([0,10])
+% title('Correlation coefficients for the no-dynamics model (named only) (+sparse)')
+% subplot(2,1,2)
+% histogram(all_corr_base(ind), 'BinWidth', 0.05);
+% xlim([0,1])
+% ylim([0,10])
+% title('Correlation coefficients for the base model (named only) (+sparse)')
 
 %==========================================================================
 
@@ -4487,7 +4485,7 @@ settings = struct(...
     'dmd_mode','sparse');
 settings.global_signal_mode = 'ID_binary';
 
-my_model_base = CElegansModel(filename, settings);
+my_model_no_REV = CElegansModel(filename, settings);
 
 %==========================================================================
 
@@ -4516,7 +4514,12 @@ for i = 1:length(all_neurons)
     this_set = setdiff(all_neurons, all_neurons{i});
     enforce_zero_entries{1}{1} = this_set;
     settings.enforce_zero_entries = enforce_zero_entries;
-    all_models{i} = CElegansModel(filename, settings);
+%     all_models{i} = CElegansModel(filename, settings);
+    
+    all_models{i}.plot_correlation_histogram(false, this_set);
+    title(sprintf('Correlations for model with control on only %s',...
+        all_neurons{i}))
+    drawnow
 end
     
 %==========================================================================

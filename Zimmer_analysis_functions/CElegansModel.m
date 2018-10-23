@@ -2308,6 +2308,54 @@ classdef CElegansModel < SettingsImportableFromStruct
             im1.ButtonDownFcn = @(x,y) self.callback_plotter_reconstruction(x,y);
         end
         
+        function fig = plot_correlation_histogram(self, ...
+                only_named, neurons_to_mark, fig)
+            % Plots a histogram of the correlation coefficients between the
+            % original data (smoothed, if applicable) and the
+            % reconstruction
+            %
+            % Input:
+            %   only_named (false) - only plot named neurons
+            %   neurons_to_mark ([]) - neurons to mark on the plot
+            %   fig ([]) - if not passed, will open a new figure
+            if ~exist('only_named','var')
+                only_named = false;
+            end
+            if ~exist('neurons_to_mark', 'var')
+                neurons_to_mark = [];
+            elseif iscell(neurons_to_mark) || ischar(neurons_to_mark)
+                neurons_to_mark = self.name2ind(neurons_to_mark);
+            end
+            if ~exist('fig', 'var')
+                fig = figure('DefaultAxesFontSize', 14);
+            end
+            all_corr= self.calc_correlation_matrix();
+            
+            if only_named
+                names = self.get_names();
+                ind = ~cellfun(@isempty, names);
+                all_corr = all_corr(ind);
+                title_str = 'Histogram of named neuron correlations';
+                if ~isempty(neurons_to_mark)
+                    neurons_to_mark = find(neurons_to_mark==find(ind));
+                end
+            else
+                title_str = 'Histogram of all neuron correlations';
+            end
+            
+            histogram(all_corr, 'BinWidth', 0.05);
+            title(title_str)
+            hold on
+            for i = 1:length(neurons_to_mark)
+                x = all_corr(neurons_to_mark(i));
+                y = ylim();
+                y = round(0.8*y);
+                line([x x], y, 'color', 'r', 'LineWidth',2)
+                text(x, y(2), self.get_names(neurons_to_mark(i)),...
+                    'FontSize',14, 'Rotation',90);
+            end
+        end
+        
     end
     
     methods %(Access=private)
