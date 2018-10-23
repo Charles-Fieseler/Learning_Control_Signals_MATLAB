@@ -378,6 +378,8 @@ classdef CElegansModel < SettingsImportableFromStruct
         max_rank_global
         global_signal_mode
         lambda_sparse
+        enforce_diagonal_sparse_B
+        enforce_zero_entries
         custom_control_signal
         
         % Data processing
@@ -389,6 +391,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         to_subtract_mean
         to_subtract_mean_sparse
         to_subtract_mean_global
+        to_separate_sparse_from_data
         offset_control_signal
         dmd_mode
         AdaptiveDmdc_settings
@@ -531,9 +534,67 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function calc_AdaptiveDmdc(self)
             % Uses external class AdaptiveDmdc
+            self.AdaptiveDmdc_settings.initial_sparsity_pattern = ...
+                self.get_initial_sparsity_pattern();
+            
             self.AdaptiveDmdc_obj = AdaptiveDmdc(...
                 [self.dat; self.control_signal],...
                 self.AdaptiveDmdc_settings);
+        end
+        
+        function sparsity = get_initial_sparsity_pattern(self)
+            if self.enforce_diagonal_sparse_B || ...
+                    ~isempty(self.enforce_zero_entries)
+                assert(strcmp(self.dmd_mode, 'sparse') || ...
+                    strcmp(self.dmd_mode, 'no_dynamics_sparse'),...
+                    'Matrix structure can only be enforced if dmd_mode is sparse')
+            else
+                sparsity = logical([]); % i.e. the default
+                return
+            end
+            
+            % Set the initial sparsity structure for A and B
+            % concatenated with each other
+            sz = [self.original_sz(1), size(self.control_signal,1)];
+            if strcmp(self.dmd_mode, 'no_dynamics_sparse')
+                A0 = ones(sz(1), sz(1)); % Set the entire A matrix to 0
+            else
+                A0 = zeros(sz(1), sz(1));
+            end
+            B0 = zeros(sz);
+            % Set the sparsity structure for the specific options
+            if self.enforce_diagonal_sparse_B
+                ind = self.control_signals_metadata{'sparse',:}{:};
+                B0(:, ind) = ones(sz(1), length(ind)) - ...
+                    diag( ones(length(ind), 1) );
+            end
+            if ~isempty(self.enforce_zero_entries)
+                % Format for each cell: 
+                %   2x1 cell array: {from, to}
+                %   i.e. {neuron ID or number, neuron or ctr_signal}
+                % Note: if control signal, will be an entire row
+                names = self.get_names();
+                ctr_names = self.control_signals_metadata.Row;
+                for i = 1:length(self.enforce_zero_entries)
+                    xy = self.enforce_zero_entries{i};
+                    if ischar(xy{1}) || iscell(xy{1})
+                        xy{1} = self.name2ind(xy{1});
+                    end
+                    if isnumeric(xy{2})
+                        warning('Assuming sparsity enforcement on neural connections')
+                        A0(xy{1}, xy{2}) = 1;
+                    elseif any(contains(names, xy{2}))
+                        xy{2} = self.name2ind(xy{2});
+                        A0(xy{1}, xy{2}) = 1;
+                    elseif any(ismember(xy{2}, ctr_names))
+                        xy{2} = self.control_signals_metadata{xy{2}, :}{:};
+                        B0(xy{1}, xy{2}) = 1;
+                    else
+                        error('Could not parse enforce_zero_entries input')
+                    end
+                end
+            end
+            sparsity = logical([A0, B0]);
         end
         
         function calc_pareto_front(self, lambda_vec, global_signal_mode,...
@@ -2260,7 +2321,9 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'lambda_global', 0.0065,...
                 'max_rank_global', 4,...
                 'lambda_sparse', 0.043,...
+                'enforce_diagonal_sparse_B', false,...
                 'global_signal_mode', 'RPCA',...
+                'enforce_zero_entries', {{}},...
                 'custom_control_signal',[],...
                 ...% Data processing
                 'filter_window_dat', 0,...
@@ -2272,6 +2335,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'to_subtract_mean',false,...
                 'to_subtract_mean_sparse', true,...
                 'to_subtract_mean_global', true,...
+                'to_separate_sparse_from_data', true, ...
                 'offset_control_signal', false,...
                 'dmd_mode', 'naive',...
                 ...% Data importing
@@ -2498,13 +2562,23 @@ classdef CElegansModel < SettingsImportableFromStruct
         end
         
         function calc_all_control_signals(self)
-            % Calls subfunctions to calculate control signals
+            % Calls subfunctions to calculate control signals:
+            %   partition_data_into_controllers for direct neuron traces
+            %   calc_sparse_signal for an RPCA-defined sparse signal
+            %   calc_global_signal for an RPCA or otherwise defined global
+            %       signal
+            %   add_custom_control_signal for an externally passed signal
+            %   add_stimulus_signal for importing a signal from a struct
+            % and finally:
+            %   calc_dat_and_control_signal for making sure everything is
+            %       the same length and cleaning them up
+            
             self.partition_data_into_controllers();
             
             self.calc_sparse_signal();
             self.calc_global_signal();
             self.add_custom_control_signal();
-            if self.to_add_stimulus_signal
+            if self.to_add_stimulus_signal % From an external struct
                 self.add_stimulus_signal();
             end
             
@@ -2933,6 +3007,9 @@ classdef CElegansModel < SettingsImportableFromStruct
             else
                 this_dat = self.L_sparse;
                 sparse_signal = self.S_sparse;
+            end
+            if ~self.to_separate_sparse_from_data && self.lambda_sparse > 0
+                this_dat = this_dat + sparse_signal;
             end
             % Sparse signal with NO thresholding
             % Use top svd modes for the low-rank component
