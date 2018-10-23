@@ -4302,8 +4302,224 @@ end
 %==========================================================================
 
 
+%% Compare to a no-dynamics fit (no sparse)
+% i.e. just projecting the data onto the control signals
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'dmd_mode','func_DMDc',...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary';
+
+% First get a baseline model (no sparse signals)
+my_model_base = CElegansModel(filename, settings);
+
+% Second, get a no-dynamics model
+settings.dmd_mode = 'no_dynamics';
+my_model_bu = CElegansModel(filename, settings);
+
+% Plot
+my_model_bu.plot_colored_reconstruction();
+my_model_bu.plot_reconstruction_interactive();
+
+figure
+subplot(2,1,1)
+all_corr_bu = my_model_bu.calc_correlation_matrix();
+histogram(all_corr_bu, 'BinWidth', 0.05);
+ylim([0,25])
+xlim([0,1])
+title('Correlation coefficients for the no-dynamics model')
+subplot(2,1,2)
+all_corr_base = my_model_base.calc_correlation_matrix();
+histogram(all_corr_base, 'BinWidth', 0.05);
+ylim([0,25])
+xlim([0,1])
+title('Correlation coefficients for the base model')
+
+names = my_model_bu.get_names();
+ind = ~cellfun(@isempty, names);
+figure
+subplot(2,1,1)
+histogram(all_corr_bu(ind), 'BinWidth', 0.05);
+xlim([0,1])
+ylim([0,10])
+title('Correlation coefficients for the no-dynamics model (named only)')
+subplot(2,1,2)
+histogram(all_corr_base(ind), 'BinWidth', 0.05);
+xlim([0,1])
+ylim([0,10])
+title('Correlation coefficients for the base model (named only)')
+
+%==========================================================================
 
 
+%% Compare to a no-dynamics fit (with sparse)
+% i.e. just projecting the data onto the control signals
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'dmd_mode','func_DMDc');
+settings.global_signal_mode = 'ID_binary';
+
+% First get a baseline model (no sparse signals)
+my_model_base = CElegansModel(filename, settings);
+
+% Second, get a no-dynamics model
+settings.dmd_mode = 'no_dynamics';
+my_model_bu = CElegansModel(filename, settings);
+
+% Plot
+my_model_bu.plot_colored_reconstruction();
+my_model_bu.plot_reconstruction_interactive();
+
+figure
+subplot(2,1,1)
+all_corr_bu = my_model_bu.calc_correlation_matrix();
+histogram(all_corr_bu, 'BinWidth', 0.05);
+xlim([0,1])
+ylim([0,25])
+title('Correlation coefficients for the no-dynamics model (+sparse)')
+subplot(2,1,2)
+all_corr_base = my_model_base.calc_correlation_matrix();
+histogram(all_corr_base, 'BinWidth', 0.05);
+xlim([0,1])
+ylim([0,25])
+title('Correlation coefficients for the base model (+sparse)')
+
+names = my_model_bu.get_names();
+ind = ~cellfun(@isempty, names);
+figure
+subplot(2,1,1)
+histogram(all_corr_bu(ind), 'BinWidth', 0.05);
+xlim([0,1])
+ylim([0,10])
+title('Correlation coefficients for the no-dynamics model (named only) (+sparse)')
+subplot(2,1,2)
+histogram(all_corr_base(ind), 'BinWidth', 0.05);
+xlim([0,1])
+ylim([0,10])
+title('Correlation coefficients for the base model (named only) (+sparse)')
+
+%==========================================================================
+
+
+%% Compare to a no-dynamics fit (with sparse; enforce diagonal B_sparse)
+% i.e. just projecting the data onto the control signals
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_separate_sparse_from_data', false,...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'enforce_diagonal_sparse_B', true,...
+    'offset_control_signal', true,...
+    'dmd_mode','sparse');
+settings.global_signal_mode = 'ID_binary';
+
+% First get a baseline model (no sparse signals)
+my_model_base = CElegansModel(filename, settings);
+
+% Second, get a no-dynamics model
+settings.dmd_mode = 'no_dynamics_sparse';
+ad_settings = struct('sparsity_goal', 0.999);
+settings.AdaptiveDmdc_settings = ad_settings;
+my_model_bu = CElegansModel(filename, settings);
+
+% Plot
+% my_model_bu.plot_colored_reconstruction();
+my_model_bu.plot_reconstruction_interactive();
+title('Reconstruction with no dynamics')
+
+figure
+subplot(2,1,1)
+all_corr_bu = my_model_bu.calc_correlation_matrix();
+histogram(all_corr_bu, 'BinWidth', 0.05);
+xlim([0,1])
+ylim([0,25])
+title('Correlation coefficients for the no-dynamics model (+sparse)')
+subplot(2,1,2)
+all_corr_base = my_model_base.calc_correlation_matrix();
+histogram(all_corr_base, 'BinWidth', 0.05);
+xlim([0,1])
+ylim([0,25])
+title('Correlation coefficients for the base model (+sparse)')
+
+names = my_model_bu.get_names();
+ind = ~cellfun(@isempty, names);
+figure
+subplot(2,1,1)
+histogram(all_corr_bu(ind), 'BinWidth', 0.05);
+xlim([0,1])
+ylim([0,10])
+title('Correlation coefficients for the no-dynamics model (named only) (+sparse)')
+subplot(2,1,2)
+histogram(all_corr_base(ind), 'BinWidth', 0.05);
+xlim([0,1])
+ylim([0,10])
+title('Correlation coefficients for the base model (named only) (+sparse)')
+
+%==========================================================================
+
+
+%% Model with some B-matrix entries removed
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_separate_sparse_from_data', false,...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'enforce_zero_entries', { {{{'AVA','AVE','RIM','AIB'},'ID_binary'}} },...
+    'enforce_diagonal_sparse_B', false,...
+    'lambda_sparse', 0,...
+    'offset_control_signal', true,...
+    'dmd_mode','sparse');
+settings.global_signal_mode = 'ID_binary';
+
+my_model_base = CElegansModel(filename, settings);
+
+%==========================================================================
+
+
+%% Model with some B-matrix entries removed (systematic)
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_separate_sparse_from_data', false,...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'enforce_diagonal_sparse_B', false,...
+    'lambda_sparse', 0,...
+    'offset_control_signal', true,...
+    'dmd_mode','sparse');
+settings.global_signal_mode = 'ID_binary';
+
+% Loop through
+all_neurons = {'AVA','AVE','RIM','AIB'};
+enforce_zero_entries =  { {{},'ID_binary'} };
+all_models = cell(length(all_neurons),1);
+
+for i = 1:length(all_neurons)
+    this_set = setdiff(all_neurons, all_neurons{i});
+    enforce_zero_entries{1}{1} = this_set;
+    settings.enforce_zero_entries = enforce_zero_entries;
+    all_models{i} = CElegansModel(filename, settings);
+end
+    
+%==========================================================================
 
 
 

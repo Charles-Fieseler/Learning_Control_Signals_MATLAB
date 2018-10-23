@@ -1351,10 +1351,11 @@ settings = struct(...
     'to_subtract_mean_sparse',false,...
     'to_subtract_mean_global',false,...
     'add_constant_signal',false,...
-    'use_deriv',true,...
+    'use_deriv',false,...
     'to_normalize_deriv',true,...
+    'filter_window_dat', 0,...
     'dmd_mode','func_DMDc');
-settings.global_signal_mode = 'ID_binary_and_grad';
+settings.global_signal_mode = 'ID_binary';
 my_model_eigen = CElegansModel(filename, settings);
 
 % DB01
@@ -1841,8 +1842,25 @@ end
 folder_name = 'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\npr1_1_PreLet\AN20140730a_ZIM575_PreLet_6m_O2_21_s_1TF_47um_1330_\';
 filename = [folder_name 'wbdataset.mat'];
 dat_struct = importdata(filename);
-dat = dat_struct.traces';
-time = dat_struct.timeVectorSeconds;
+
+downsample = 3;
+t_start = 200;
+dat = dat_struct.traces(t_start:downsample:end, :)';
+time = dat_struct.timeVectorSeconds(t_start:downsample:end);
+
+% Import all 10 individuals as different trials
+% foldername2 = 'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\npr1_1_PreLet\';
+% filename2_template = 'wbdataset.mat';
+% 
+% for i = 1:n
+%     if i <= num_type_1
+%         all_filenames{i} = sprintf([foldername1, filename1_template], i);
+%     else
+%         subfolder = dir(foldername2);
+%         all_filenames{i} = [foldername2, ...
+%             subfolder(i-num_type_1+2).name, '\', filename2_template];
+%     end
+% end
 
 % Recast toy data in the correct format
 % trialNum: N x S x D
@@ -1876,21 +1894,14 @@ firingRatesAverage = reshape(dat, [N, S, T]);
 %    2 - time
 %    [1 2] - stimulus/time interaction
 combinedParams = {{1, [1 2]}, {2}};
+% combinedParams = {{1}, {[1 2]}, {2}};
 margNames = {'Stimulus', 'S/D Interaction', 'Condition-independent'};
 margColours = [23 100 171; 187 20 25; 114 97 171]/256;
 
 % Time events of interest (e.g. stimulus onset/offset, cues etc.)
 % They are marked on the plots with vertical lines
-timeEvents = time(round(length(time)/2));
-
-% check consistency between trialNum and firingRates
-% for n = 1:size(firingRates,1)
-%     for s = 1:size(firingRates,2)
-%         for d = 1:size(firingRates,3)
-%             assert(isempty(find(isnan(firingRates(n,s,d,:,1:trialNum(n,s,d))), 1)), 'Something is wrong!')
-%         end
-%     end
-% end
+timeEvents = round(dat_struct.stimulus.switchtimes * dat_struct.fps / ...
+    downsample - t_start);
 
 % Step 1: PCA of the dataset
 
@@ -1908,12 +1919,12 @@ explVar = dpca_explainedVariance(firingRatesAverage, W, W, ...
     'combinedParams', combinedParams);
 
 % a bit more informative plotting
-dpca_plot(firingRatesAverage, W, W, @dpca_plot_default, ...
-    'explainedVar', explVar, ...
-    'time', time,                        ...
-    'timeEvents', timeEvents,               ...
-    'marginalizationNames', margNames, ...
-    'marginalizationColours', margColours);
+% dpca_plot(firingRatesAverage, W, W, @dpca_plot_default, ...
+%     'explainedVar', explVar, ...
+%     'time', time,                        ...
+%     'timeEvents', timeEvents,               ...
+%     'marginalizationNames', margNames, ...
+%     'marginalizationColours', margColours);
 
 
 % Step 2: PCA in each marginalization separately
@@ -1957,7 +1968,7 @@ dpca_plot(firingRatesAverage, W, V, @dpca_plot_default, ...
 % Please note that this now includes noise covariance matrix Cnoise which
 % tends to provide substantial regularization by itself (even with lambda set
 % to zero).
-
+ifSimultaneousRecording = false;
 optimalLambda = dpca_optimizeLambda(firingRatesAverage, firingRates, trialNum, ...
     'combinedParams', combinedParams, ...
     'simultaneous', ifSimultaneousRecording, ...
@@ -1984,8 +1995,104 @@ dpca_plot(firingRatesAverage, W, V, @dpca_plot_default, ...
     'timeEvents', timeEvents,               ...
     'timeMarginalization', 3,           ...
     'legendSubplot', 16);
+%==========================================================================
 
 
+%% Visualize with various distance metrics (for clustering)
+% folder_name = 'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\npr1_1_PreLet\AN20140730a_ZIM575_PreLet_6m_O2_21_s_1TF_47um_1330_\';
+% filename = [folder_name 'wbdataset.mat'];
+filename = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+
+dat_struct = importdata(filename);
+downsample = 1;
+t_start = 200;
+dat = dat_struct.traces(t_start:downsample:end, :)';
+% dat = CElegansModel.flat_filter(dat', 3)';
+names = cellfun(@num2str, dat_struct.ID, 'UniformOutput', false);
+
+n = size(dat,1);
+
+% Dynamic Time Warping distance
+all_dist = zeros(n,n);
+for i = 1:n
+    for i2 = (i+1):n
+        all_dist(i,i2) = dtw(dat(i,:), dat(i2,:));
+        all_dist(i2,i) = all_dist(i,i2);
+    end
+end
+
+% Alternatively, use cross-correlation
+% all_dist = squareform(pdist(dat, 'correlation'));
+
+% Alternatively, just use Euclidean distance
+% all_dist = squareform(pdist(dat, 'euclidean'));
+
+% Cluster using linkage and plot
+Z = linkage(all_dist);
+
+max_clust = 20;
+c = cluster(Z, 'maxclust', max_clust);
+
+[~, ~, all_ind] = cluster_and_imagesc(all_dist, c, names, []);
+
+
+%==========================================================================
+
+
+%% Visualize DERIVATIVES with various distance metrics (for clustering)
+% folder_name = 'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\npr1_1_PreLet\AN20140730a_ZIM575_PreLet_6m_O2_21_s_1TF_47um_1330_\';
+% filename = [folder_name 'wbdataset.mat'];
+filename = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+
+dat_struct = importdata(filename);
+downsample = 1;
+t_start = 200;
+dat = dat_struct.traces(t_start:downsample:end, :)';
+[dat, ~] = gradient(dat);
+dat = CElegansModel.flat_filter(dat', 2)';
+names = cellfun(@num2str, dat_struct.ID, 'UniformOutput', false);
+
+use_only_named = false;
+if use_only_named
+    ind = ~cellfun(@isempty, names);
+    dat = dat(ind, :);
+    names = names(ind);
+end
+
+n = size(dat,1);
+
+which_metric = 'dtw';
+switch which_metric
+    case 'dtw'
+        % Dynamic Time Warping distance
+        all_dist = zeros(n,n);
+        for i = 1:n
+            for i2 = (i+1):n
+                all_dist(i,i2) = dtw(dat(i,:), dat(i2,:));
+                all_dist(i2,i) = all_dist(i,i2);
+            end
+        end
+        
+        all_dist_dtw = all_dist; % Save an extra because this takes a while
+
+    case 'corr'
+        % cross-correlation
+        all_dist = squareform(pdist(dat, 'correlation'));
+
+    case 'L2'
+        % Euclidean distance
+        all_dist = squareform(pdist(dat, 'euclidean'));
+
+    otherwise
+        error('Unrecognized metric')
+end
+% Cluster using linkage and plot
+Z = linkage(all_dist);
+
+max_clust = 25;
+c = cluster(Z, 'maxclust', max_clust);
+
+[~, ~, all_ind] = cluster_and_imagesc(all_dist, c, names, []);
 
 
 %==========================================================================
