@@ -1306,7 +1306,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             corr_mat = corrcoef([self.dat' ...
                 self.AdaptiveDmdc_obj.calc_reconstruction_control()']);
             
-            n = self.original_sz(1);
+            n = self.dat_sz(1);
             if self.use_deriv && ~return_derivatives
                 n = n/2;
                 corr_diag = diag( corr_mat((2*n+1):(3*n),1:n) );
@@ -2071,7 +2071,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 tol_eigen = 1e-3;
             end
             if ischar(neuron)
-                neuron = self.name2num(neuron);
+                neuron = self.name2ind(neuron);
             end
             
             % Get eigenvectors and eigenvalues of intrinsic dynamics
@@ -2329,7 +2329,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             if ~exist('fig', 'var')
                 fig = figure('DefaultAxesFontSize', 14);
             end
-            all_corr= self.calc_correlation_matrix();
+            all_corr = real(self.calc_correlation_matrix());
             
             if only_named
                 names = self.get_names();
@@ -2350,7 +2350,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                 x = all_corr(neurons_to_mark(i));
                 y = ylim();
                 y = round(0.8*y);
-                line([x x], y, 'color', 'r', 'LineWidth',2)
+                line([x x], y, 'color', 'k');%, ...
+                    %'LineWidth',2, 'LineStyle','--')
                 text(x, y(2), self.get_names(neurons_to_mark(i)),...
                     'FontSize',14, 'Rotation',90);
             end
@@ -2620,12 +2621,11 @@ classdef CElegansModel < SettingsImportableFromStruct
             % and finally:
             %   calc_dat_and_control_signal for making sure everything is
             %       the same length and cleaning them up
+            self.add_custom_control_signal();
             
             self.partition_data_into_controllers();
-            
             self.calc_sparse_signal();
             self.calc_global_signal();
-            self.add_custom_control_signal();
             if self.to_add_stimulus_signal % From an external struct
                 self.add_stimulus_signal();
             end
@@ -2638,6 +2638,11 @@ classdef CElegansModel < SettingsImportableFromStruct
             % designations
             %   Uses "designated_controller_channels" field which is by
             %   default empty
+            %
+            % Format of designated_controller_channels field:
+            %   {'sleepy',{'RIS'}}
+            %   {'my_rev',{'AVA','RIM'}}
+            %   {'my_fwd',[44 46]}
             if isempty(self.designated_controller_channels)
                 return
             end
@@ -2648,7 +2653,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'Designated controllers must be input as a name-index pair')
             
             all_ind = [];
-            for i = n/2
+            for i = 1:(n/2)
                 this_name = self.designated_controller_channels{2*i-1};
                 this_ind = self.designated_controller_channels{2*i};
                 if ~isnumeric(this_ind)
@@ -2662,6 +2667,8 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             
             self.remove_neurons_and_metadata(all_ind, 'dat');
+            
+            self.dat_sz = size(self.dat);
         end
         
         function calc_global_signal(self, global_signal_mode)
@@ -2801,6 +2808,28 @@ classdef CElegansModel < SettingsImportableFromStruct
                         (1:size(tmp,2))};
                     
                     self.L_global_modes = [self.L_global_modes, tmp];
+                    
+                case 'ID_binary_grad_only'
+                    binary_labels = self.calc_binary_labels(...
+                        self.state_labels_ind, length(self.state_labels_key));
+                    % Also filter this so the gradients aren't so sharp
+                    if self.filter_window_global>0
+                        binary_labels = self.flat_filter(...
+                            binary_labels.', self.filter_window_global).';
+                    end
+                    % Now take the gradient
+                    binary_labels_grad = gradient(binary_labels);
+                    binary_labels_grad = binary_labels_grad ./ ...
+                        max(max(binary_labels_grad));
+                    if ~isempty(self.L_global_modes)
+                        self.L_global_modes = [self.L_global_modes...
+                            binary_labels_grad(:,1:size(self.L_global_modes,1)).'];
+                    else
+                        self.L_global_modes = binary_labels_grad.';
+                    end
+                    
+                    this_metadata.signal_indices = ...
+                        {1:size(binary_labels_grad,1)};
                     
                 case 'ID_simple'
                     tmp = self.state_labels_ind;
