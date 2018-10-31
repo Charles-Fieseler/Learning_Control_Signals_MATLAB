@@ -4306,7 +4306,7 @@ end
 % i.e. just projecting the data onto the control signals
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 settings = struct(...
-    'to_subtract_mean',true,...
+    'to_subtract_mean',false,...
     'to_subtract_mean_sparse',false,...
     'to_subtract_mean_global',false,...
     'add_constant_signal',false,...
@@ -4323,36 +4323,54 @@ settings.dmd_mode = 'no_dynamics';
 my_model_bu = CElegansModel(filename, settings);
 
 % Plot
-my_model_bu.plot_colored_reconstruction();
-my_model_bu.plot_reconstruction_interactive();
+all_figs = cell(6,1);
 
-figure
+all_figs{1} = my_model_bu.plot_colored_reconstruction();
+
+interesting_neurons = 1:my_model_bu.original_sz(1);
+fig_hist = figure('DefaultAxesFontSize', 14);
 subplot(2,1,1)
-all_corr_bu = my_model_bu.calc_correlation_matrix();
-histogram(all_corr_bu, 'BinWidth', 0.05);
-ylim([0,25])
+my_model_bu.plot_correlation_histogram(false, interesting_neurons, fig_hist);
+ylim([0,30])
 xlim([0,1])
 title('Correlation coefficients for the no-dynamics model')
 subplot(2,1,2)
-all_corr_base = my_model_base.calc_correlation_matrix();
-histogram(all_corr_base, 'BinWidth', 0.05);
-ylim([0,25])
+my_model_base.plot_correlation_histogram(false, interesting_neurons, fig_hist);
+ylim([0,30])
 xlim([0,1])
 title('Correlation coefficients for the base model')
 
-names = my_model_bu.get_names();
-ind = ~cellfun(@isempty, names);
-figure
-subplot(2,1,1)
-histogram(all_corr_bu(ind), 'BinWidth', 0.05);
-xlim([0,1])
-ylim([0,10])
-title('Correlation coefficients for the no-dynamics model (named only)')
-subplot(2,1,2)
-histogram(all_corr_base(ind), 'BinWidth', 0.05);
-xlim([0,1])
-ylim([0,10])
-title('Correlation coefficients for the base model (named only)')
+all_figs{2} = fig_hist;
+
+all_figs{3} = my_model_bu.plot_reconstruction_interactive(false, 'AVAR');
+title('AVAR reconstruction for the no-dynamics model')
+all_figs{4} = my_model_base.plot_reconstruction_interactive(false, 'AVAR');
+title('AVAR reconstruction for the base model')
+all_figs{5} = my_model_bu.plot_reconstruction_interactive(false, 'VA0');
+title('VA (motor neuron) reconstruction for the no-dynamics model')
+all_figs{6} = my_model_base.plot_reconstruction_interactive(false, 'VA0');
+title('VA (motor neuron) reconstruction for the base model')
+
+% Save
+to_save = false;
+foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\scratch_figures\';
+all_fnames = {'PCA_no_dynamics_no_sparse',...
+    'histogram_model_vs_no_dynamics_no_sparse',...
+    'AVAR_no_dynamics',...
+    'AVAR_base_model',...
+    'VA_no_dynamics',...
+    'VA_base_model'};
+if to_save
+    pause
+    for i = 1:length(all_figs)
+        if isempty(all_figs{i})
+            continue;
+        end
+        fname = [foldername all_fnames{i}];
+        this_fig = all_figs{i};
+        saveas(this_fig, fname, 'png');
+    end
+end
 
 %==========================================================================
 
@@ -4436,40 +4454,54 @@ settings.AdaptiveDmdc_settings = ad_settings;
 my_model_bu = CElegansModel(filename, settings);
 
 % Plot
-% my_model_bu.plot_colored_reconstruction();
-my_model_bu.plot_reconstruction_interactive();
-title('Reconstruction with no dynamics')
+all_figs = cell(4,1);
 
-fig = figure('DefaultAxesFontSize', 14);
+all_figs{1} = my_model_base.plot_colored_data();
+all_figs{2} = my_model_base.plot_colored_reconstruction();
+title('Reconstruction with base model')
+all_figs{3} = my_model_bu.plot_colored_reconstruction();
+title('Reconstruction with no dynamics (only control)')
+
+% interesting_neurons = {'VA'};
+interesting_neurons = 1:my_model_base.original_sz(1);
+fig_hist = figure('DefaultAxesFontSize', 14);
 subplot(2,1,1)
-my_model_bu.plot_correlation_histogram(false, [], fig);
+my_model_bu.plot_correlation_histogram(false, interesting_neurons, fig_hist);
 xlim([0,1])
-ylim([0,25])
+ylim([0,35])
 title('Correlation coefficients for the no-dynamics model (+sparse)')
 subplot(2,1,2)
-my_model_base.plot_correlation_histogram(false, [], fig);
+my_model_base.plot_correlation_histogram(false, interesting_neurons, fig_hist);
 xlim([0,1])
-ylim([0,25])
+ylim([0,35])
 title('Correlation coefficients for the base model (+sparse)')
 
-% names = my_model_bu.get_names();
-% ind = ~cellfun(@isempty, names);
-% figure
-% subplot(2,1,1)
-% histogram(all_corr_bu(ind), 'BinWidth', 0.05);
-% xlim([0,1])
-% ylim([0,10])
-% title('Correlation coefficients for the no-dynamics model (named only) (+sparse)')
-% subplot(2,1,2)
-% histogram(all_corr_base(ind), 'BinWidth', 0.05);
-% xlim([0,1])
-% ylim([0,10])
-% title('Correlation coefficients for the base model (named only) (+sparse)')
+all_figs{4} = fig_hist;
 
+% Save
+to_save = true;
+foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\scratch_figures\';
+my_viewpoint = [0, 80];
+all_fnames = {'PCA_data',...
+    'PCA_constrained_model',...
+    'PCA_constrained_no_dynamics',...
+    'histogram_model_vs_no_dynamics'};
+if to_save
+    pause
+    for i = 1:length(all_figs)
+        if isempty(all_figs{i})
+            continue;
+        end
+        fname = [foldername all_fnames{i}];
+        this_fig = all_figs{i};
+        saveas(this_fig, fname, 'png');
+    end
+end
 %==========================================================================
 
 
-%% Model with some B-matrix entries removed
+%% Model with reversal B-matrix entries removed
+all_neurons = {'AVA','AVE','RIM','AIB'};
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 settings = struct(...
     'to_separate_sparse_from_data', false,...
@@ -4478,7 +4510,7 @@ settings = struct(...
     'to_subtract_mean_global',false,...
     'add_constant_signal',false,...
     'use_deriv',false,...
-    'enforce_zero_entries', { {{{'AVA','AVE','RIM','AIB'},'ID_binary'}} },...
+    'enforce_zero_entries', { {{all_neurons,'ID_binary'}} },...
     'enforce_diagonal_sparse_B', false,...
     'lambda_sparse', 0,...
     'offset_control_signal', true,...
@@ -4487,6 +4519,20 @@ settings.global_signal_mode = 'ID_binary';
 
 my_model_no_REV = CElegansModel(filename, settings);
 
+% Plot
+fig = my_model_no_REV.plot_correlation_histogram(false, all_neurons);
+title('Histogram of correlations with no reversal neurons')
+xlim([-0.1, 1])
+ylim([0, 20])
+
+% Save
+to_save = false;
+if to_save
+    foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\scratch_figures\';
+    fname = [foldername 'histogram_no_reversal_controllers'];
+    pause
+    saveas(fig, fname, 'png');
+end
 %==========================================================================
 
 
@@ -4507,6 +4553,7 @@ settings.global_signal_mode = 'ID_binary';
 
 % Loop through
 all_neurons = {'AVA','AVE','RIM','AIB'};
+all_figs = cell(2*length(all_neurons), 1);
 enforce_zero_entries =  { {{},'ID_binary'} };
 all_models = cell(length(all_neurons),1);
 
@@ -4514,15 +4561,193 @@ for i = 1:length(all_neurons)
     this_set = setdiff(all_neurons, all_neurons{i});
     enforce_zero_entries{1}{1} = this_set;
     settings.enforce_zero_entries = enforce_zero_entries;
-%     all_models{i} = CElegansModel(filename, settings);
+    all_models{i} = CElegansModel(filename, settings);
     
-    all_models{i}.plot_correlation_histogram(false, this_set);
+    all_figs{2*i-1} = ...
+        all_models{i}.plot_correlation_histogram(false, all_neurons);
     title(sprintf('Correlations for model with control on only %s',...
         all_neurons{i}))
+    xlim([-0.1, 1])
+    ylim([0, 20])
+    
+    all_figs{2*i} = ...
+        all_models{i}.plot_reconstruction_interactive(false, 'AVAR');
+    title(sprintf('Reconstruction of AVAR with control on only %s',...
+        all_neurons{i}))
+    
     drawnow
 end
     
+% Save
+to_save = false;
+foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\scratch_figures\';
+if to_save
+    pause
+    for i = 1:length(all_figs)
+        if isempty(all_figs{i})
+            continue;
+        end
+        if mod(i, 2) == 1
+            fname = sprintf('%shistogram_only_%s_rev_controllers',...
+                foldername, all_neurons{ceil(i/2)});
+        else
+            fname = sprintf('%sreconstruction_only_%s_rev_controllers',...
+                foldername, all_neurons{ceil(i/2)});
+        end
+        this_fig = all_figs{i};
+        saveas(this_fig, fname, 'png');
+    end
+end
 %==========================================================================
+
+
+%% Use only gradients as controllers; compare to no-dynamics
+% i.e. just projecting the data onto the control signals
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    ...'augment_data', 20,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    ...'dmd_mode','sparse',...
+    'dmd_mode','func_DMDc',...
+    ...'dmd_mode', 'tdmd',...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_grad_only';
+
+% First get a baseline model (no sparse signals)
+my_model_base = CElegansModel(filename, settings);
+
+% Second, get a no-dynamics model
+settings.dmd_mode = 'no_dynamics';
+my_model_bu = CElegansModel(filename, settings);
+
+% Plot things
+% my_model_base.plot_reconstruction_interactive();
+% my_model_bu.plot_reconstruction_interactive();
+
+all_figs = cell(3,1);
+
+all_figs{1} = my_model_base.plot_colored_reconstruction();
+title('Reconstruction for the base model')
+all_figs{2} = my_model_bu.plot_colored_reconstruction();
+title('Reconstruction for the no-dynamics model')
+
+interesting_neurons = 1:my_model_bu.original_sz(1);
+fig_hist = figure('DefaultAxesFontSize', 14);
+subplot(2,1,1)
+my_model_bu.plot_correlation_histogram(false, interesting_neurons, fig_hist);
+ylim([0,40])
+xlim([0,1])
+title('Correlation coefficients for the no-dynamics model')
+subplot(2,1,2)
+my_model_base.plot_correlation_histogram(false, interesting_neurons, fig_hist);
+ylim([0,40])
+xlim([0,1])
+title('Correlation coefficients for the base model')
+
+all_figs{3} = fig_hist;
+
+% Separate plot
+% settings = struct('to_subtract_diagonal',true);
+% compare_obj = compare_connectome(my_model_base.AdaptiveDmdc_obj, settings);
+% compare_obj.plot_imagesc()
+
+% Save
+to_save = false;
+foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\scratch_figures\';
+all_fnames = {'PCA_base_model_no_sparse_gradient',...
+    'PCA_no_dynamics_no_sparse_gradient',...
+    'histogram_model_vs_no_dynamics_no_sparse_gradient'};
+if to_save
+    pause
+    for i = 1:length(all_figs)
+        if isempty(all_figs{i})
+            continue;
+        end
+        fname = [foldername all_fnames{i}];
+        this_fig = all_figs{i};
+        saveas(this_fig, fname, 'png');
+    end
+end
+%==========================================================================
+
+
+%% Add neurons to the controller; nothing else
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+% designated_controller_channels = {...
+%     'Reversal_neurons', {'AIB'},...
+%     'Turning_neurons', {'SMD', 'RIV'},...
+%     'Sleeping_neurons', {'RIS', 'ALA'}...
+%     'Forward_neurons', {'AVB'},... {'RIB'},...
+%     };
+designated_controller_channels = {...
+    ...'Reversal_neurons', {'AIB'},...
+    'Turning_neurons', {'SMD'},..., 'RIV'},...
+    ...'Sleeping_neurons', {'RIS', 'ALA'}...
+    ...'Forward_neurons', {'AVB'},... {'RIB'},...
+    };
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'designated_controller_channels', {designated_controller_channels},...
+    ...'augment_data', 20,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    ...'dmd_mode','sparse',...
+    'dmd_mode','func_DMDc',...
+    ...'dmd_mode','tdmd',...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'None';
+
+% First get a baseline model (no sparse signals)
+my_model_base = CElegansModel(filename, settings);
+
+% Second, get a no-dynamics model
+settings.dmd_mode = 'no_dynamics';
+my_model_bu = CElegansModel(filename, settings);
+
+% Plot things
+% my_model_base.plot_reconstruction_interactive();
+% my_model_bu.plot_reconstruction_interactive();
+
+all_figs = cell(3,1);
+
+% all_figs{1} = my_model_base.plot_colored_reconstruction();
+% title('Reconstruction for the base model')
+% all_figs{2} = my_model_bu.plot_colored_reconstruction();
+% title('Reconstruction for the no-dynamics model')
+
+interesting_neurons = 1:my_model_bu.dat_sz(1);
+fig_hist = figure('DefaultAxesFontSize', 14);
+subplot(2,1,1)
+my_model_bu.plot_correlation_histogram(false, interesting_neurons, fig_hist);
+ylim([0,40])
+xlim([-0.2,1])
+title('Correlation coefficients for the no-dynamics model')
+subplot(2,1,2)
+my_model_base.plot_correlation_histogram(false, interesting_neurons, fig_hist);
+ylim([0,40])
+xlim([-0.2,1])
+title('Correlation coefficients for the model with neuron controllers')
+
+all_figs{3} = fig_hist;
+
+
+
+%==========================================================================
+
+
+
+
 
 
 

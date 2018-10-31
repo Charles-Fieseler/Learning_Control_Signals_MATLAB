@@ -128,7 +128,8 @@ classdef compare_connectome < SettingsImportableFromStruct
             [self.labeled_dyn_adj, self.sorted_names] = ...
                 self.sort_names_and_adj(...
                 self.id_array, self.dyn_adj);
-            if ~isempty(self.ctr_adj)
+            if ~isempty(self.ctr_adj) && ...
+                    (size(self.ctr_adj,2) >= size(self.dyn_adj,2))
                 warning('Assuming the control matrix has the same neuron labels')
                 if size(self.ctr_adj,2) > size(self.dyn_adj,2)
                     warning('Cutting off extra control signals')
