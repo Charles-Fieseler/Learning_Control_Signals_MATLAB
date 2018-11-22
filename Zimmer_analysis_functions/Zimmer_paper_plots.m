@@ -9,7 +9,6 @@ foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\figures\'
 my_viewpoint = [0, 80];
 %==========================================================================
 
-
 %% Define colormaps
 %---------------------------------------------
 % Set up colormap for RPCA visualizations
@@ -39,58 +38,99 @@ my_cmap_dict = containers.Map(...
 close all
 %==========================================================================
 
+%% Define 'ideal' settings
+filename_ideal = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
 
-%% Figure 1: Intro to control
-%---------------------------------------------
-% First just do the cartoon outline
-%---------------------------------------------
-to_plot_figure_1 = false;
-if to_plot_figure_1
-    filename = 'C:\cygwin64\home\charl\GitWormSim\Model\simdata_original.csv';
-    WormView(filename,struct('pauseAt',7.16,'startAtPause',true,'quitAtPause',true))
-    error('Need to zoom by hand here')
-    fig = prep_figure_no_axis();
-    fname = sprintf('%sfigure_1_%d', foldername, 1);
-    saveas(fig, fname, 'png');
-end
-%---------------------------------------------
-% Next get some representative neurons
-%---------------------------------------------
-all_figs = cell(3,1);
-% Use CElegans model to preprocess
-settings = struct(...
+settings_ideal = struct(...
     'to_subtract_mean',false,...
     'to_subtract_mean_sparse',false,...
     'to_subtract_mean_global',false,...
-    'dmd_mode','func_DMDc',...
-    'filter_window_dat',6,...
+    'add_constant_signal',false,...
     'use_deriv',false,...
-    'to_normalize_deriv',false,...
+    'augment_data', 9,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','func_DMDc',...
+    'global_signal_subset', {{'DT','VT','REV'}},...
+    ...'autocorrelation_noise_threshold', 0.3,...
     'lambda_sparse',0);
-settings.global_signal_mode = 'ID_binary_and_grad';
-my_model_preprocess = CElegansModel(filename, settings);
+settings_ideal.global_signal_mode = 'ID_binary_transitions';
 
-% Get the neurons
+%==========================================================================
+
+
+
+
+%% Figure 1: Intro to transition signals
+all_figs = cell(5,1);
+%---------------------------------------------
+% First build a model with good parameters
+%---------------------------------------------
+% Use CElegans model to preprocess
+my_model_fig1 = CElegansModel(filename_ideal, settings_ideal);
+
+%---------------------------------------------
+% Second get a representative neuron and control kicks
+%---------------------------------------------
 %   tspans decided by hand
-sensory_neuron = 2;
-sensory_tspan = 800:1800;
-inter_neuron = 45;
-inter_tspan = 600:1600;
-motor_neuron = 114;
-motor_tspan = 2021:3021;
+neuron = 'AVAL';
+% tspan = 300:550;
+tspan = 100:1000;
 
-% Actually plot
-all_figs{1} = figure;
-plot(my_model_preprocess.dat(sensory_neuron,sensory_tspan),...
-    'LineWidth',8,'Color',my_cmap_3d(1,:))
+% Plot
+all_figs{1} = my_model_fig1.plot_reconstruction_interactive(false, 'AVAL');
+xlim([tspan(1) tspan(end)])
+xlabel('')
+xticks([])
+yticks([])
+ylabel('')
+set(gca, 'box', 'off')
+title(sprintf('Reconstruction of %s', neuron))
+legend('off')
 
-all_figs{2} = figure;
-plot(my_model_preprocess.dat(inter_neuron,inter_tspan),...
-    'LineWidth',8,'Color',my_cmap_3d(2,:))
+my_model_fig1.set_simple_labels();
+ctr = my_model_fig1.control_signal;
 
-all_figs{3} = figure;
-plot(my_model_preprocess.dat(motor_neuron,motor_tspan),...
-    'LineWidth',8,'Color',my_cmap_3d(3,:))
+all_figs{2} = figure('DefaultAxesFontSize', 14);
+% plot(ctr(5,tspan))
+plot(ctr(3,tspan)+ctr(4,tspan), ...
+    'color', my_cmap_3d(4,:), 'LineWidth', 4)
+xticks([])
+xlim([0, length(tspan)])
+ylim([0, 0.5])
+yticks([])
+set(gca, 'box', 'off')
+title('Reversal')
+
+all_figs{3} = figure('DefaultAxesFontSize', 14);
+plot(ctr(1,tspan), ...
+    'color', my_cmap_3d(2,:), 'LineWidth', 4)
+xticks([])
+xlim([0, length(tspan)])
+ylim([0, 0.5])
+yticks([])
+set(gca, 'box', 'off')
+title('Dorsal Turn')
+
+all_figs{4} = figure('DefaultAxesFontSize', 14);
+plot(ctr(2,tspan), ...
+    'color', my_cmap_3d(1,:), 'LineWidth', 4)
+xticks([])
+xlim([0, length(tspan)])
+ylim([0, 0.5])
+yticks([])
+set(gca, 'box', 'off')
+title('Ventral Turn')
+
+all_figs{5} = figure('DefaultAxesFontSize', 14);
+imagesc(my_model_fig1.state_labels_ind(tspan))
+title('State labels')
+xlabel('Time')
+yticks([])
+set(gca, 'box', 'off')
+% Make the colormap work as expected
+idx = [3 2 1 4];
+colormap(my_cmap_3d(idx,:))
 
 %---------------------------------------------
 % Save the figures
@@ -102,69 +142,21 @@ if to_save
         end
         fname = sprintf('%sfigure_1_%d', foldername, i);
         this_fig = all_figs{i};
-        prep_figure_no_axis(this_fig)
+        if i == 1
+            sz = {'0.9\columnwidth', '0.1\paperheight'}
+        else
+            sz = {'0.9\columnwidth', '0.025\paperheight'}
+        end
+        matlab2tikz('figurehandle',this_fig,'filename',[fname '_raw.tex'], ...
+            'width', sz{1}, 'height', sz{2});
+%         prep_figure_no_axis(this_fig)
         saveas(this_fig, fname, 'png');
     end
 end
 %==========================================================================
 
 
-%% Figure 2: Robust PCA
-filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
-all_figs = cell(9,1);
-% Calculate double RPCA model
-settings = struct(...
-    'to_subtract_mean',true,...
-    'to_subtract_mean_sparse',false,...
-    'to_subtract_mean_global',false,...
-    'dmd_mode','func_DMDc');
-my_model_fig3 = CElegansModel(filename, settings);
-
-% Plot decompositions
-all_figs{1} = figure('DefaultAxesFontSize',12);
-imagesc(my_model_fig3.dat_without_control);
-ylabel('Neurons')
-xlabel('Time')
-colorbar
-title('Original data')
-caxis(all_figs{1}.CurrentAxes, [-0.0, 1.0])
-% Large lambda (very sparse)
-title2 = 'Large \lambda low-rank component';
-title1 = 'Large \lambda sparse component';
-dat2 = my_model_fig3.L_sparse;
-dat1 = my_model_fig3.S_sparse;
-plot_mode = '2_figures';
-[ all_figs{2}, all_figs{3} ] = plot_2imagesc_colorbar( ...
-    dat1, dat2, plot_mode, title1, title2 );
-caxis(all_figs{2}.CurrentAxes, [-0.0, 1.0])
-caxis(all_figs{3}.CurrentAxes, [-0.0, 1.0])
-% Also plot a shorter time period
-ind = 1000:1500;
-dat2 = my_model_fig3.L_sparse(:,ind);
-dat1 = my_model_fig3.S_sparse(:,ind);
-[ all_figs{6}, all_figs{7} ] = plot_2imagesc_colorbar( ...
-    dat1, dat2, plot_mode, title1, title2 );
-caxis(all_figs{6}.CurrentAxes, [-0.0, 1.0])
-caxis(all_figs{7}.CurrentAxes, [-0.0, 1.0])
-
-% Small lambda (low-rank)
-title2 = 'Small \lambda low-rank component';
-title1 = 'Small \lambda sparse component';
-dat2 = my_model_fig3.L_global_raw;
-dat1 = my_model_fig3.S_global;
-plot_mode = '2_figures';
-[ all_figs{4}, all_figs{5} ] = plot_2imagesc_colorbar( ...
-    dat1, dat2, plot_mode, title1, title2 );
-caxis(all_figs{4}.CurrentAxes, [-0.0, 1.0])
-caxis(all_figs{5}.CurrentAxes, [-0.0, 1.0])
-% Also plot a shorter time period
-ind = 1000:1500;
-dat2 = my_model_fig3.L_global_raw(:,ind);
-dat1 = my_model_fig3.S_global(:,ind);
-[ all_figs{8}, all_figs{9} ] = plot_2imagesc_colorbar( ...
-    dat1, dat2, plot_mode, title1, title2 );
-caxis(all_figs{8}.CurrentAxes, [-0.0, 1.0])
-caxis(all_figs{9}.CurrentAxes, [-0.0, 1.0])
+%% Figure 2: Explanation of time-delay embedding
 
 % Save figures
 for i = 1:length(all_figs)
@@ -181,7 +173,7 @@ end
 %==========================================================================
 
 
-%% Figure 3: Hold-out cross-validation
+%% Figure ?: Hold-out cross-validation
 all_figs = cell(1,1);
 filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
 
@@ -232,204 +224,122 @@ end
 %==========================================================================
 
 
-%% Figure 4,5: Reconstructions (multiple methods)
-filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+%% Figure 3a-c: Reconstructions (multiple methods)
 all_figs = cell(12,1);
+tspan = [500, 1500];
 
-to_calc_double_RPCA = false;
 %---------------------------------------------
-% Get neuron removal model
+% Get time-delayed model (best)
 %---------------------------------------------
-dat_struct = importdata(filename);
-my_filter = @(dat,w) filter(ones(w,1)/w,1,dat);
-this_dat = my_filter(dat_struct.traces,3).';
+my_model_fig3_a = CElegansModel(filename_ideal, settings_ideal);
 
-% For comparison, we can look at the 3d diagram produced by the
-% reconstructed data. The first step is to get the AdaptiveDmdc object;
-% see AdaptiveDmdc_documentation for a more thorough explanation:
-id_struct = struct(...
-    'ID', {dat_struct.ID},...
-    'ID2', {dat_struct.ID2},...
-    'ID3', {dat_struct.ID3});
-cutoff_multiplier = 3.0;
-settings = struct('to_normalize_envelope', true,...
-    'to_subtract_mean',true,...
-    'to_plot_nothing',true,...
-    'id_struct',id_struct,...
-    'cutoff_multiplier', cutoff_multiplier);
-ad_obj_fig4 = AdaptiveDmdc(this_dat, settings);
-
-% Use this object to reconstruct the data. First, plot it in comparison to
-% the original data:
-approx_data = ad_obj_fig4.plot_reconstruction(true, false).';
-
-% Now use robust PCA and visualize this using the same algorithm as above
-lambda = 0.05;
-[L_reconstruct, S_reconstruct] = RobustPCA(approx_data, lambda);
-% Plot the 2nd low-rank component
-filter_window = 10;
-L_filter2 = my_filter(L_reconstruct,filter_window)';
-[u,s,v,proj3d] = plotSVD(L_filter2(:,filter_window:end),...
-    struct('PCA3d',false,'sigma',false));
-% Simplify the labeling for better visualization
-label_dict = containers.Map(...
-    {1,2,3,4,5,6,7,8},...
-    {1,1,2,3,4,4,4,5});
-new_labels_key = ...
-    {'Simple Forward',...
-    'Dorsal Turn',...
-    'Ventral Turn',...
-    'Simple Reverse',...
-    'NOSTATE'};
-f = @(x) label_dict(x);
-new_labels_ind = arrayfun(f, dat_struct.SevenStates(filter_window:end));
-% Actually plot
-all_figs{1} = plot_colored(proj3d,...
-    new_labels_ind, new_labels_key, 'o');
-title('Dynamics of the low-rank component (reconstructed)')
-view(my_viewpoint)
-% Now make the colormap match the bar graphs
+% Original data; same for all models
+my_model_fig3_a.set_simple_labels();
+new_labels_key = my_model_fig3_a.state_labels_key;
+all_figs{1} = my_model_fig3_a.plot_colored_data(false, 'o');
 for i=1:length(new_labels_key)
     all_figs{1}.Children(2).Children(i).CData = ...
         my_cmap_3d(my_cmap_dict(i),:);
 end
-
-% Now a single neuron reconstruction
-neur_id = [38, 59];
-fig_dict = containers.Map({neur_id(1), neur_id(2)}, {2, 3});
-for i = neur_id
-    [~, all_figs{fig_dict(i)}] = ...
-        ad_obj_fig4.plot_reconstruction(true,false,true,i);
-end
-
-if to_calc_double_RPCA
-    %---------------------------------------------
-    % Get double RPCA model
-    %---------------------------------------------
-    settings = struct(...
-        'to_subtract_mean',true,...
-        'to_subtract_mean_sparse',false,...
-        'to_subtract_mean_global',false,...
-        'dmd_mode','func_DMDc',...
-        'lambda_sparse', 0.04,...
-        'filter_window_dat',6,...
-        'use_deriv',true,...
-        'to_normalize_deriv',true);
-    my_model_fig4_b = CElegansModel(filename, settings);
-    
-    % Use original control; 3d pca plot
-    % NOTE: reconstruction is not really that impressive here!
-    my_model_fig4_b.set_simple_labels();
-    all_figs{4} = my_model_fig4_b.plot_colored_reconstruction();
-    view(my_viewpoint)
-    % Now make the colormap match the bar graphs
-    for i=1:length(new_labels_key)
-        all_figs{4}.Children(2).Children(i).CData = ...
-            my_cmap_3d(my_cmap_dict(i),:);
-    end
-    
-    % Reconstruct some individual neurons
-    neur_id = [38, 59];
-    fig_dict = containers.Map({neur_id(1), neur_id(2)}, {5, 6});
-    for i = neur_id
-        [~, all_figs{fig_dict(i)}] = ...
-            my_model_fig4_b.AdaptiveDmdc_obj.plot_reconstruction(true,false,true,i);
-    end
-    
-end
-
-%---------------------------------------------
-% Get experimentalist labels model
-%---------------------------------------------
-settings = struct(...
-    'to_subtract_mean',true,...
-    'to_subtract_mean_sparse',false,...
-    'to_subtract_mean_global',false,...
-    'dmd_mode','func_DMDc',...
-    'add_constant_signal',false,...
-    'filter_window_dat',3,...
-    'use_deriv',true,...
-    'to_normalize_deriv',true);
-settings.global_signal_mode = 'ID_binary_and_grad';
-my_model_fig4_c = CElegansModel(filename, settings);
-
-% Use original control; 3d pca plot
-my_model_fig4_c.set_simple_labels();
-all_figs{7} = my_model_fig4_c.plot_colored_reconstruction();
 view(my_viewpoint)
-% Now make the colormap match the bar graphs
+
+% 3d pca plot
+all_figs{2} = my_model_fig3_a.plot_colored_reconstruction();
+view(my_viewpoint)
 for i=1:length(new_labels_key)
-    all_figs{7}.Children(2).Children(i).CData = ...
+    all_figs{2}.Children(2).Children(i).CData = ...
         my_cmap_3d(my_cmap_dict(i),:);
 end
-
-% Also original data; same for all models
-% all_figs{10} = my_model_fig4_c.plot_colored_data(false, 'o');
-% for i=1:length(new_labels_key)
-%     all_figs{10}.Children(2).Children(i).CData = ...
-%         my_cmap_3d(my_cmap_dict(i),:);
-% end
-% view(my_viewpoint)
 
 % Reconstruct some individual neurons
-neur_id = [38, 59, 90];
+neur_labels = {'AVAL', 'SMDDL'};
+neur_id = [my_model_fig3_a.name2ind(neur_labels{1}), ...
+    my_model_fig3_a.name2ind(neur_labels{2})];
 fig_dict = containers.Map(...
-    {neur_id(1), neur_id(2), neur_id(3)},...
-    {8, 9, 10});
-for i = neur_id
-    [~, all_figs{fig_dict(i)}] = ...
-        my_model_fig4_c.AdaptiveDmdc_obj.plot_reconstruction(true,false,true,i);
+    {neur_id(1), neur_id(2)},...
+    {8, 9});
+for i = 1:length(neur_id)
+    this_n = neur_id(i);
+    all_figs{fig_dict(this_n)} = ...
+        my_model_fig3_a.plot_reconstruction_interactive(false,this_n);
+    title(neur_labels{i})
+    xlim(tspan);
+    set(gca, 'box', 'off')
+    ylabel('')
+    xlabel('')
 end
 
-%---------------------------------------------
-% Compare with global signals only
-%---------------------------------------------
-settings = struct(...
-    'to_subtract_mean',true,...
-    'to_subtract_mean_sparse',false,...
-    'to_subtract_mean_global',false,...
-    'dmd_mode','func_DMDc',...
-    'add_constant_signal',false,...
-    ...'filter_window_dat',3,...
-    'use_deriv',true,...
-    'to_normalize_deriv',true,...
-    'lambda_sparse',0);
-settings.global_signal_mode = 'ID_binary_and_grad';
-my_model_fig4_d = CElegansModel(filename, settings);
+% Correlation histogram
+all_figs{5} = my_model_fig3_a.plot_correlation_histogram();
+xlim([-0.2, 1])
+ylim([0 15])
+title('')
+legend off
+set(gca, 'box', 'off')
 
-my_model_fig4_d.set_simple_labels();
-all_figs{11} = my_model_fig4_d.plot_colored_reconstruction();
+%---------------------------------------------
+% Compare with no time delay
+%---------------------------------------------
+settings = settings_ideal;
+settings.augment_data = 0;
+my_model_fig3_b = CElegansModel(filename_ideal, settings);
+
+my_model_fig3_b.set_simple_labels();
+all_figs{3} = my_model_fig3_b.plot_colored_reconstruction();
 view(my_viewpoint)
 % Now make the colormap match the bar graphs
 for i=1:length(new_labels_key)
-    all_figs{11}.Children(2).Children(i).CData = ...
+    all_figs{3}.Children(2).Children(i).CData = ...
         my_cmap_3d(my_cmap_dict(i),:);
 end
+
+% Get individual neurons (same as above)
+fig_dict = containers.Map(...
+    {neur_id(1), neur_id(2)}, {10, 11});
+for i = 1:length(neur_id)
+    this_n = neur_id(i);
+    all_figs{fig_dict(this_n)} = ...
+        my_model_fig3_b.plot_reconstruction_interactive(false,this_n);
+    title(neur_labels{i})
+    xlim(tspan);
+    set(gca, 'box', 'off')
+    ylabel('')
+    xlabel('')
+end
+
+% Correlation histogram
+all_figs{6} = my_model_fig3_b.plot_correlation_histogram();
+xlim([-0.2, 1])
+ylim([0 15])
+title('')
+legend off
+set(gca, 'box', 'off')
 
 %---------------------------------------------
 % Simplest comparison: no control at all!
 %---------------------------------------------
-settings = struct(...
-    'to_subtract_mean',true,...
-    'to_subtract_mean_sparse',false,...
-    'to_subtract_mean_global',false,...
-    'dmd_mode','tdmd',...
-    'add_constant_signal',false,...
-    ...'filter_window_dat',3,...
-    'use_deriv',true,...
-    'to_normalize_deriv',true,...
-    'lambda_sparse',0);
+settings = settings_ideal;
+settings.augment_data = 0;
 settings.global_signal_mode = 'None';
-my_model_fig4_e = CElegansModel(filename, settings);
+settings.dmd_mode = 'tdmd';
+my_model_fig3_c = CElegansModel(filename, settings);
 
-my_model_fig4_e.set_simple_labels();
-all_figs{12} = my_model_fig4_e.plot_colored_reconstruction();
+my_model_fig3_c.set_simple_labels();
+all_figs{4} = my_model_fig3_c.plot_colored_reconstruction();
 view(my_viewpoint)
 % Now make the colormap match the bar graphs
 for i=1:length(new_labels_key)
-    all_figs{12}.Children(2).Children(i).CData = ...
+    all_figs{4}.Children(2).Children(i).CData = ...
         my_cmap_3d(my_cmap_dict(i),:);
 end
+
+% Correlation histogram
+all_figs{7} = my_model_fig3_c.plot_correlation_histogram();
+xlim([-0.2, 1])
+ylim([0 15])
+title('')
+legend off
+set(gca, 'box', 'off')
 
 %---------------------------------------------
 % Save figures
@@ -439,12 +349,23 @@ if to_save
         if isempty(all_figs{i})
             continue;
         end
-        fname = sprintf('%sfigure_4_%d_scratch', foldername, i);
+        fname = sprintf('%sfigure_4_%d', foldername, i);
         this_fig = all_figs{i};
-        ax = this_fig.Children(2);
-        ax.Clipping = 'Off';
-        prep_figure_no_axis(this_fig)
-        zoom(1.17)
+        if i <= 4 % 3d PCA plots
+            ax = this_fig.Children(2);
+            ax.Clipping = 'Off';
+            prep_figure_no_axis(this_fig)
+            zoom(1.17)
+        end
+        if i >= 5 % Histograms and Single neurons
+            if i >=8 %Single neurons
+                prep_figure_no_axis(this_fig)
+            end
+            sz = {'0.9\columnwidth', '0.1\paperheight'}
+            matlab2tikz('figurehandle',this_fig,'filename',...
+                [fname '_raw.tex'], ...
+                'width', sz{1}, 'height', sz{2});
+        end
         saveas(this_fig, fname, 'png');
     end
 end
@@ -452,150 +373,354 @@ end
 %==========================================================================
 
 
-%% Figure 5: Fixed points
+%% Figure 3d: time-delay embeddings 
+all_figs = cell(1);
+max_augment = 12;
+all_models = cell(max_augment+1,1);
 
-filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
-all_figs = cell(1,1);
-settings = struct(...
-    'to_subtract_mean',true,...
-    'to_subtract_mean_sparse',false,...
-    'to_subtract_mean_global',false,...
-    'dmd_mode','func_DMDc',...
-    'use_deriv',true,...
-    'to_normalize_deriv',true,...
-    'global_signal_mode', 'ID_binary_and_grad');
-my_model_fig5 = CElegansModel(filename, settings);
-my_model_fig5.set_simple_labels();
+% Original model
+settings = settings_ideal;
+settings.augment_data = 0;
+all_models{1} = CElegansModel(filename_ideal, settings);
 
-% Plot the original data
-all_figs{1} = my_model_fig5.plot_colored_data(false, 'o');
-for i=1:length(my_model_fig5.state_labels_key)
-    all_figs{1}.Children(2).Children(i).CData = ...
-        my_cmap_3d(my_cmap_dict(i),:);
+n = all_models{1}.dat_sz(1);
+all_corr = zeros(max_augment + 1, n);
+all_corr(1,:) = all_models{1}.calc_correlation_matrix(false, 'SVD');
+
+for i = 1:max_augment
+    settings.augment_data = i;
+    
+    all_models{i+1} = CElegansModel(filename_ideal, settings);
+    % Note: we only want the correlations with the last datapoint
+    tmp = all_models{i+1}.calc_correlation_matrix(false, 'SVD');
+    all_corr(i+1,:) = tmp(1:n);
 end
-view(my_viewpoint)
-% Now plot the fixed points
-my_model_fig5.run_with_only_global_control(@(x)...
-    plot_colored_fixed_point(x,'Simple Reverse', true, all_figs{1}) );
-my_model_fig5.run_with_only_global_control(@(x)...
-    plot_colored_fixed_point(x,'Simple Forward', true, all_figs{1}) );
-[~, b] = all_figs{1}.Children.Children;
 
-% Add invisible axes on top and place the stars there so they will be
-% visible
-ax = all_figs{1}.Children(2);
-axHidden = axes('Visible','off','hittest','off'); % Invisible axes
-linkprop([ax axHidden],{'CameraPosition' 'XLim' 'YLim' 'ZLim' 'Position'}); % The axes should stay aligned
-set(b(1), 'Parent', axHidden)
-set(b(2), 'Parent', axHidden)
+% Plot the different correlation coefficients
+all_figs{1} = figure('DefaultAxesFontSize', 14);
+boxplot(real(all_corr)');
+title('Non-delayed neurons in time-delay embedded models')
+ylabel('Correlation coefficient')
+xlabel('Delay embedding')
+xticklabels(0:max_augment)
 
-% Save figures
+%---------------------------------------------
+% Save the figures
+%---------------------------------------------
 if to_save
-    fname = sprintf('%sfigure_5_%d', foldername, 1);
+    fname =  [foldername 'figure_4_12'];
     this_fig = all_figs{1};
-    prep_figure_no_axis(this_fig)
-    ax.Visible = 'Off';
-%     axes(ax)
-%     zoom(1.175) % Decided by hand
-%     axes(axHidden)
-%     zoom(1.175) % Decided by hand
-    saveas(this_fig, fname, 'png');
+    matlab2tikz('figurehandle',this_fig,'filename',[fname '_raw.tex']);
+    sz = {'0.9\columnwidth', '0.05\paperheight'}
+    matlab2tikz('figurehandle',this_fig,'filename',...
+        [fname '_raw.tex'], ...
+        'width', sz{1}, 'height', sz{2});
 end
+
 %==========================================================================
 
 
-%% Figure 6 (simple): Neuron classifications
-all_figs = cell(1,1);
-
-filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
-settings = struct(...
-    'to_subtract_mean',false,...
-    'to_subtract_mean_sparse',false,...
-    'to_subtract_mean_global',false,...
-    'dmd_mode','func_DMDc',...
-    'add_constant_signal',false,...
-    'filter_window_dat',0,...
-    'use_deriv',false);
-settings.global_signal_mode = 'ID_binary';
-% settings.global_signal_mode = 'ID_binary_and_grad';
+%% Figure 4a-d: Variable selection
+all_figs = cell(4,1);
+% Get the 'ideal' and single step models
+my_model_time_delay = CElegansModel(filename_ideal, settings_ideal);
+settings = settings_ideal;
+settings.augment_data = 0;
+my_model_single_step = CElegansModel(filename_ideal, settings);
 
 %---------------------------------------------
-% Calculate 5 worms and get roles
+% LASSO from a direct fit to data (time delay)
 %---------------------------------------------
-all_models = cell(5,1);
-all_roles_global = cell(5,2);
-for i=1:5
-    filename = sprintf(filename_template,i);
-%     if i==4
-%         settings.lambda_sparse = 0.035; % Decided by looking at pareto front
-%     else
-%         settings.lambda_sparse = 0.05;
-%     end
-    all_models{i} = CElegansModel(filename,settings);
+U2 = my_model_time_delay.control_signal(:,2:end);
+X1 = my_model_time_delay.dat(:,1:end-1);
+disp('Fitting lasso models...')
+all_intercepts_td = zeros(size(U2,1),1);
+B_prime_lasso_td = zeros(size(U2,1), size(X1,1));
+which_fit = 8;
+for i = 1:size(U2,1)
+    [all_fits, fit_info] = lasso(X1', U2(i,:), 'NumLambda',10);
+    all_intercepts_td(i) = fit_info.Intercept(which_fit);
+    B_prime_lasso_td(i,:) = all_fits(:,which_fit); % Which fit = determined by eye
 end
-%% Now we have the models
-max_err_percent = 0.4;
-for i=1:5
-    % Global mode actuation
-    [all_roles_global{i,1}, all_roles_global{i,2}] = ...
-        all_models{i}.calc_neuron_roles_in_global_modes(true, [], max_err_percent);
+%---------------------------------------------
+% LASSO from a direct fit to data (single step)
+%---------------------------------------------
+U2 = my_model_single_step.control_signal(:,2:end);
+X1 = my_model_single_step.dat(:,1:end-1);
+disp('Fitting lasso models...')
+all_intercepts_ss = zeros(size(U2,1),1);
+B_prime_lasso_ss = zeros(size(U2,1), size(X1,1));
+which_fit = 8;
+for i = 1:size(U2,1)
+    [all_fits, fit_info] = lasso(X1', U2(i,:), 'NumLambda',10);
+    all_intercepts_ss(i) = fit_info.Intercept(which_fit);
+    B_prime_lasso_ss(i,:) = all_fits(:,which_fit); % Which fit = determined by eye
 end
 
 %---------------------------------------------
-% Data preprocessing
+% Plot the unrolled matrix of one control signal
 %---------------------------------------------
-[ combined_dat_global, all_labels_global ] =...
-    combine_different_trials( all_roles_global );
-num_neurons = size(combined_dat_global,1);
+which_ctr = 5;
+names = my_model_time_delay.get_names();
+% ind = contains(my_model_time_delay.state_labels_key, {'REV', 'DT', 'VT'});
+% Unroll one of the controllers
+unroll_sz = [my_model_time_delay.original_sz(1), settings_ideal.augment_data];
+dat_unroll1 = reshape(B_prime_lasso_td(which_ctr,:), unroll_sz);
+
+all_figs{1} = figure('DefaultAxesFontSize', 14);
+[ordered_dat, ordered_ind] = top_ind_then_sort(dat_unroll1, [], 1e-5);
+imagesc(ordered_dat)
+colormap(cmap_white_zero(ordered_dat));
+colorbar
+title(sprintf('Unrolled predictors for control signal %d', which_ctr))
+yticks(1:unroll_sz(1))
+yticklabels(names(ordered_ind))
+xlabel('Number of delay frames')
 
 %---------------------------------------------
-% Roles for global neurons
+% Plot a waterfall plot for a couple important neurons
 %---------------------------------------------
-% First make the field names the same
-d = containers.Map(...
-    {'group 1', 'group 2', 'other', '', 'both', 'high error'},...
-    {'simple REVSUS', 'simple FWD', 'other', '', 'both', 'z_error'});
-combined_dat_global = cellfun(@(x) d(x), combined_dat_global,...
-    'UniformOutput', false);
-possible_roles = unique(combined_dat_global);
-possible_roles(cellfun(@isempty,possible_roles)) = [];
-role_counts = zeros(num_neurons,length(possible_roles));
-for i=1:length(possible_roles)
-    role_counts(:,i) = sum(...
-        strcmp(combined_dat_global, possible_roles{i}),2);
+all_figs{2} = figure('DefaultAxesFontSize', 14);
+[ordered_dat, ordered_ind] = top_ind_then_sort(dat_unroll1, 5);
+% Sort by largest initial value for better plotting
+h = waterfall(ordered_dat);
+colormap(cmap_white_zero(ordered_dat))
+h.LineWidth = 3;
+xlabel('Number of delay frames')
+xticks(1:unroll_sz(2))
+yticks(1:to_show)
+yticklabels(names(ordered_ind))
+
+%---------------------------------------------
+% Plot reconstructions of some control signals
+%---------------------------------------------
+tspan = 100:1000;
+% Get the reconstructions
+X1 = my_model_time_delay.dat(:,1:end-1);
+ctr = my_model_time_delay.control_signal(which_ctr,:);
+ctr_reconstruct = zeros(size(ctr));
+ctr_reconstruct(1) = ctr(1);
+for i = 2:length(ctr)
+    ctr_reconstruct(i) = B_prime_lasso_td(which_ctr,:) * X1(:,i-1);
 end
-% Long names mean it was an ambiguous identification
-name_lengths = cellfun(@(x) length(x)<6, all_labels_global)';
-this_ind = find((sum(role_counts,2)>3).*name_lengths);
-all_figs{1} = figure('DefaultAxesFontSize',14);
-b = bar(role_counts(this_ind,:), 'stacked');
-for i=1:length(b)
-    b(i).FaceColor = my_cmap_3d(i,:);
+ctr_reconstruct_td = ctr_reconstruct + all_intercepts_td(which_ctr);
+
+X1 = my_model_single_step.dat(:,1:end-1);
+ctr = my_model_single_step.control_signal(which_ctr,:);
+ctr_reconstruct = zeros(size(ctr));
+ctr_reconstruct(1) = ctr(1);
+for i = 2:length(ctr)
+    ctr_reconstruct(i) = B_prime_lasso_ss(which_ctr,:) * X1(:,i-1);
 end
-legend([possible_roles(1:end-1); {'high error'}])
-yticks(1:max(max((role_counts))))
-ylabel('Number of times identified')
-xticks(1:length(this_ind));
-xticklabels(all_labels_global(this_ind))
-xtickangle(90)
-title('Neuron roles using global mode activation')
+ctr_reconstruct_ss = ctr_reconstruct + all_intercepts_ss(which_ctr);
+
+% Plot
+all_figs{3} = figure('DefaultAxesFontSize', 14);
+ctr = my_model_time_delay.control_signal(which_ctr,:);
+plot(ctr(tspan))
+hold on
+plot(ctr_reconstruct_td(tspan), 'Linewidth',2)
+plot(ctr_reconstruct_ss(tspan), 'Linewidth',2)
+title(sprintf('Sparse reconstruction of control signal %d',which_ctr))
+legend({'Data','Time-delay', 'Single-step'})
+
+% AND ANOTHER
+which_ctr = 1;
+% Get the reconstructions
+X1 = my_model_time_delay.dat(:,1:end-1);
+ctr = my_model_time_delay.control_signal(which_ctr,:);
+ctr_reconstruct = zeros(size(ctr));
+ctr_reconstruct(1) = ctr(1);
+for i = 2:length(ctr)
+    ctr_reconstruct(i) = B_prime_lasso_td(which_ctr,:) * X1(:,i-1);
+end
+ctr_reconstruct_td = ctr_reconstruct + all_intercepts_td(which_ctr);
+
+X1 = my_model_single_step.dat(:,1:end-1);
+ctr = my_model_single_step.control_signal(which_ctr,:);
+ctr_reconstruct = zeros(size(ctr));
+ctr_reconstruct(1) = ctr(1);
+for i = 2:length(ctr)
+    ctr_reconstruct(i) = B_prime_lasso_ss(which_ctr,:) * X1(:,i-1);
+end
+ctr_reconstruct_ss = ctr_reconstruct + all_intercepts_ss(which_ctr);
+
+% Plot
+all_figs{4} = figure('DefaultAxesFontSize', 14);
+ctr = my_model_time_delay.control_signal(which_ctr,:);
+plot(ctr(tspan))
+hold on
+plot(ctr_reconstruct_td(tspan), 'Linewidth',2)
+plot(ctr_reconstruct_ss(tspan), 'Linewidth',2)
+title(sprintf('Sparse reconstruction of control signal %d',which_ctr))
+legend({'Data','Time-delay', 'Single-step'})
 
 %---------------------------------------------
 % Save figures
 %---------------------------------------------
+
 if to_save
     for i = 1:length(all_figs)
-        fname = sprintf('%sfigure_s2_%d', foldername, i);
-        this_fig = all_figs{i};
-        if isempty(this_fig)
-            continue
+        if isempty(all_figs{i})
+            continue;
         end
-        set(this_fig, 'Position', get(0, 'Screensize'));
+        fname = sprintf('%sfigure_5_%d', foldername, i);
+        this_fig = all_figs{i};
+        if i >= 3
+            prep_figure_no_axis(this_fig)
+        end
+        sz = {'0.9\columnwidth', '0.1\paperheight'}
+        matlab2tikz('figurehandle',this_fig,'filename',...
+            [fname '_raw.tex'], ...
+            'width', sz{1}, 'height', sz{2});
         saveas(this_fig, fname, 'png');
-        matlab2tikz('figurehandle',this_fig,'filename',[fname '_w_error.tex']);
     end
 end
 %==========================================================================
 
+
+%% Figure 4e: Elimination path (Lasso)
+%---------------------------------------------
+% Iteratively remove most important neurons
+%---------------------------------------------
+max_iter = 20;
+which_fit = 4;
+
+U2 = my_model_time_delay.control_signal(:,2:end);
+X1 = my_model_time_delay.dat(:,1:end-1);
+n = my_model_time_delay.original_sz(1);
+num_ctr = size(U2,1);
+disp('Calculating elimination path for each controller...')
+all_intercepts_td = zeros(num_ctr, max_iter);
+all_err = zeros(num_ctr, max_iter);
+all_fp = zeros(num_ctr, max_iter);
+all_fn = zeros(num_ctr, max_iter);
+B_prime_lasso_td = zeros(num_ctr, size(X1,1), max_iter);
+elimination_pattern = false(size(B_prime_lasso_td));
+elimination_neurons = zeros(size(all_err));
+
+ctr = my_model_time_delay.control_signal;
+ctr_reconstruct = zeros(size(ctr));
+ctr_reconstruct(:,1) = ctr(:,1);
+
+for i = 1:max_iter
+    fprintf('Iteration %d...\n', i)
+    % Remove the top neurons from the last round
+    if i > 1
+        [~, top_ind] = max(abs(B_prime_lasso_td(:, :, i-1)), [], 2);
+        % We'll get a single time slice of a neuron, but want to remove all
+        % copies (cumulatively)
+        top_ind = mod(top_ind,n) + n*(0:settings_ideal.augment_data-1);
+        elimination_neurons(:,i) = top_ind(:,1);
+        elimination_pattern(:,:,i) = elimination_pattern(:,:,i-1);
+        for i4 = 1:size(top_ind,1)
+            elimination_pattern(i4,top_ind(i4,:),i) = true;
+        end
+    end
+    % Fit new Lasso models
+    for i2 = 1:size(U2,1)
+%         this_X1 = X1;
+%         this_X1(elimination_pattern(i2,:,i),:) = 0;
+%         [all_fits, fit_info] = lasso(this_X1', U2(i2,:), 'NumLambda',5);
+%         B_prime_lasso_td(i2, :, i) = all_fits(:,which_fit); % Which fit = determined by eye
+%         all_intercepts_td(i2, i) = fit_info.Intercept(which_fit);
+    end
+    % Get the reconstructions of the control signals
+    for i3 = 2:size(ctr,2)
+        ctr_reconstruct(:, i3) = B_prime_lasso_td(:, :, i) * X1(:, i3-1);
+    end
+    ctr_reconstruct_td = ctr_reconstruct + all_intercepts_td(:, i);
+    
+%     all_err(:,i) = vecnorm(ctr_reconstruct_td - ctr, 2, 2);
+    this_corr = corrcoef([ctr_reconstruct_td' ctr']);
+    all_err(:,i) = diag(this_corr, num_ctr);
+    for i2 = 1:num_ctr
+        [all_fp(i2,i), all_fn(i2,i)] = ...
+            calc_false_detection(ctr(i2,:), ctr_reconstruct_td(i2,:));
+    end
+end
+
+% all_figs{5} = figure('DefaultAxesFontSize', 14);
+% plot(all_err(which_ctr,:), 'LineWidth',2)
+% xticks(1:max_iter)
+% xticklabels
+
+% Make sure it's working
+% figure;
+% a = B_prime_lasso_td(:,:,1);
+% imagesc(a)
+% colormap(cmap_white_zero(a))
+% title('Original encoding')
+% figure;
+% a = B_prime_lasso_td(:,:,end);
+% imagesc(a)
+% colormap(cmap_white_zero(a))
+% title(sprintf('Encoding after %d removals', max_iter))
+
+% figure;
+% imagesc(all_err)
+% colorbar
+
+all_figs{1} = figure('DefaultAxesFontSize', 14);
+i = 2;
+plot(all_fp(i,:), 'LineWidth',2)
+hold on
+plot(all_fn(i,:), 'LineWidth',2)
+legend({'False positives', 'False negatives'})
+
+a = arrayfun(@(x)my_model_time_delay.get_names(x,true),...
+    elimination_neurons(:,2:end), 'UniformOutput',false);
+eliminated_names = cellfun(@(x)x{1},a,'UniformOutput',false);
+
+xticks(1:max_iter)
+xticklabels(['All neurons', eliminated_names(i,:)])
+xtickangle(60)
+xlabel('Eliminated neurons')
+% disp(eliminated_names)
+
+%==========================================================================
+
+
+%% Figure 5: Hypothesis generation for sparse A matrix
+all_figs = cell(2,1);
+
+ad_settings = struct('sparse_tol_factor', 1.2);
+settings = settings_ideal;
+settings.dmd_mode = 'sparse_fast';
+settings.AdaptiveDmdc_settings = ad_settings;
+my_model_time_delay = CElegansModel(filename_ideal, settings);
+
+% Unroll the predictors of a single neuron
+this_neuron = 'AVAL';
+all_figs{1} = my_model_time_delay.plot_unrolled_matrix(...
+    this_neuron, 'imagesc', 1e-10, 1e-3, false);
+title(sprintf('Predictors for neuron %s', this_neuron))
+
+%---------------------------------------------
+% Plot a waterfall plot for a couple important neurons
+%---------------------------------------------
+all_figs{2} = ...
+    my_model_time_delay.plot_unrolled_matrix(this_neuron, 'waterfall', 5,...
+    [], true);
+                
+
+if to_save
+    for i = 1:length(all_figs)
+        if isempty(all_figs{i})
+            continue;
+        end
+        fname = sprintf('%sfigure_6_%d', foldername, i);
+        this_fig = all_figs{i};
+        if i >= 3
+            prep_figure_no_axis(this_fig)
+        end
+        sz = {'0.9\columnwidth', '0.1\paperheight'}
+        matlab2tikz('figurehandle',this_fig,'filename',...
+            [fname '_raw.tex'], ...
+            'width', sz{1}, 'height', sz{2});
+        saveas(this_fig, fname, 'png');
+    end
+end
+%==========================================================================
 
 
