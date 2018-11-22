@@ -4680,18 +4680,18 @@ end
 
 %% Add neurons to the controller; nothing else
 filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
-% designated_controller_channels = {...
-%     'Reversal_neurons', {'AIB'},...
-%     'Turning_neurons', {'SMD', 'RIV'},...
-%     'Sleeping_neurons', {'RIS', 'ALA'}...
-%     'Forward_neurons', {'AVB'},... {'RIB'},...
-%     };
 designated_controller_channels = {...
-    ...'Reversal_neurons', {'AIB'},...
-    'Turning_neurons', {'SMD'},..., 'RIV'},...
-    ...'Sleeping_neurons', {'RIS', 'ALA'}...
-    ...'Forward_neurons', {'AVB'},... {'RIB'},...
+    'Reversal_neurons', {'AIB'},...
+    'Turning_neurons', {'SMD', 'RIV'},...
+    'Sleeping_neurons', {'RIS', 'ALA'}...
+    'Forward_neurons', {'AVB'},... {'RIB'},...
     };
+% designated_controller_channels = {...
+%     ...'Reversal_neurons', {'AIB'},...
+%     'Turning_neurons', {'SMD'},..., 'RIV'},...
+%     ...'Sleeping_neurons', {'RIS', 'ALA'}...
+%     ...'Forward_neurons', {'AVB'},... {'RIB'},...
+%     };
 settings = struct(...
     'to_subtract_mean',false,...
     'to_subtract_mean_sparse',false,...
@@ -4746,7 +4746,2037 @@ all_figs{3} = fig_hist;
 %==========================================================================
 
 
+%% Use only 3 positive transitions as controllers; compare to no-dynamics
+% i.e. just projecting the data onto the control signals
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    ...'augment_data', 20,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    ...'dmd_mode','sparse',...
+    'dmd_mode','func_DMDc',...
+    ...'dmd_mode', 'tdmd',...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
 
+% First get a baseline model (no sparse signals)
+my_model_base = CElegansModel(filename, settings);
+
+% Second, get a no-dynamics model
+settings.dmd_mode = 'no_dynamics';
+my_model_bu = CElegansModel(filename, settings);
+
+% Plot things
+my_model_base.plot_reconstruction_interactive();
+% my_model_bu.plot_reconstruction_interactive();
+
+all_figs = cell(3,1);
+
+all_figs{1} = my_model_base.plot_colored_reconstruction();
+title('Reconstruction for the base model')
+% all_figs{2} = my_model_bu.plot_colored_reconstruction();
+% title('Reconstruction for the no-dynamics model')
+
+interesting_neurons = 1:my_model_bu.original_sz(1);
+fig_hist = figure('DefaultAxesFontSize', 14);
+subplot(2,1,1)
+my_model_bu.plot_correlation_histogram(false, interesting_neurons, fig_hist);
+ylim([0,40])
+xlim([0,1])
+title('Correlation coefficients for the no-dynamics model')
+subplot(2,1,2)
+my_model_base.plot_correlation_histogram(false, interesting_neurons, fig_hist);
+ylim([0,40])
+xlim([0,1])
+title('Correlation coefficients for the base model')
+
+all_figs{3} = fig_hist;
+
+% Separate plot
+% settings = struct('to_subtract_diagonal',true);
+% compare_obj = compare_connectome(my_model_base.AdaptiveDmdc_obj, settings);
+% compare_obj.plot_imagesc()
+
+% Save
+to_save = false;
+foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\scratch_figures\';
+all_fnames = {'PCA_base_model_no_sparse_gradient',...
+    'PCA_no_dynamics_no_sparse_gradient',...
+    'histogram_model_vs_no_dynamics_no_sparse_gradient'};
+if to_save
+    pause
+    for i = 1:length(all_figs)
+        if isempty(all_figs{i})
+            continue;
+        end
+        fname = [foldername all_fnames{i}];
+        this_fig = all_figs{i};
+        saveas(this_fig, fname, 'png');
+    end
+end
+%==========================================================================
+
+
+%% Use all 7 of the positive transitions as controllers; compare to no-dynamics
+% i.e. just projecting the data onto the control signals
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',true,...
+    'use_deriv',false,...
+    ...'augment_data', 20,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    ...'dmd_mode','sparse',...
+    'dmd_mode','func_DMDc',...
+    ...'dmd_mode', 'tdmd',...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0,...
+    'global_signal_subset', {{'REV', 'FWD', 'SLOW', 'DT', 'VT'}});
+settings.global_signal_mode = 'ID_binary_transitions';
+
+% First get a baseline model (no sparse signals)
+my_model_base = CElegansModel(filename, settings);
+
+% Second, get a no-dynamics model
+settings.dmd_mode = 'no_dynamics';
+my_model_bu = CElegansModel(filename, settings);
+
+% Plot things
+my_model_base.plot_reconstruction_interactive();
+% my_model_bu.plot_reconstruction_interactive();
+
+all_figs = cell(3,1);
+
+all_figs{1} = my_model_base.plot_colored_reconstruction();
+title('Reconstruction for the base model')
+% all_figs{2} = my_model_bu.plot_colored_reconstruction();
+% title('Reconstruction for the no-dynamics model')
+
+interesting_neurons = 1:my_model_bu.original_sz(1);
+fig_hist = figure('DefaultAxesFontSize', 14);
+subplot(2,1,1)
+my_model_bu.plot_correlation_histogram(false, interesting_neurons, fig_hist);
+ylim([0,40])
+xlim([0,1])
+title('Correlation coefficients for the no-dynamics model')
+subplot(2,1,2)
+my_model_base.plot_correlation_histogram(false, interesting_neurons, fig_hist);
+ylim([0,40])
+xlim([0,1])
+title('Correlation coefficients for the base model')
+
+all_figs{3} = fig_hist;
+
+% Separate plot
+% settings = struct('to_subtract_diagonal',true);
+% compare_obj = compare_connectome(my_model_base.AdaptiveDmdc_obj, settings);
+% compare_obj.plot_imagesc()
+
+% Save
+to_save = false;
+foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\scratch_figures\';
+all_fnames = {'PCA_base_model_no_sparse_gradient',...
+    'PCA_no_dynamics_no_sparse_gradient',...
+    'histogram_model_vs_no_dynamics_no_sparse_gradient'};
+if to_save
+    pause
+    for i = 1:length(all_figs)
+        if isempty(all_figs{i})
+            continue;
+        end
+        fname = [foldername all_fnames{i}];
+        this_fig = all_figs{i};
+        saveas(this_fig, fname, 'png');
+    end
+end
+%==========================================================================
+
+
+%% Use only 3 positive transition SPIKES as controllers; compare to no-dynamics
+% i.e. just projecting the data onto the control signals
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    ...'augment_data', 5,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    ...'dmd_mode','sparse',...
+    'dmd_mode','func_DMDc',...
+    ...'dmd_mode', 'tdmd',...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+% First get a baseline model (no sparse signals)
+my_model_base = CElegansModel(filename, settings);
+
+% Second, get a no-dynamics model
+settings.dmd_mode = 'no_dynamics';
+my_model_bu = CElegansModel(filename, settings);
+
+% Plot things
+my_model_base.plot_reconstruction_interactive();
+% my_model_bu.plot_reconstruction_interactive();
+
+all_figs = cell(3,1);
+
+all_figs{1} = my_model_base.plot_colored_reconstruction();
+title('Reconstruction for the base model')
+% all_figs{2} = my_model_bu.plot_colored_reconstruction();
+% title('Reconstruction for the no-dynamics model')
+
+interesting_neurons = 1:my_model_bu.original_sz(1);
+fig_hist = figure('DefaultAxesFontSize', 14);
+subplot(2,1,1)
+my_model_bu.plot_correlation_histogram(false, interesting_neurons, fig_hist);
+ylim([0,40])
+xlim([0,1])
+title('Correlation coefficients for the no-dynamics model')
+subplot(2,1,2)
+my_model_base.plot_correlation_histogram(false, interesting_neurons, fig_hist);
+ylim([0,40])
+xlim([0,1])
+title('Correlation coefficients for the base model')
+
+all_figs{3} = fig_hist;
+
+% Separate plot
+% settings = struct('to_subtract_diagonal',true);
+% compare_obj = compare_connectome(my_model_base.AdaptiveDmdc_obj, settings);
+% compare_obj.plot_imagesc()
+
+% Save
+to_save = false;
+foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\scratch_figures\';
+all_fnames = {'PCA_base_model_no_sparse_gradient',...
+    'PCA_no_dynamics_no_sparse_gradient',...
+    'histogram_model_vs_no_dynamics_no_sparse_gradient'};
+if to_save
+    pause
+    for i = 1:length(all_figs)
+        if isempty(all_figs{i})
+            continue;
+        end
+        fname = [foldername all_fnames{i}];
+        this_fig = all_figs{i};
+        saveas(this_fig, fname, 'png');
+    end
+end
+%==========================================================================
+
+
+%% Use only 3 positive transitions as controllers and neurons
+% i.e. just projecting the data onto the control signals
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+designated_controller_channels = {...
+    ...'Turning_neurons', {'SMD', 'RIV'},...
+    ...'Turning_neurons', {'RIV'},...
+    'Sleeping_neurons', {'RIS', 'ALA'},...
+    'Sensory_neurons', {'ASK', 'AVF'}, ...
+    ...'Speed_neurons', {'RIB'},...
+    'Unnamed_sensory_neurons', [1 5 15 64 121 122],...
+    };
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',true,...
+    'use_deriv',false,...
+    'designated_controller_channels', {designated_controller_channels},...
+    ...'augment_data', 3,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 0,...
+    ...'dmd_mode','sparse',...
+    'dmd_mode','func_DMDc',...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'None';
+
+% First get a baseline model (no sparse signals)
+my_model_3_kicks = CElegansModel(filename, settings);
+
+% Plot things
+% my_model_3_kicks.plot_reconstruction_interactive();
+my_model_3_kicks.plot_reconstruction_interactive(true, 'AVBL');
+
+%==========================================================================
+
+
+%% Use only 3 positive transitions; try to predict these kicks
+% i.e. just projecting the data onto the control signals
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+ad_settings = struct(...
+    'oscillation_threshold', 0.01);
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'AdaptiveDmdc_settings', ad_settings,...
+    ...'augment_data', 5,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','truncated_DMDc',... % Keeps the predictions of the controller
+    ...'dmd_mode','func_DMDc',...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+% First get a baseline model (no sparse signals)
+my_model_3_kicks = CElegansModel(filename, settings);
+
+% Plot things
+% my_model_base.plot_reconstruction_interactive();
+
+% How well are the control signals predicted by a linear function?
+x = my_model_3_kicks.AdaptiveDmdc_obj.x_len;
+B_prime = my_model_3_kicks.AdaptiveDmdc_obj.A_original((x+1):end,:);
+figure
+imagesc(B_prime(:,1:x))
+colorbar
+xlabel('Neuron number')
+ylabel('Control signal index')
+title('Predicting the control signal from data');
+
+%---------------------------------------------
+% Linear reconstruction from the model
+%---------------------------------------------
+which_ctr = 3;
+ctr = my_model_3_kicks.control_signal(which_ctr,:);
+ctr_reconstruct = zeros(size(ctr));
+ctr_reconstruct(1) = ctr(1);
+for i = 2:length(ctr)
+    prev_tmp = my_model_3_kicks.dat_with_control(:,i-1);
+    prev_tmp(x+1) = ctr_reconstruct(i-1); % Replace only this control signal
+    ctr_reconstruct(i) = B_prime(1,:)*prev_tmp;
+end
+
+figure
+ctr = my_model_3_kicks.control_signal(1,:);
+plot(ctr)
+hold on
+plot(ctr_reconstruct, '--', 'Linewidth',2)
+legend({'True control signal','Reconstructed control signal'})
+
+
+%---------------------------------------------
+% Linear reconstruction from a direct fit to DATA
+%---------------------------------------------
+U2 = my_model_3_kicks.control_signal(:,2:end);
+X1 = my_model_3_kicks.dat(:,1:end-1);
+B_prime2 = U2/X1;
+
+ctr = my_model_3_kicks.control_signal(which_ctr,:);
+ctr_reconstruct = zeros(size(ctr));
+ctr_reconstruct(1) = ctr(1);
+for i = 2:length(ctr)
+    ctr_reconstruct(i) = B_prime2(which_ctr,:) * X1(:,i-1);
+end
+
+figure
+ctr = my_model_3_kicks.control_signal(which_ctr,:);
+plot(ctr)
+hold on
+plot(ctr_reconstruct, 'Linewidth',2)
+title(sprintf('Reconstruction of control signal %d',which_ctr))
+legend({'True','Reconstructed'})
+
+%---------------------------------------------
+% LASSO from a direct fit to DATA
+%---------------------------------------------
+U2 = my_model_3_kicks.control_signal(:,2:end);
+X1 = my_model_3_kicks.dat(:,1:end-1);
+disp('Fitting lasso models...')
+all_intercepts = zeros(size(U2,1),1);
+which_fit = 8;
+for i = size(U2,1):-1:1
+%     B_prime_lasso(i,:) = U2(i,:)/X1;
+    [all_fits, fit_info] = lasso(X1', U2(i,:), 'NumLambda',10);
+    all_intercepts(i) = fit_info.Intercept(which_fit);
+    B_prime_lasso(i,:) = all_fits(:,which_fit); % Which fit = determined by eye
+%     B_prime_lasso(i,:) = lasso(X1', zeros(size(X1,2),1));
+end
+
+ctr = my_model_3_kicks.control_signal(which_ctr,:);
+ctr_reconstruct = zeros(size(ctr));
+ctr_reconstruct(1) = ctr(1);
+for i = 2:length(ctr)
+    ctr_reconstruct(i) = B_prime_lasso(which_ctr,:) * X1(:,i-1);
+end
+ctr_reconstruct = ctr_reconstruct + all_intercepts(which_ctr);
+
+figure
+ctr = my_model_3_kicks.control_signal(which_ctr,:);
+plot(ctr)
+hold on
+plot(ctr_reconstruct, 'Linewidth',2)
+title(sprintf('Sparse reconstruction of control signal %d',which_ctr))
+legend({'True','Reconstructed'})
+
+%---------------------------------------------
+% Linear reconstruction from a direct fit to RECONSTRUCTED data
+%---------------------------------------------
+U2 = my_model_3_kicks.control_signal(:,2:end);
+X1 = my_model_3_kicks.dat(:,1:end-1);
+% X1 = my_model_3_kicks.AdaptiveDmdc_obj.reset_threshold
+B_prime3 = U2/X1;
+
+which_ctr = 1;
+ctr = my_model_3_kicks.control_signal(which_ctr,:);
+ctr_reconstruct = zeros(size(ctr));
+ctr_reconstruct(1) = ctr(1);
+for i = 2:length(ctr)
+    ctr_reconstruct(i) = B_prime3(which_ctr,:) * ...
+        my_model_3_kicks.dat(:,i-1);
+end
+
+figure
+ctr = my_model_3_kicks.control_signal(which_ctr,:);
+plot(ctr)
+hold on
+plot(ctr_reconstruct, 'Linewidth',2)
+title(sprintf('Reconstruction of control signal %d',which_ctr))
+legend({'True','Reconstructed'})
+
+
+% Also plot the matrix
+figure
+% imagesc(B_prime2);
+imagesc(B_prime_lasso);
+colorbar
+
+names = my_model_3_kicks.get_names();
+xticks(1:x)
+xticklabels(names)
+xtickangle(90)
+yticks(1:5)
+ind = contains(my_model_3_kicks.state_labels_key, {'REV', 'DT', 'VT'});
+yticklabels(my_model_3_kicks.state_labels_key(ind))
+%==========================================================================
+
+
+%% Reconstruct the 3 transition signals using neurons; add those in as controllers
+% i.e. just projecting the data onto the control signals
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+ad_settings = struct(...
+    'oscillation_threshold', 0.01);
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'AdaptiveDmdc_settings', ad_settings,...
+    ...'augment_data', 5,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','truncated_DMDc',... % Keeps the predictions of the controller
+    ...'dmd_mode','func_DMDc',...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+% First get a baseline model (no sparse signals)
+my_model_3_kicks = CElegansModel(filename, settings);
+
+%---------------------------------------------
+% Use lasso to get encoding neurons
+%---------------------------------------------
+
+% Get lasso models
+U2 = my_model_3_kicks.control_signal(:,2:end);
+X1 = my_model_3_kicks.dat(:,1:end-1);
+disp('Fitting lasso models...')
+all_intercepts = zeros(size(U2,1),1);
+which_fit = 19;
+for i = size(U2,1):-1:1
+    [all_fits, fit_info] = lasso(X1', U2(i,:), 'NumLambda',20);
+    all_intercepts(i) = fit_info.Intercept(which_fit);
+    B_prime_lasso(i,:) = all_fits(:,which_fit); % Which fit = determined by eye
+end
+
+sparsity_pattern = (B_prime_lasso==0);
+% disp('Redo-ing fit with lasso sparsity mask')
+% [n, m] = size(B_prime_lasso);
+% cvx_begin
+%     variable B(n, m)
+%     minimize( norm(B*X1 - U2, 2) )
+%     B(sparsity_pattern) == 0 %#ok<NOPTS,EQEFF>
+% cvx_end
+
+to_plot = true;
+if to_plot
+    % Get reconstructed signal and plot
+    ctr = my_model_3_kicks.control_signal(which_ctr,:);
+    ctr_reconstruct_raw = zeros(size(ctr));
+    ctr_reconstruct_raw(1) = ctr(1);
+    ctr_reconstruct_cvx = ctr_reconstruct_raw;
+    for i = 2:length(ctr)
+        ctr_reconstruct_raw(i) = B_prime_lasso(which_ctr,:) * X1(:,i-1);
+        ctr_reconstruct_cvx(i) = B(which_ctr,:) * X1(:,i-1);
+    end
+    ctr_reconstruct_raw = ctr_reconstruct_raw + all_intercepts(which_ctr);
+
+    figure
+    ctr = my_model_3_kicks.control_signal(which_ctr,:);
+    plot(ctr)
+    hold on
+    plot(ctr_reconstruct_raw, 'Linewidth',2)
+    plot(ctr_reconstruct_cvx, 'Linewidth',2)
+    title(sprintf('Sparse reconstruction of control signal %d',which_ctr))
+    legend({'True','Reconstructed (lasso)','Reconstructed (cvx)'})
+
+    % Also plot the matrix
+    figure
+    imagesc(B_prime_lasso);
+    colorbar
+
+    names = my_model_3_kicks.get_names();
+    xticks(1:x)
+    xticklabels(names)
+    xtickangle(90)
+    ind = contains(my_model_3_kicks.state_labels_key, {'REV', 'DT', 'VT'});
+    yticks(1:length(ind))
+    yticklabels(my_model_3_kicks.state_labels_key(ind))
+    title('Matrix for reconstructing the control signal from data')
+end
+
+%---------------------------------------------
+% Add "encoding neurons" back into model
+%---------------------------------------------
+
+designated_controller_channels = {...
+    'Sensory_unnamed', [1 5 15],...
+    'Sensory', {'RIS'},...
+    'DT_neurons', find(sparsity_pattern(1,:)==0),...
+    'VT_neurons', find(sparsity_pattern(2,:)==0),...
+    'REV1_neurons', find(sparsity_pattern(3,:)==0),...
+    'REV2_neurons', find(sparsity_pattern(4,:)==0),...
+    'REVSUS_neurons', find(sparsity_pattern(5,:)==0)   };
+settings.designated_controller_channels = designated_controller_channels;
+my_model_encoding = CElegansModel(filename, settings);
+
+my_model_encoding.plot_colored_reconstruction();
+% my_model_encoding.plot_reconstruction_interactive(true, 'AVBL');
+
+
+%==========================================================================
+
+
+%% Same as above but with sensory and without trivial neurons
+% i.e. just projecting the data onto the control signals
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+ad_settings = struct(...
+    'oscillation_threshold', 0.01);
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'AdaptiveDmdc_settings', ad_settings,...
+    ...'augment_data', 5,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','truncated_DMDc',... % Keeps the predictions of the controller
+    ...'dmd_mode','func_DMDc',...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+% First get a baseline model (no sparse signals)
+my_model_3_kicks = CElegansModel(filename, settings);
+
+%---------------------------------------------
+% Use lasso to get encoding neurons
+%---------------------------------------------
+trivial_neurons = {...
+    'AVA', 'AVE', 'RIM', 'AIB',... % Reversal
+    ...'SMD'... % Turning
+    }; 
+ind = 1:my_model_3_kicks.dat_sz(1);
+ind(my_model_3_kicks.name2ind(trivial_neurons)) = [];
+
+% Get lasso models
+U2 = my_model_3_kicks.control_signal(:,2:end);
+X1 = my_model_3_kicks.dat(ind,1:end-1);
+disp('Fitting lasso models...')
+all_intercepts = zeros(size(U2,1),1);
+B_prime_lasso = zeros(size(U2*X1'));
+which_fit = 18;
+for i = size(U2,1):-1:1
+    [all_fits, fit_info] = lasso(X1', U2(i,:), 'NumLambda',20);
+    all_intercepts(i) = fit_info.Intercept(which_fit);
+    B_prime_lasso(i,:) = all_fits(:,which_fit); % Which fit = determined by eye
+end
+
+sparsity_pattern = (B_prime_lasso==0);
+% disp('Redo-ing fit with lasso sparsity mask')
+% [n, m] = size(B_prime_lasso);
+% cvx_begin
+%     variable B(n, m)
+%     minimize( norm(B*X1 - U2, 2) )
+%     B(sparsity_pattern) == 0 %#ok<NOPTS,EQEFF>
+% cvx_end
+
+to_plot = true;
+if to_plot
+    which_ctr = 5;
+    % Get reconstructed signal and plot
+    ctr = my_model_3_kicks.control_signal(which_ctr,:);
+    ctr_reconstruct_raw = zeros(size(ctr));
+    ctr_reconstruct_raw(1) = ctr(1);
+%     ctr_reconstruct_cvx = ctr_reconstruct_raw;
+    for i = 2:length(ctr)
+        ctr_reconstruct_raw(i) = B_prime_lasso(which_ctr,:) * X1(:,i-1);
+%         ctr_reconstruct_cvx(i) = B(which_ctr,:) * X1(:,i-1);
+    end
+    ctr_reconstruct_raw = ctr_reconstruct_raw + all_intercepts(which_ctr);
+
+    figure
+    ctr = my_model_3_kicks.control_signal(which_ctr,:);
+    plot(ctr)
+    hold on
+    plot(ctr_reconstruct_raw, 'Linewidth',2)
+%     plot(ctr_reconstruct_cvx, 'Linewidth',2)
+    title(sprintf('Sparse reconstruction of control signal %d',which_ctr))
+    legend({'True','Reconstructed (lasso)','Reconstructed (cvx)'})
+
+    % Also plot the matrix
+    figure
+    imagesc(B_prime_lasso);
+    colorbar
+
+    names = my_model_3_kicks.get_names(ind);
+    xticks(1:length(ind))
+    xticklabels(names)
+    xtickangle(90)
+    key_ind = contains(my_model_3_kicks.state_labels_key, {'REV', 'DT', 'VT'});
+    yticks(1:length(key_ind))
+    yticklabels(my_model_3_kicks.state_labels_key(key_ind))
+    title('Matrix for reconstructing the control signal from data')
+end
+
+%---------------------------------------------
+% Add "encoding neurons" back into model
+%---------------------------------------------
+designated_controller_channels = {...
+    'Sensory_unnamed', [1 5 15],...
+    'Sensory', {'RIS'},...
+    'DT_neurons', find(sparsity_pattern(1,:)==0),...
+    'VT_neurons', find(sparsity_pattern(2,:)==0),...
+    'REV1_neurons', find(sparsity_pattern(3,:)==0),...
+    'REV2_neurons', find(sparsity_pattern(4,:)==0),...
+    'REVSUS_neurons', find(sparsity_pattern(5,:)==0)   };
+settings.designated_controller_channels = designated_controller_channels;
+my_model_encoding = CElegansModel(filename, settings);
+
+my_model_encoding.plot_colored_reconstruction();
+% my_model_encoding.plot_reconstruction_interactive(true, 'AVBL');
+
+
+%==========================================================================
+
+
+%% Same as above but with sensory and looping to remove trivial neurons
+% i.e. just projecting the data onto the control signals
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+ad_settings = struct(...
+    'oscillation_threshold', 0.01);
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'AdaptiveDmdc_settings', ad_settings,...
+    ...'augment_data', 5,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    ...'dmd_mode','truncated_DMDc',... % Keeps the predictions of the controller
+    'dmd_mode','func_DMDc',...
+    'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+% First get a baseline model (no sparse signals)
+my_model_3_kicks = CElegansModel(filename, settings);
+
+%---------------------------------------------
+% Use lasso to get encoding neurons
+%---------------------------------------------
+sz = 50;
+all_models = cell(sz,1);
+sensory_neurons = [1 5 15];
+trivial_neurons = sensory_neurons;
+for i_trivial = 1:sz
+    % Get lasso models
+    U2 = my_model_3_kicks.control_signal(:,2:end);
+    X1 = my_model_3_kicks.dat(:,1:end-1);
+    X1(trivial_neurons,:) = 0;
+    disp('Fitting lasso models...')
+    all_intercepts = zeros(size(U2,1),1);
+    B_prime_lasso = zeros(size(U2*X1'));
+    which_fit = 19;
+    for i = size(U2,1):-1:1
+        [all_fits, fit_info] = lasso(X1', U2(i,:), 'NumLambda',20);
+        all_intercepts(i) = fit_info.Intercept(which_fit);
+        B_prime_lasso(i,:) = all_fits(:,which_fit); % Which fit = determined by eye
+    end
+
+    sparsity_pattern = (B_prime_lasso==0);
+
+    to_plot = false;
+    if to_plot
+        which_ctr = 5;
+        % Get reconstructed signal and plot
+        ctr = my_model_3_kicks.control_signal(which_ctr,:);
+        ctr_reconstruct_raw = zeros(size(ctr));
+        ctr_reconstruct_raw(1) = ctr(1);
+    %     ctr_reconstruct_cvx = ctr_reconstruct_raw;
+        for i = 2:length(ctr)
+            ctr_reconstruct_raw(i) = B_prime_lasso(which_ctr,:) * X1(:,i-1);
+    %         ctr_reconstruct_cvx(i) = B(which_ctr,:) * X1(:,i-1);
+        end
+        ctr_reconstruct_raw = ctr_reconstruct_raw + all_intercepts(which_ctr);
+
+        figure
+        ctr = my_model_3_kicks.control_signal(which_ctr,:);
+        plot(ctr)
+        hold on
+        plot(ctr_reconstruct_raw, 'Linewidth',2)
+    %     plot(ctr_reconstruct_cvx, 'Linewidth',2)
+        title(sprintf('Sparse reconstruction of control signal %d',which_ctr))
+        legend({'True','Reconstructed (lasso)','Reconstructed (cvx)'})
+
+        % Also plot the matrix
+        figure
+        imagesc(B_prime_lasso);
+        colorbar
+
+        names = my_model_3_kicks.get_names(ind);
+        xticks(1:length(ind))
+        xticklabels(names)
+        xtickangle(90)
+        key_ind = contains(my_model_3_kicks.state_labels_key, {'REV', 'DT', 'VT'});
+        yticks(1:length(key_ind))
+        yticklabels(my_model_3_kicks.state_labels_key(key_ind))
+        title('Matrix for reconstructing the control signal from data')
+    end
+
+    %---------------------------------------------
+    % Add "encoding neurons" back into model
+    %---------------------------------------------
+    designated_controller_channels = {...
+        'Sensory_unnamed', sensory_neurons,...
+        ...'Sensory', {'RIS'},...
+        'DT_neurons', find(sparsity_pattern(1,:)==0),...
+        'VT_neurons', find(sparsity_pattern(2,:)==0),...
+        'REV1_neurons', find(sparsity_pattern(3,:)==0),...
+        'REV2_neurons', find(sparsity_pattern(4,:)==0),...
+        'REVSUS_neurons', find(sparsity_pattern(5,:)==0)   };
+    settings.designated_controller_channels = designated_controller_channels;
+    settings.global_signal_mode = 'None';
+    all_models{i_trivial} = CElegansModel(filename, settings);
+    
+    %---------------------------------------------
+    % Designate "trivial" neurons for next loop
+    %---------------------------------------------
+    [~, max_ind] = max(sum(abs(B_prime_lasso),1));
+    fprintf('Removing neuron %d (name=%s)\n', ...
+        max_ind, my_model_3_kicks.get_names(max_ind));
+    trivial_neurons = [trivial_neurons max_ind]; %#ok<AGROW>
+
+end
+
+%---------------------------------------------
+% Boxplot of all the correlations
+%---------------------------------------------
+figure
+all_corr = [];
+all_groups = [];
+all_ctr_sz = zeros(sz,1);
+for i = 1:sz
+    this_dat = real(all_models{i}.calc_correlation_matrix().');
+    all_corr = [all_corr this_dat];
+    all_groups = [all_groups (i-1)*ones(size(this_dat))];
+    all_ctr_sz(i) = size(all_models{i}.control_signal,1);
+end
+
+all_names = my_model_3_kicks.get_names(trivial_neurons(4:end));
+all_names = [{'All present'} all_names(1:end-1)];
+for i = 1:sz
+    if isempty(all_names{i})
+        all_names{i} = num2str(trivial_neurons(i));
+    end
+end
+
+boxplot(all_corr, all_groups)
+xticklabels(all_names)
+xlabel('Neurons removed from controller')
+xtickangle(90)
+
+figure
+plot(all_ctr_sz)
+title('Size of control signal across models')
+
+%==========================================================================
+
+
+%% Using PCA to identify "unexpected" encoding neurons
+% i.e. just projecting the data onto the control signals
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+ad_settings = struct(...
+    'oscillation_threshold', 0.01);
+    
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'AdaptiveDmdc_settings', ad_settings,...
+    ...'augment_data', 5,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    ...'dmd_mode','truncated_DMDc',... % Keeps the predictions of the controller
+    'dmd_mode','func_DMDc',...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+original_sensory_neurons = ...
+    [1 5 15 121 ... % unnamed 
+    60 ... % ALA
+    55 56 ... % ASK
+    101 ... % RIS
+    ];
+designated_controller_channels = {...
+    'Sensory', original_sensory_neurons};
+settings.designated_controller_channels = designated_controller_channels;
+
+% First get a baseline model
+my_model_3_kicks = CElegansModel(filename, settings);
+
+%---------------------------------------------
+% Use PCA to get unexpected neurons; hope they encode something!
+%---------------------------------------------
+num_PCA_modes = 3;
+PCA_threshold = 5e-2;
+% Get PCA modes; note that these will not be the original numbering because
+% some sensory neurons have already been removed
+[U, S, V] = plotSVD(my_model_3_kicks.dat);
+
+all_encoding_neurons = cell(num_PCA_modes,1);
+% Must be below threshold on ALL these PCA modes
+for i = 1:num_PCA_modes
+    u = U(:,i);
+    all_encoding_neurons{i} = find( abs(u)<PCA_threshold );
+    if i>1
+        encoding_neurons = ...
+            intersect(encoding_neurons, all_encoding_neurons{i});
+    else
+        encoding_neurons = all_encoding_neurons{1};
+    end
+end
+
+fprintf('Adding these neurons into the controller:\n')
+disp(my_model_3_kicks.get_names(encoding_neurons))
+
+% Fix indexing for the originally imported data
+for i = 1:length(original_sensory_neurons)
+    encoding_neurons = encoding_neurons + ...
+        double( encoding_neurons>=original_sensory_neurons(i) );
+end
+
+designated_controller_channels = {...
+    'Sensory_unnamed', original_sensory_neurons};
+designated_controller_channels = [ designated_controller_channels ...
+    'encoding_neurons_all_modes', encoding_neurons' ];
+
+to_plot = false;
+if to_plot
+    which_ctr = 5;
+    % Get reconstructed signal and plot
+    ctr = my_model_3_kicks.control_signal(which_ctr,:);
+    ctr_reconstruct_raw = zeros(size(ctr));
+    ctr_reconstruct_raw(1) = ctr(1);
+%     ctr_reconstruct_cvx = ctr_reconstruct_raw;
+    for i = 2:length(ctr)
+        ctr_reconstruct_raw(i) = B_prime_lasso(which_ctr,:) * X1(:,i-1);
+%         ctr_reconstruct_cvx(i) = B(which_ctr,:) * X1(:,i-1);
+    end
+    ctr_reconstruct_raw = ctr_reconstruct_raw + all_intercepts(which_ctr);
+
+    figure
+    ctr = my_model_3_kicks.control_signal(which_ctr,:);
+    plot(ctr)
+    hold on
+    plot(ctr_reconstruct_raw, 'Linewidth',2)
+%     plot(ctr_reconstruct_cvx, 'Linewidth',2)
+    title(sprintf('Sparse reconstruction of control signal %d',which_ctr))
+    legend({'True','Reconstructed (lasso)','Reconstructed (cvx)'})
+
+    % Also plot the matrix
+    figure
+    imagesc(B_prime_lasso);
+    colorbar
+
+    names = my_model_3_kicks.get_names(ind);
+    xticks(1:length(ind))
+    xticklabels(names)
+    xtickangle(90)
+    key_ind = contains(my_model_3_kicks.state_labels_key, {'REV', 'DT', 'VT'});
+    yticks(1:length(key_ind))
+    yticklabels(my_model_3_kicks.state_labels_key(key_ind))
+    title('Matrix for reconstructing the control signal from data')
+end
+
+%---------------------------------------------
+% Add "encoding neurons" into model
+%---------------------------------------------
+
+settings.global_signal_mode = 'None';
+settings.designated_controller_channels = designated_controller_channels;
+my_model_encoding = CElegansModel(filename, settings);
+
+my_model_encoding.plot_colored_reconstruction();
+my_model_encoding.plot_reconstruction_interactive();
+%==========================================================================
+
+
+%% Identify "unique information" neurons via single-neuron reconstructions
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat_struct = importdata(filename);
+ad_settings = struct(...
+    'oscillation_threshold', 0.01);
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'AdaptiveDmdc_settings', ad_settings,...
+    ...'augment_data', 5,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    ...'dmd_mode','truncated_DMDc',... % Keeps the predictions of the controller
+    'dmd_mode','func_DMDc',...
+    'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'None';
+
+my_model_bu = CElegansModel(filename, settings);
+
+%---------------------------------------------
+% Reconstruct neurons individually
+%---------------------------------------------
+% other_neurons = 1:size(dat_struct.traces,2);
+other_neurons = 1:108; % For use with autocorrelation_noise_threshold=0.3 (worm 5)
+all_corr = zeros(size(other_neurons));
+all_residuals = zeros(length(other_neurons), size(dat_struct.traces,1));
+for i = other_neurons
+    this_controller_set = other_neurons;
+    this_controller_set(i) = [];
+    designated_controller_channels = {'Other_neurons', this_controller_set};
+
+    settings.designated_controller_channels = designated_controller_channels;
+
+    my_model_1_neuron = CElegansModel(filename, settings);
+    
+    all_corr(i) = my_model_1_neuron.calc_correlation_matrix();
+    all_residuals(i,:) = ...
+        my_model_1_neuron.AdaptiveDmdc_obj.calc_reconstruction_error('residual_vector');
+end
+
+[sort_corr, sort_ind] = sort(all_corr);
+all_names = my_model_bu.get_names();
+
+to_plot = false;
+if to_plot
+    figure
+    plot(sort_corr)
+    title('Correlation coefficients for reconstructions using all other neurons')
+
+    all_names = my_model_bu.get_names();
+    xticks(other_neurons)
+    xticklabels(all_names(sort_ind))
+    xlabel('Neuron')
+    xtickangle(90)
+end
+
+%---------------------------------------------
+% Check the "unique information" in a neuron
+%---------------------------------------------
+
+% Check the quality of the reconstructions in 2 ways
+all_chi_p = zeros(size(other_neurons));
+all_acf_res = zeros(size(other_neurons));
+all_acf_dat = zeros(size(other_neurons));
+for i = other_neurons
+    this_dat = all_residuals(i,:);
+    [~, all_chi_p(i)] = chi2gof(this_dat);
+    all_acf_res(i) = mean(acf(this_dat', 5, false));
+    
+    all_acf_dat(i) = mean(acf(my_model_bu.dat(i,:)', 1, false));
+end
+
+if to_plot
+    figure
+    plot(all_chi_p(sort_ind), 'o')
+    hold on
+    plot(1 - all_acf_res(sort_ind), '*')
+    title('Analysis of residuals')
+    legend({'Chi squared p values', '1 - Mean of 5-step autocorrelations'})
+    xticks(other_neurons)
+    xticklabels(all_names(sort_ind))
+    xlabel('Neuron')
+    xtickangle(90)
+    
+    figure
+    plot(all_chi_p(sort_ind), all_acf_res(sort_ind), 'o')
+    ylabel('Autocorrelations')
+    xlabel('Chi squared value')
+    title('Analysis of residuals')
+   
+    figure
+    all_corr_ratios = all_corr./all_acf_dat;
+    [sort_corr_ratio, sort_ind_ratio] = sort(all_corr_ratios);
+    plot(sort_corr_ratio)
+    xticks(other_neurons)
+    xticklabels(all_names(sort_ind_ratio))
+    xlabel('Neuron')
+    xtickangle(90)
+    title('Ratio of reconstruction correlations to autocorrelation')
+    
+    % Look at the ratio of signal variance to total variance in each neuron
+    [~, dat_signal, dat_noise] = calc_snr(my_model_bu.dat);
+    snr_vec = var(dat_signal-mean(dat_signal,2), 0, 2) ./...
+        var(my_model_bu.dat-mean(my_model_bu.dat,2), 0, 2);
+    figure;
+    plot(snr_vec(sort_ind))
+    hold on
+    plot(sort_corr)
+    legend({'Percentage of signal in each neuron','Reconstruction-data correlation'})
+    xticks(other_neurons)
+    xticklabels(all_names(sort_ind))
+    xlabel('Neuron')
+    xtickangle(90)
+    
+    % Bar chart showing snr and best reconstruction
+    reconstructed_signal = min(...
+        [snr_vec(sort_ind) sort_corr'], [], 2);
+    other_signal = sort_corr' - snr_vec(sort_ind);
+    ind = other_signal>0;
+    correlated_noise = zeros(size(snr_vec));
+    correlated_noise(ind) = other_signal(ind);
+    independent_signal = zeros(size(snr_vec));
+    independent_signal(~ind) = -other_signal(~ind);
+    independent_noise = 1 - correlated_noise - reconstructed_signal - independent_signal;
+    figure
+    bar([reconstructed_signal, correlated_noise,...
+        independent_signal, independent_noise], 'stacked')
+    legend({'Reconstructable signal', 'Reconstructable (correlated) noise',...
+        'Independent signal', 'Independent noise'})
+    xticks(other_neurons)
+    xticklabels(all_names(sort_ind))
+    xlabel('Neuron')
+    xtickangle(90)
+    
+    
+    % Simpler bar chart ignoring correlated noise
+    [~, sort_snr_ind] = sort(snr_vec);
+    reconstructed_signal = min(...
+        [snr_vec(sort_snr_ind) all_corr(sort_snr_ind)'], [], 2);
+    other_signal = all_corr(sort_snr_ind)' - snr_vec(sort_snr_ind);
+    ind = other_signal>0;
+    independent_signal = zeros(size(snr_vec));
+    independent_signal(~ind) = -other_signal(~ind);
+    figure('DefaultAxesFontSize',14)
+    independent_noise = 1 - reconstructed_signal - independent_signal;
+    bar([reconstructed_signal,...
+        independent_signal,...
+        independent_noise], 'stacked')
+    legend({'Reconstructable signal',...
+        'Independent signal', 'Independent noise'})
+    xticks(other_neurons)
+    xticklabels(all_names(sort_snr_ind))
+    xlabel('Neuron')
+    xtickangle(90)
+end
+
+% Plot different numbers of PC reconstructions
+to_save_plots = true;
+if to_save_plots
+    fname = 'variance_capture_%d_PCs';
+    num_PCs_vec = [3 4 5 6 10 20 35];
+%     num_PCs_vec = [3 4 5];
+    [~, dat_signal_baseline] = calc_snr(my_model_bu.dat);
+    snr_vec_baseline = ...
+        var(dat_signal_baseline-mean(dat_signal_baseline,2), 0, 2) ./...
+        var(my_model_bu.dat-mean(my_model_bu.dat,2), 0, 2);
+    for i = 1:length(num_PCs_vec)
+        num_PCs = num_PCs_vec(i);
+        % Look at the ratio of signal variance to total variance in each neuron
+        [~, dat_signal, dat_noise] = calc_snr(my_model_bu.dat, num_PCs);
+        snr_vec = var(dat_signal-mean(dat_signal,2), 0, 2) ./...
+            var(my_model_bu.dat-mean(my_model_bu.dat,2), 0, 2);
+        
+        % Simpler bar chart with baseline of total signal level
+        [sort_snr, sort_snr_ind] = sort(snr_vec);
+        other_signal = snr_vec_baseline(sort_snr_ind) - sort_snr;
+        other_signal = other_signal.*(other_signal>0);
+        fig = figure('DefaultAxesFontSize',14, ...
+            'units','normalized','outerposition',[0 0 1 1]);
+        bar([sort_snr,...
+            other_signal], 'stacked')
+        legend({'Signal in this number of PCs',...
+            'Total signal'}, 'Location', 'southeast')
+        xticks(other_neurons)
+        xticklabels(all_names(sort_snr_ind))
+        xlabel('Neuron')
+        xtickangle(90)
+        title(sprintf('Fraction of variance per neuron for %d PCs',...
+            num_PCs))
+        drawnow
+        
+        saveas(fig, sprintf(fname, num_PCs), 'png')
+    end
+end
+
+%---------------------------------------------
+% Add in several that aren't reconstructed by X number of PCs
+%---------------------------------------------
+num_PCs = 3;
+% num_neurons_to_add = 62; % RIS for PC=3
+num_neurons_to_add = 80;
+% Look at the ratio of signal variance to total variance in each neuron
+[~, dat_signal, dat_noise] = calc_snr(my_model_bu.dat, num_PCs);
+snr_vec = var(dat_signal-mean(dat_signal,2), 0, 2) ./...
+    var(my_model_bu.dat-mean(my_model_bu.dat,2), 0, 2);
+
+% Simpler bar chart with baseline of total signal level
+[~, sort_snr_ind] = sort(snr_vec);
+
+designated_controller_channels = {...
+    'Unreconstructed_neurons', sort_snr_ind(1:num_neurons_to_add)};
+settings.designated_controller_channels = designated_controller_channels;
+settings.filter_window_global = 1;
+my_model_encoding = CElegansModel(filename, settings);
+
+my_model_encoding.plot_colored_reconstruction();
+my_model_encoding.plot_reconstruction_interactive(false);
+
+%---------------------------------------------
+% Add in low reconstructed neurons and some hand-picked ones
+%---------------------------------------------
+num_PCs = 3;
+num_neurons_to_add = 30;
+% Look at the ratio of signal variance to total variance in each neuron
+[~, dat_signal, dat_noise] = calc_snr(my_model_bu.dat, num_PCs);
+snr_vec = var(dat_signal-mean(dat_signal,2), 0, 2) ./...
+    var(my_model_bu.dat-mean(my_model_bu.dat,2), 0, 2);
+
+% Simpler bar chart with baseline of total signal level
+[~, sort_snr_ind] = sort(snr_vec);
+
+ad_settings = struct(...
+    'oscillation_threshold', 0.01);
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'AdaptiveDmdc_settings', ad_settings,...
+    ...'augment_data', 5,...
+    'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','func_DMDc',...
+    'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'None';
+designated_controller_channels = {...
+    'Unreconstructed_neurons', sort_snr_ind(1:num_neurons_to_add)',...
+    'Suspicious_neurons', [108],...
+    'Sensory_neurons', {'ASK'},...
+    'Unique_signal',{'SMD', 'AVF', 'RIS', 'RIV'}};
+settings.designated_controller_channels = designated_controller_channels;
+my_model_encoding = CElegansModel(filename, settings);
+
+my_model_encoding.plot_colored_reconstruction();
+my_model_encoding.plot_reconstruction_interactive(false);
+%==========================================================================
+
+
+%% Look at controllability subspace of the transition kicks model
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat_struct = importdata(filename);
+ad_settings = struct(...
+    'oscillation_threshold', 0.01);
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'AdaptiveDmdc_settings', ad_settings,...
+    ...'augment_data', 5,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    ...'dmd_mode','truncated_DMDc',... % Keeps the predictions of the controller
+    'dmd_mode','func_DMDc',...
+    'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+my_model_base = CElegansModel(filename, settings);
+
+
+% Get the rank of the controllability subspace
+signal_rank = rank(my_model_base.dat);
+n = my_model_base.dat_sz(1);
+A = my_model_base.AdaptiveDmdc_obj.A_separate(1:n, 1:n);
+B = my_model_base.AdaptiveDmdc_obj.A_separate(1:n, (n+1):end);
+ctr_mat = ctrb(A, B);
+controllability_rank = rank(ctr_mat);
+
+fprintf('Signal rank: %d\nControllability subspace rank: %d\n',...
+    signal_rank, controllability_rank)
+
+% Get the rank of the reconstruction
+reconstruction_rank = rank(...
+    my_model_base.AdaptiveDmdc_obj.calc_reconstruction_control());
+fprintf('Signal rank: %d\nReconstructed signal rank: %d\n',...
+    signal_rank, reconstruction_rank)
+
+% Use MATLAB state space models
+my_dss = dss(A, B, eye(size(A)), 0, eye(size(A)), 1);
+
+r = 10;
+[~, baldat] = hsvd(my_dss);
+reduced_dss = balred(my_dss, r, baldat);
+ctr_gramian = gram(reduced_dss, 'c');
+
+A2 = reduced_dss.A;
+B2 = reduced_dss.B;
+
+% The desired state will be a step in the direction of an svd mode in the
+% data
+% x1 = 0.1*my_model_base.L_sparse_modes(:,2);
+x1 = my_model_base.dat(:,5);
+% x0 = zeros(size(x1));
+x0 = my_model_base.dat(:,1);
+% Put these desired states in the reduced model basis
+x1 = baldat.u(:,1:r)'*x1;
+x0 = baldat.u(:,1:r)'*x0;
+
+t0 = 0;
+t1 = 5; % time horizon
+tspan = linspace(t0, t1, 1000);
+
+% From: https://en.wikipedia.org/wiki/Minimum_energy_control
+u = @(t) -B2'*exp(A2'.*(t1-t))/ctr_gramian*(exp(A2.*(t1-t))*x0-x1);
+
+figure
+u_t = zeros(size(B2,2), length(tspan));
+for i = 1:length(tspan)
+    u_t(:,i) = u(tspan(i));
+end
+imagesc(real(u_t))
+colorbar
+%==========================================================================
+
+
+%% Dynamic importance metric
+% i.e. how much better does a single neuron reconstruct each other neuron
+% when compared to a null model
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat_struct = importdata(filename);
+ad_settings = struct(...
+    'oscillation_threshold', 0.01);
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'AdaptiveDmdc_settings', ad_settings,...
+    ...'augment_data', 5,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    ...'dmd_mode','truncated_DMDc',... % Keeps the predictions of the controller
+    'dmd_mode','func_DMDc',...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'None';
+
+all_neurons = size(dat_struct.traces,2);
+all_corr = zeros(all_neurons);
+all_corr_null = zeros(all_neurons);
+for i = 1:all_neurons
+    % Get models
+    designated_controller_channels = {'This_neuron', i};
+    settings.designated_controller_channels = ...
+        designated_controller_channels;
+    settings.dmd_mode = 'func_DMDc';
+    my_model_1_neuron = CElegansModel(filename, settings);
+    settings.dmd_mode = 'no_dynamics';
+    my_model_1_neuron_null = CElegansModel(filename, settings);
+
+    % Get correlations and save them
+    ind = 1:all_neurons;
+    ind(i) = [];
+    all_corr(i, ind) = my_model_1_neuron.calc_correlation_matrix();
+    all_corr_null(i, ind) = my_model_1_neuron_null.calc_correlation_matrix();
+end
+
+% Plot these matrices
+figure;
+imagesc(real(all_corr))
+title('All correlations in dynamic model')
+xlabel('Controller neuron')
+ylabel('Controlled neurons')
+
+figure;
+imagesc(real(all_corr_null))
+title('All correlations in null model')
+xlabel('Controller neuron')
+ylabel('Controlled neurons')
+
+% Calculate an improvement score (strictly positive)
+% dynamic_improvement = (1+real(all_corr))./(1+real(all_corr_null)) - 1;
+% figure;
+% imagesc(dynamic_improvement)
+% title('Dynamic improvement (unbounded)')
+% colorbar
+
+dynamic_improvement = real(all_corr)-abs(all_corr_null);
+% dynamic_improvement = real(all_corr)-real(all_corr_null);
+figure;
+imagesc(dynamic_improvement)
+title('Dynamic improvement (subtraction)')
+colorbar
+xlabel('Controller neuron')
+ylabel('Controlled neurons')
+xticks(1:all_neurons)
+xticklabels(all_names(sort_ind))
+xtickangle(90)
+yticks(1:all_neurons)
+yticklabels(all_names(sort_ind))
+
+% figure;
+% boxplot(dynamic_improvement)
+% title('Dynamic improvement (subtraction)')
+% xlabel('Controller neuron')
+all_names = my_model_bu.get_names();
+
+dyn_mean = mean(dynamic_improvement,1);
+dyn_median = median(dynamic_improvement,1);
+dyn_max = max(dynamic_improvement(sort_ind,:),[],1);
+
+% [~, sort_ind] = sort(dyn_mean, 'descend');
+[~, sort_ind] = sort(dyn_max, 'descend');
+figure
+plot(dyn_mean(sort_ind))
+hold on
+plot(dyn_median(sort_ind))
+plot(dyn_max(sort_ind))
+title('Dynamic improvement (subtraction)')
+legend({'Mean', 'Median', 'Max'})
+xlabel('Controller neuron')
+xticks(1:all_neurons)
+xticklabels(all_names(sort_ind))
+xtickangle(90)
+
+
+%---------------------------------------------
+% Create a new model with large dynamic importance controllers
+%---------------------------------------------
+num_neurons = 30;
+original_sensory_neurons = ...
+    [1 5 15 64 121 122 ... % unnamed 
+    ...60 ... % ALA
+    ...55 56 ... % ASK
+    ...101 ... % RIS
+    ];
+designated_controller_channels = ...
+    {'High_importance_neurons', sort_ind(1:num_neurons),...
+    'Sensory_neurons', original_sensory_neurons,...
+    'Turning_neurons', 'SMD'};
+settings.designated_controller_channels = ...
+    designated_controller_channels;
+settings.dmd_mode = 'func_DMDc';
+settings.filter_window_dat = 1;
+settings.filter_window_global = 1;
+my_model_important_neurons = CElegansModel(filename, settings);
+
+my_model_important_neurons.plot_colored_reconstruction();
+my_model_important_neurons.plot_reconstruction_interactive(false);
+
+%==========================================================================
+
+
+%% Greedy algorithm for adding neurons via their dynamic importance
+% i.e. how much better does a single neuron reconstruct each other neuron
+% when compared to a null model
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat_struct = importdata(filename);
+ad_settings = struct(...
+    'oscillation_threshold', 0.01);
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'AdaptiveDmdc_settings', ad_settings,...
+    ...'augment_data', 5,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    ...'dmd_mode','truncated_DMDc',... % Keeps the predictions of the controller
+    'dmd_mode','func_DMDc',...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'None';
+
+my_model_base = CElegansModel(filename, settings);
+
+if exist('previous_controllers', 'var')
+    error('Do you really want to delete the previous model?')
+end
+
+num_models = 10;
+all_corr = cell(num_models,1);
+all_corr_null = cell(num_models,1);
+dyn_func = @(x,y) real(x) - max(real(y),0);
+
+previous_controllers = {'original_controllers', [1 5 15]};
+sz = size(dat_struct.traces, 2);
+all_neurons = 1:sz;
+
+% for i_model = 1:num_models
+% for i_model = 11:15
+for i_model = 13:15
+    
+    % Get the list of non-controller neurons with original indices
+    candidates = 1:sz;
+    all_ind = [previous_controllers{2:2:length(previous_controllers)}];
+    candidates(all_ind) = [];
+
+    % Build the dynamic importance metric
+    this_corr = zeros(sz);
+    this_corr_null = zeros(sz);
+    for i = 1:length(candidates)
+        test_neuron = candidates(i);
+        % Get models
+        designated_controller_channels = [previous_controllers...
+            'Test_neuron', test_neuron];
+        settings.designated_controller_channels = ...
+            designated_controller_channels;
+        settings.dmd_mode = 'func_DMDc';
+        my_model_1_neuron = CElegansModel(filename, settings);
+        settings.dmd_mode = 'no_dynamics';
+        my_model_1_neuron_null = CElegansModel(filename, settings);
+
+        % Get correlations and save them
+        ind = candidates;
+        ind(i) = [];
+        this_corr(test_neuron, ind) = ...
+            my_model_1_neuron.calc_correlation_matrix();
+        this_corr_null(test_neuron, ind) = ...
+            my_model_1_neuron_null.calc_correlation_matrix();
+    end
+    
+%     all_corr{i_model} = this_corr;
+%     all_corr_null{i_model} = this_corr_null;
+    all_corr = [all_corr; this_corr]; %#ok<AGROW>
+    all_corr_null = [all_corr_null; this_corr_null]; %#ok<AGROW>
+    
+    % Use the dynamic metric to add a single 'best' neuron to the next model
+    this_dyn = dyn_func(this_corr, this_corr_null);
+    [this_improvement, next_neuron] = max(mean(this_dyn, 2));
+    fprintf('Adding neuron %d (%s); mean improvement is %.2f\n',...
+        next_neuron, my_model_base.get_names(next_neuron), this_improvement)
+    assert(~ismember(next_neuron,...
+        [previous_controllers{2:2:length(previous_controllers)}]),...
+        'Attempting to re-add the same controller neuron; aborting')
+    previous_controllers = [previous_controllers,...
+        {sprintf('Best_neuron_round_%d', i_model), next_neuron}]; %#ok<AGROW>
+end
+
+% Calculate an improvement score (strictly positive)
+all_names = my_model_base.get_names();
+
+dyn_mean = mean(dynamic_improvement,2);
+dyn_median = median(dynamic_improvement,2);
+dyn_max = max(dynamic_improvement,[],2);
+
+% [~, sort_ind] = sort(dyn_mean, 'descend');
+[~, sort_ind] = sort(dyn_median, 'descend');
+% [~, sort_ind] = sort(dyn_max, 'descend');
+
+dynamic_improvement = dyn_func(this_corr, this_corr_null);
+% dynamic_improvement = real(all_corr)-real(all_corr_null);
+figure;
+imagesc(dynamic_improvement(sort_ind, sort_ind))
+title('Dynamic improvement (subtraction)')
+colorbar
+xlabel('Controller neuron')
+ylabel('Controlled neurons')
+xticks(all_neurons)
+xticklabels(all_names(sort_ind))
+xtickangle(90)
+yticks(all_neurons)
+yticklabels(all_names(sort_ind))
+
+figure
+plot(dyn_mean(sort_ind))
+hold on
+plot(dyn_median(sort_ind))
+plot(dyn_max(sort_ind))
+title('Dynamic improvement (subtraction)')
+legend({'Mean', 'Median', 'Max'})
+xlabel('Controller neuron')
+xticks(all_neurons)
+xticklabels(all_names(sort_ind))
+xtickangle(90)
+
+%---------------------------------------------
+% Create a new model with large dynamic importance controllers
+%---------------------------------------------
+settings.designated_controller_channels = previous_controllers;
+settings.dmd_mode = 'func_DMDc';
+% settings.filter_window_dat = 1;
+% settings.filter_window_global = 1;
+my_model_important_neurons = CElegansModel(filename, settings);
+
+my_model_important_neurons.plot_colored_reconstruction();
+my_model_important_neurons.plot_reconstruction_interactive(false);
+
+%==========================================================================
+
+
+%% UPDATED Greedy algorithm for adding neurons via their dynamic importance
+% i.e. how much better does a single neuron reconstruct each other neuron
+% when compared to a null model
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat_struct = importdata(filename);
+ad_settings = struct(...
+    'oscillation_threshold', 0.01);
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'AdaptiveDmdc_settings', ad_settings,...
+    ...'augment_data', 5,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    ...'dmd_mode','truncated_DMDc',... % Keeps the predictions of the controller
+    'dmd_mode','func_DMDc',...
+    ...'autocorrelation_noise_threshold', 0.2,...
+    'autocorrelation_noise_threshold', 0.7,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'None';
+
+my_model_base = CElegansModel(filename, settings);
+
+if exist('previous_controllers', 'var')
+    error('Do you really want to delete the previous model?')
+end
+
+num_models = 10;
+all_corr = cell(num_models,1);
+[~, data_corr_mat] = my_model_base.calc_correlation_matrix();
+dyn_func = @(x,y) real(x) - max(real(y),0);
+
+previous_controllers = {'original_controllers', [1 5 15]};
+sz = my_model_base.dat_sz(1);
+all_neurons = 1:sz;
+data_corr_mat = data_corr_mat(all_neurons,all_neurons);
+
+for i_model = 1:num_models
+% for i_model = 2:num_models
+% for i_model = 11:15
+    
+    % Get the list of non-controller neurons with original indices
+    candidates = 1:sz;
+    all_ind = [previous_controllers{2:2:length(previous_controllers)}];
+    candidates(all_ind) = [];
+    
+    % Get the base model for this round
+    settings.designated_controller_channels = previous_controllers;
+    my_model_base_next = CElegansModel(filename, settings);
+    previous_correlations = zeros(1, sz);
+    previous_correlations(candidates) = ...
+        my_model_base_next.calc_correlation_matrix()';
+    previous_correlations = repmat(previous_correlations, [sz, 1]);
+    
+    % Build the dynamic importance metric
+    this_corr = zeros(sz);
+    data_correlations = zeros(sz);
+    for i = 1:length(candidates)
+        test_neuron = candidates(i);
+        % Get models
+        designated_controller_channels = [previous_controllers...
+            'Test_neuron', test_neuron];
+        settings.designated_controller_channels = ...
+            designated_controller_channels;
+        my_model_1_neuron = CElegansModel(filename, settings);
+
+        % Get correlations and save them
+        ind = candidates;
+        ind(i) = [];
+        this_corr(test_neuron, ind) = ...
+            my_model_1_neuron.calc_correlation_matrix();
+        data_correlations(test_neuron, ind) = ...
+            data_corr_mat(test_neuron, ind);
+    end
+    
+    all_corr{i_model} = this_corr;
+    % Two parts to the null:
+    %   The model correlations without the new control neuron
+    %   Plus the correlation of the new control neuron with the data
+    this_corr_null = data_correlations + previous_correlations;
+    
+    % Use the dynamic metric to add a single 'best' neuron to the next model
+    this_dyn = dyn_func(this_corr, this_corr_null);
+    [this_improvement, next_neuron] = max(mean(this_dyn, 2));
+    fprintf('Adding neuron %d (%s); mean improvement is %.2f\n',...
+        next_neuron, my_model_base.get_names(next_neuron), this_improvement)
+    assert(~ismember(next_neuron,...
+        [previous_controllers{2:2:length(previous_controllers)}]),...
+        'Attempting to re-add the same controller neuron; aborting')
+    previous_controllers = [previous_controllers,...
+        {sprintf('Best_neuron_round_%d', i_model), next_neuron}]; %#ok<AGROW>
+    
+end
+
+% Calculate an improvement score (strictly positive)
+all_names = my_model_base.get_names();
+
+dynamic_improvement = dyn_func(this_corr, this_corr_null);
+dyn_mean = mean(dynamic_improvement,2);
+dyn_median = median(dynamic_improvement,2);
+dyn_max = max(dynamic_improvement,[],2);
+
+% [~, sort_ind] = sort(dyn_mean, 'descend');
+[~, sort_ind] = sort(dyn_median, 'descend');
+% [~, sort_ind] = sort(dyn_max, 'descend');
+
+figure;
+imagesc(dynamic_improvement(sort_ind, sort_ind))
+title('Dynamic improvement (subtraction)')
+colorbar
+xlabel('Controller neuron')
+ylabel('Controlled neurons')
+xticks(all_neurons)
+xticklabels(all_names(sort_ind))
+xtickangle(90)
+yticks(all_neurons)
+yticklabels(all_names(sort_ind))
+
+figure
+plot(dyn_mean(sort_ind))
+hold on
+plot(dyn_median(sort_ind))
+plot(dyn_max(sort_ind))
+title('Dynamic improvement (subtraction)')
+legend({'Mean', 'Median', 'Max'})
+xlabel('Controller neuron')
+xticks(all_neurons)
+xticklabels(all_names(sort_ind))
+xtickangle(90)
+
+%---------------------------------------------
+% Create a new model with large dynamic importance controllers
+%---------------------------------------------
+settings.designated_controller_channels = previous_controllers;
+settings.dmd_mode = 'func_DMDc';
+% settings.filter_window_dat = 1;
+% settings.filter_window_global = 1;
+my_model_important_neurons = CElegansModel(filename, settings);
+
+my_model_important_neurons.plot_colored_reconstruction();
+my_model_important_neurons.plot_reconstruction_interactive(false);
+
+%==========================================================================
+
+
+%% Iteratively solve directly for control signals
+% Overall solver settings
+to_use_L1 = true;
+num_iter = 4;
+r_ctr = 4;
+to_use_model_U = true;
+tspan = 1:1000;
+to_solve_PCA_basis = false;
+
+% Create model
+filename = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+dat_struct = importdata(filename);
+
+settings = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    ...'augment_data', 20,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','func_DMDc',...
+    'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+% First get a baseline model as a preprocessor
+my_model_base = CElegansModel(filename, settings);
+
+% Then use the model
+X1 = my_model_base.dat(:,tspan(1:end-1));
+X2 = my_model_base.dat(:,tspan(2:end));
+% X1 = dat_struct.traces(tspan(1:end-1),:)';
+% X2 = dat_struct.traces(tspan(2:end),:)';
+% X1 = X1 - mean(X1,2);
+if to_solve_PCA_basis
+    % Truncate the data first for speed purposes
+    [r, d, ~, U_X1] = optimal_truncation(X1);
+    r = round(r/4);
+    U_X1 = U_X1(:,1:r);
+    X1 = U_X1'*X1;
+    % X2 = U_X1'*(X2-mean(X2,2));
+    X2 = U_X1'*X2;
+    % Regularize the modes so the 1st isn't dominant
+    X1 = X1./sqrt(d(1:r)+1e-1);
+    X2 = X2./sqrt(d(1:r)+1e-1);
+end
+
+[n, m] = size(X1);
+
+all_err = zeros(num_iter,2);
+if to_use_model_U
+    U = my_model_base.control_signal(1:r_ctr,1:m);
+else
+    U = rand(r_ctr, m);
+end
+if to_use_L1
+    % lambda = 1e15; % The U matrix has entries on the order of 1e-16...
+    lambda = 1e-2;
+else
+    lambda = 1e-2;
+    sparsity_pattern = false(size(U));
+    all_U = cell(num_iter, 1);
+end
+
+tstart = tic;
+for i = 1:num_iter
+    fprintf('Iteration %d\n', i)
+    % Step 1:
+    %   Get A and B matrix, given U
+%     [~, ~, B, ~, Uhat, ~, ~, ~, ~, ~, A] = ...
+%         func_DMDc(X1, X2, full(U), r, r_ctr);
+    AB = X2/[X1; full(U)];
+    A = AB(:,1:n);
+    B = AB(:,(n+1):end);
+    
+    all_err(i, 1) = norm(A*X1 + B*U - X2, 2);
+    
+    % Step 2:
+    %   Use cvx to get A and U, given B
+    %   Also try to sparsify U
+    if to_use_L1
+        cvx_begin
+            variable A(n,n)
+            variable U(r_ctr, m)
+            minimize( norm(A*X1 + B*U - X2, 2) + lambda*norm(U,1) )
+        cvx_end
+    else
+        % Use sequential LS
+        cvx_begin
+            variable A(n,n)
+            variable U(r_ctr, m)
+%             minimize( norm(A*X1 + B*U - X2, 2) + lambda*norm(U,1) )
+            minimize( norm(A*X1 + B*U - X2, 2) )
+            U(sparsity_pattern) == 0 %#ok<NOPTS,EQEFF>
+        cvx_end
+        
+        threshold = median(median(abs(U)));
+        sparsity_pattern = abs(U)<threshold;
+        all_U{i} = U;
+    end
+    
+    all_err(i, 2) = norm(A*X1 + B*U - X2, 2);
+end
+toc(tstart)
+
+figure
+plot(all_err(:,1))
+hold on
+plot(all_err(:,2))
+title('Errors for alternating minimization')
+legend({'Initial (L2) step', 'Second (cvx) step'})
+xlabel('Iteration')
+ylabel('L2 error')
+
+approx_X1 = zeros(size(X1));
+approx_X1 = [X1(:,1) approx_X1];
+if ~to_use_L1
+% U = all_U{19};
+    U = all_U{end};
+end
+AB = X2/[X1; full(U)];
+A = AB(:,1:n);
+B = AB(:,(n+1):end);
+for i = 1:m
+    approx_X1(:,i+1) = A*approx_X1(:,i) + B*U(:,i);
+end
+plot_2imagesc_colorbar(X1, approx_X1, '2 1');
+
+figure;
+i = 2;
+plot(X1(i,:));
+hold on; 
+plot(approx_X1(i,:))
+
+plot_2imagesc_colorbar(U, B, '2 1');
+
+%==========================================================================
+
+
+%% AUGMENT; Use only 3 positive transitions; try to predict these kicks
+% i.e. just projecting the data onto the control signals
+filename = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+ad_settings = struct(...
+    'oscillation_threshold', 0.01);
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'AdaptiveDmdc_settings', ad_settings,...
+    'augment_data', 25,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    ...'dmd_mode','truncated_DMDc',... % Keeps the predictions of the controller
+    'dmd_mode','func_DMDc',...
+    'global_signal_subset', {{'DT','VT','REV'}},...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+% First get a baseline model (no sparse signals)
+my_model_3_kicks = CElegansModel(filename, settings);
+
+%---------------------------------------------
+% LASSO from a direct fit to DATA
+%---------------------------------------------
+U2 = my_model_3_kicks.control_signal(:,2:end);
+X1 = my_model_3_kicks.dat(:,1:end-1);
+disp('Fitting lasso models...')
+all_intercepts = zeros(size(U2,1),1);
+B_prime_lasso = zeros(size(U2,1), size(X1,1));
+which_fit = 8;
+for i = 1:size(U2,1)
+%     B_prime_lasso(i,:) = U2(i,:)/X1;
+    [all_fits, fit_info] = lasso(X1', U2(i,:), 'NumLambda',10);
+    all_intercepts(i) = fit_info.Intercept(which_fit);
+    B_prime_lasso(i,:) = all_fits(:,which_fit); % Which fit = determined by eye
+%     B_prime_lasso(i,:) = lasso(X1', zeros(size(X1,2),1));
+end
+
+ctr = my_model_3_kicks.control_signal(which_ctr,:);
+ctr_reconstruct = zeros(size(ctr));
+ctr_reconstruct(1) = ctr(1);
+for i = 2:length(ctr)
+    ctr_reconstruct(i) = B_prime_lasso(which_ctr,:) * X1(:,i-1);
+end
+ctr_reconstruct = ctr_reconstruct + all_intercepts(which_ctr);
+
+figure
+ctr = my_model_3_kicks.control_signal(which_ctr,:);
+plot(ctr)
+hold on
+plot(ctr_reconstruct, 'Linewidth',2)
+title(sprintf('Sparse reconstruction of control signal %d',which_ctr))
+legend({'True','Reconstructed'})
+
+%---------------------------------------------
+% Linear reconstruction from a direct fit to RECONSTRUCTED data
+%---------------------------------------------
+U2 = my_model_3_kicks.control_signal(:,2:end);
+X1 = my_model_3_kicks.dat(:,1:end-1);
+% X1 = my_model_3_kicks.AdaptiveDmdc_obj.reset_threshold
+B_prime3 = U2/X1;
+
+which_ctr = 1;
+ctr = my_model_3_kicks.control_signal(which_ctr,:);
+ctr_reconstruct = zeros(size(ctr));
+ctr_reconstruct(1) = ctr(1);
+for i = 2:length(ctr)
+    ctr_reconstruct(i) = B_prime3(which_ctr,:) * ...
+        my_model_3_kicks.dat(:,i-1);
+end
+
+figure
+ctr = my_model_3_kicks.control_signal(which_ctr,:);
+plot(ctr)
+hold on
+plot(ctr_reconstruct, 'Linewidth',2)
+title(sprintf('Reconstruction of control signal %d',which_ctr))
+legend({'True','Reconstructed'})
+
+
+% Also plot the matrix
+figure
+% imagesc(B_prime2);
+imagesc(B_prime_lasso);
+colorbar
+
+names = my_model_3_kicks.get_names();
+xticks(1:x)
+xticklabels(names)
+xtickangle(90)
+yticks(1:5)
+ind = contains(my_model_3_kicks.state_labels_key, {'REV', 'DT', 'VT'});
+yticklabels(my_model_3_kicks.state_labels_key(ind))
+
+% Unroll one of the controllers
+sz = size(B_prime_lasso);
+fig = figure;
+i = 1;
+dat_unroll1 = reshape(B_prime_lasso(i,:), ...
+    [sz(2)/settings.augment_data, settings.augment_data]);
+imagesc(dat_unroll1)
+colormap(cmap_white_zero(dat_unroll1));
+colorbar
+title(sprintf('Unrolled predictors for control signal %d', i))
+yticks(1:x)
+yticklabels(names)
+xlabel('Number of delay frames')
+[~, im1] = fig.Children.Children;
+im1.ButtonDownFcn = @(x,y) ...
+    my_model_3_kicks.callback_plotter_reconstruction(x,y);
+
+% Unroll the predictors of a single neuron
+fig = figure;
+% this_neuron = 'AVAL';
+% this_neuron = 'SMDDL';
+this_neuron = 'RIML';
+i = my_model_3_kicks.name2ind(this_neuron);
+i = i(1);
+A = my_model_3_kicks.AdaptiveDmdc_obj.A_separate(:,1:sz(2));
+aug = settings.augment_data;
+dat_unroll2 = real(reshape(A(i,:), [sz(2)/aug, aug]));
+imagesc(dat_unroll2)
+colormap(cmap_white_zero(dat_unroll2));
+colorbar
+title(sprintf('Unrolled predictors for neuron %s', this_neuron))
+yticks(1:x)
+yticklabels(names(1:n))
+xlabel('Number of delay frames')
+[~, im1] = fig.Children.Children;
+im1.ButtonDownFcn = @(x,y) ...
+    my_model_3_kicks.callback_plotter_reconstruction(x,y);
+                
+% Unroll all neurons and look at summary statistics
+n = my_model_3_kicks.original_sz(1);
+aug = settings.augment_data;
+all_unroll = zeros(n, aug, n);
+A = my_model_3_kicks.AdaptiveDmdc_obj.A_separate(:,1:sz(2));
+for i = 1:my_model_3_kicks.original_sz(1)
+    all_unroll(:,:,i) = real(reshape(A(i,:), [sz(2)/aug, aug]));
+end
+pos_unroll = all_unroll.*(all_unroll>0);
+unroll_per_neuron_pos = reshape(mean(pos_unroll,1),[aug,n]);
+figure;
+waterfall(unroll_per_neuron_pos')
+title('Actuation plot for positive weights')
+xlabel('Time delay')
+ylabel('Neuron being actuated')
+plot_std_fill(unroll_per_neuron_pos, 2);
+title('Positive actuation averaged over all neurons')
+
+figure;
+neg_unroll = all_unroll.*(all_unroll<0);
+unroll_per_neuron_neg = reshape(mean(neg_unroll,1),[aug,n]);
+waterfall(-unroll_per_neuron_neg')
+title('Flipped actuation plot for negative weights')
+xlabel('Time delay')
+ylabel('Neuron being actuated')
+
+plot_std_fill(unroll_per_neuron_neg, 2);
+title('Negative actuation averaged over all neurons')
+%==========================================================================
+
+
+%% Havok-like identification of control signals
+filename = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 25,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    ...'dmd_mode','truncated_DMDc',... % Keeps the predictions of the controller
+    'dmd_mode','func_DMDc',...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'None';
+
+% Get a no-controller model
+my_model_U = CElegansModel(filename, settings);
+
+
+
+
+%==========================================================================
+
+
+%% Use the new fast sparse algorithm
+filename = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 6,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','sparse_fast',...
+    'global_signal_subset', {{'DT','VT','REV'}},...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+tstart = tic;
+my_model_sparse = CElegansModel(filename, settings);
+toc(tstart);
+
+% my_model_sparse.plot_reconstruction_interactive(false);
+my_model_sparse.plot_matrix_A();
+my_model_sparse.plot_unrolled_matrix('waterfall');
+%==========================================================================
 
 
 

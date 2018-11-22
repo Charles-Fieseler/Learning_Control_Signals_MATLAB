@@ -2098,3 +2098,616 @@ c = cluster(Z, 'maxclust', max_clust);
 %==========================================================================
 
 
+%% Systematic explorations of time-delay embedding
+filename = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+dat_struct = importdata(filename);
+
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','func_DMDc',...
+    'global_signal_subset', {{'DT','VT','REV'}},...
+    ...'autocorrelation_noise_threshold', 0.4,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+% Loop through different amounts of time-delay embedding
+max_augment = 25;
+all_models = cell(max_augment+1,1);
+
+% Original model
+all_models{1} = CElegansModel(filename, settings);
+
+n = all_models{1}.dat_sz(1);
+all_corr = zeros(max_augment + 1, n);
+all_corr(1,:) = all_models{1}.calc_correlation_matrix();
+
+for i = 1:max_augment
+    settings.augment_data = i;
+    
+    all_models{i+1} = CElegansModel(filename, settings);
+    % Note: we only want the correlations with the last datapoint
+    tmp = all_models{i+1}.calc_correlation_matrix(false, 'SVD');
+    all_corr(i+1,:) = tmp(1:n);
+end
+
+% Plot the different correlation coefficients
+figure;
+boxplot(real(all_corr)');
+title('Non-delayed neurons in time-delay embedded models')
+ylabel('Correlation coefficient')
+xlabel('Delay embedding')
+xticklabels(0:max_augment)
+
+fig = figure;
+subplot(2,1,1)
+all_models{1}.plot_correlation_histogram([], 'all', [], [], fig);
+title('Correlations for no-delay model')
+xlim([0 1])
+ylim([0 20])
+subplot(2,1,2)
+i = max_augment;
+all_models{i}.plot_correlation_histogram([], 'all', [], [], fig);
+title(sprintf('Correlations for %d-delay model', i))
+xlim([0 1])
+ylim([0 20])
+% Link axes for easy zooming
+all_ha = findobj( fig, 'type', 'axes', 'tag', '' );
+linkaxes( all_ha, 'x' );
+
+% Plot some individual neurons
+% interesting_neurons = {'AVBL', 'AVAL'};
+% interesting_neurons = {'RIML', 'VB02'};
+% interesting_neurons = {'DB01'};
+interesting_neurons = {'AVAL', 'OLQDR'};
+for i2 = 1:length(interesting_neurons)
+    neuron = interesting_neurons{i2};
+    all_models{1}.plot_reconstruction_interactive(true, neuron);
+    all_models{i}.plot_reconstruction_interactive(true, neuron);
+    title(sprintf('%s for %d-delay model', neuron, i))
+end
+%==========================================================================
+
+
+%% Systematic explorations of time-delay embedding with different filtering
+filename = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+dat_struct = importdata(filename);
+
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','func_DMDc',...
+    'global_signal_subset', {{'DT','VT','REV'}},...
+    ...'autocorrelation_noise_threshold', 0.4,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+% Loop through different amounts of time-delay embedding
+max_augment = 15;
+all_models = cell(max_augment+1,1);
+
+% Original model
+all_models{1} = CElegansModel(filename, settings);
+
+n = all_models{1}.dat_sz(1);
+all_corr = zeros(max_augment + 1, n);
+all_corr(1,:) = all_models{1}.calc_correlation_matrix();
+
+for i = 1:max_augment
+    settings.augment_data = i;
+    settings.filter_window_dat = round(i/4+1);
+    
+    all_models{i+1} = CElegansModel(filename, settings);
+    % Note: we only want the correlations with the last datapoint
+    tmp = all_models{i+1}.calc_correlation_matrix(false, 'SVD');
+    all_corr(i+1,:) = tmp(1:n);
+end
+
+% Plot the different correlation coefficients
+figure;
+boxplot(real(all_corr)');
+title('Non-delayed neurons in time-delay embedded models')
+ylabel('Correlation coefficient')
+xlabel('Delay embedding')
+xticklabels(0:max_augment)
+
+% fig = figure;
+% subplot(2,1,1)
+% all_models{1}.plot_correlation_histogram([], 'all', [], [], fig);
+% title('Correlations for no-delay model')
+% xlim([0 1])
+% ylim([0 20])
+% subplot(2,1,2)
+% i = max_augment;
+% all_models{i}.plot_correlation_histogram([], 'all', [], [], fig);
+% title(sprintf('Correlations for %d-delay model', i))
+% xlim([0 1])
+% ylim([0 20])
+% % Link axes for easy zooming
+% all_ha = findobj( fig, 'type', 'axes', 'tag', '' );
+% linkaxes( all_ha, 'x' );
+
+% Plot some individual neurons
+% interesting_neurons = {'AVBL', 'AVAL'};
+% interesting_neurons = {'RIML', 'VB02'};
+% interesting_neurons = {'DB01'};
+% interesting_neurons = {'AVAL', 'OLQDR'};
+% for i2 = 1:length(interesting_neurons)
+%     neuron = interesting_neurons{i2};
+%     all_models{1}.plot_reconstruction_interactive(true, neuron);
+%     all_models{i}.plot_reconstruction_interactive(true, neuron);
+%     title(sprintf('%s for %d-delay model', neuron, i))
+% end
+%==========================================================================
+
+
+%% Systematic exploration of offsets (not embedding)
+% Settings for the loop
+max_offset = 10;
+% Common model settings
+filename = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+dat_struct = importdata(filename);
+
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 4,...
+    'dmd_mode','func_DMDc',...
+    'autocorrelation_noise_threshold', 0.4,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+% Loop through different delays (offsets)
+all_models = cell(max_offset,1);
+ad_settings = struct('dmd_offset', 1);
+settings.AdaptiveDmdc_settings = ad_settings;
+all_models{1} = CElegansModel(filename, settings);
+n = all_models{1}.dat_sz(1);
+all_corr = zeros(max_offset, n);
+all_corr(1,:) = all_models{1}.calc_correlation_matrix();
+
+for i = 2:max_offset
+    ad_settings = struct('dmd_offset', i);
+    settings.AdaptiveDmdc_settings = ad_settings;
+
+    all_models{i} = CElegansModel(filename, settings);
+    all_corr(i,:) = all_models{i}.calc_correlation_matrix(false, 'SVD');
+end
+
+% Plot the different correlation coefficients
+figure;
+boxplot(real(all_corr)');
+title('Neurons in offset (not embedded) models')
+ylabel('Normalized correlation coefficient')
+xlabel('Offset')
+
+fig = figure;
+subplot(2,1,1)
+all_models{1}.plot_correlation_histogram([], 'all', [], 'SVD', fig);
+title('Correlations for no-delay model')
+xlim([0 1])
+ylim([0 20])
+subplot(2,1,2)
+i = 10;
+all_models{i}.plot_correlation_histogram([], 'all', [], 'SVD', fig);
+title(sprintf('Correlations for %d-delay model', i))
+xlim([0 1])
+ylim([0 20])
+% Link axes for easy zooming
+all_ha = findobj( fig, 'type', 'axes', 'tag', '' );
+linkaxes( all_ha, 'x' );
+
+% Plot some individual neurons
+% interesting_neurons = {'AVBL', 'AVAL'};
+% interesting_neurons = {'RIML', 'VB02'};
+% interesting_neurons = {'DB01'};
+interesting_neurons = {'AVAL', 'OLQDR'};
+for i2 = 1:length(interesting_neurons)
+    neuron = interesting_neurons{i2};
+    all_models{1}.plot_reconstruction_interactive(false, neuron);
+    all_models{i}.plot_reconstruction_interactive(false, neuron);
+    title(sprintf('%s for %d-delay model', neuron, i))
+end
+%==========================================================================
+
+
+%% Systematic exploration of different transition kicks
+% Common model settings
+filename = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+dat_struct = importdata(filename);
+
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    ...'global_signal_pos_or_neg', 'pos_and_neg',...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 4,...
+    'dmd_mode','func_DMDc',...
+    'autocorrelation_noise_threshold', 0.4,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+my_model_base = CElegansModel(filename, settings);
+
+% Settings for the loop
+all_kicks = {'REV', 'DT', 'VT', 'FWD', 'SLOW'};
+all_combinations = {all_kicks};
+for i = (length(all_kicks)-1):-1:1
+    these_combinations = combnk(all_kicks,i);
+    for i2 = 1:size(these_combinations,1)
+        all_combinations = [...
+            {these_combinations(i2,:)} all_combinations]; %#ok<AGROW>
+    end
+end
+
+n = length(all_combinations);
+all_models = cell(n, 1);
+all_corr = zeros(n, my_model_base.dat_sz(1));
+for i = 1:n
+    settings.global_signal_subset = all_combinations{i};
+    all_models{i} = CElegansModel(filename, settings);
+    all_corr(i,:) = all_models{i}.calc_correlation_matrix(false, 'SVD');
+end
+
+% Plot the different correlation coefficients
+[~, sort_ind] = sort(real(median(all_corr,2)), 'descend');
+figure;
+boxplot(real(all_corr(sort_ind,:))');
+title('Sorted correlations for different control signals')
+ylabel('Normalized correlation coefficients')
+xlabel('Transition signals (only "on" switches)')
+xticks(1:n)
+smash_names = cellfun(@(x) [x{:}], all_combinations, 'UniformOutput',false);
+xticklabels(smash_names(sort_ind))
+xtickangle(90)
+
+% i = sort_ind(n);
+% % interesting_neurons = {'DB01'};
+% interesting_neurons = {'AVAL', 'OLQDR'};
+% for i2 = 1:length(interesting_neurons)
+%     neuron = interesting_neurons{i2};
+%     all_models{sort_ind(1)}.plot_reconstruction_interactive(false, neuron);
+%     this_ctr = smash_names(sort_ind(1));
+%     title(sprintf('%s for %s-controller model', neuron, this_ctr{1}))
+%     all_models{sort_ind(i)}.plot_reconstruction_interactive(false, neuron);
+%     this_ctr = smash_names(sort_ind(i));
+%     title(sprintf('%s for %s-controller model', neuron, this_ctr{1}))
+% end
+
+%==========================================================================
+
+
+%% Systematic exploration of different transition kicks AND only positive or negative
+% Common model settings
+filename = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+dat_struct = importdata(filename);
+
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','func_DMDc',...
+    'autocorrelation_noise_threshold', 0.4,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+my_model_base = CElegansModel(filename, settings);
+
+% Settings for the loop
+all_kicks = {'REV', 'DT', 'VT', 'FWD', 'SLOW'};
+all_combinations = {all_kicks};
+for i = (length(all_kicks)-1):-1:1
+    these_combinations = combnk(all_kicks,i);
+    for i2 = 1:size(these_combinations,1)
+        all_combinations = [...
+            {these_combinations(i2,:)} all_combinations]; %#ok<AGROW>
+    end
+end
+
+n = length(all_combinations);
+all_models = cell(n, 2);
+all_corr_pos = zeros(n, my_model_base.dat_sz(1));
+all_corr_neg = zeros(size(all_corr_pos));
+for i = 1:n
+    settings.global_signal_subset = all_combinations{i};
+    
+    settings.global_signal_pos_or_neg = 'only_pos';
+    all_models{i, 1} = CElegansModel(filename, settings);
+    all_corr_pos(i,:) = all_models{i, 1}.calc_correlation_matrix(false, 'SVD');
+    
+    settings.global_signal_pos_or_neg = 'only_neg';
+    all_models{i, 2} = CElegansModel(filename, settings);
+    all_corr_neg(i,:) = all_models{i, 2}.calc_correlation_matrix(false, 'SVD');
+end
+
+% Plot the different correlation coefficients
+[~, sort_ind] = sort(real(median(all_corr_pos,2)), 'descend');
+figure;
+boxplot(real(all_corr_pos(sort_ind,:))');
+title('Sorted correlations for positive control signals')
+ylabel('Normalized correlation coefficients')
+xlabel('Transition signals (only "on" switches)')
+xticks(1:n)
+smash_names = cellfun(@(x) [x{:}], all_combinations, 'UniformOutput',false);
+xticklabels(smash_names(sort_ind))
+xtickangle(90)
+
+[~, sort_ind] = sort(real(median(all_corr_neg,2)), 'descend');
+figure;
+boxplot(real(all_corr_neg(sort_ind,:))');
+title('Sorted correlations for negative control signals')
+ylabel('Normalized correlation coefficients')
+xlabel('Transition signals (only "on" switches)')
+xticks(1:n)
+smash_names = cellfun(@(x) [x{:}], all_combinations, 'UniformOutput',false);
+xticklabels(smash_names(sort_ind))
+xtickangle(90)
+%==========================================================================
+
+
+%% More delays
+filename = '../../Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
+dat_struct = importdata(filename);
+
+dat = dat_struct.traces';
+
+t_delay = 100;
+sz = 1000;
+diff_delay = 1;
+dat_delay = [];
+for i = 1:t_delay
+    dat_delay = [dat_delay; dat(:, i:i+sz)];
+end
+
+[u, s, v] = plotSVD(dat_delay', struct('sigma_modes', 1:4));
+
+%%
+[u, s, v] = svd(dat, 'econ');
+dat_svd = v(:,1:35)';
+
+t_delay = 400;
+sz = 1000;
+diff_delay = 1;
+dat_delay = [];
+for i = 1:t_delay
+    dat_delay = [dat_delay; dat_svd(:, i:i+sz)];
+end
+[u, s, v] = plotSVD(dat_delay', struct('sigma_modes', 1:4));
+%==========================================================================
+
+
+%% Visualize TVRegDiff
+% i.e. Total Variation Regularized Differentiation
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat_struct = importdata(filename);
+
+dat = dat_struct.traces';
+iter = 10;
+alph = 1e-2;
+% alph = 1;
+neurons = 44;
+all_diff = zeros(size(dat(neurons,:)));
+
+for i = 1:length(neurons)
+    all_diff(i,:) = TVRegDiff( dat(neurons(i),:), iter, alph, [], 'large');
+end
+    
+figure;
+plot(all_diff')
+hold on
+plot(dat(neurons,:)')
+title(sprintf('Neuron %d with alpha=%.1f', neurons(i), alph))
+legend({'Derivative', 'Original Trace'})
+
+figure;
+plot(cumtrapz(all_diff)')
+hold on
+plot(dat(neurons,:)')
+title(sprintf('Neuron %d with alpha=%.1f', neurons(i), alph))
+legend({'Smoothed Trace', 'Original Trace'})
+
+%==========================================================================
+
+
+%% Use TVRegDiff as a preprocessor to smooth data
+% i.e. Total Variation Regularized Differentiation
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat_struct = importdata(filename);
+
+% Get derivatives
+dat = dat_struct.traces';
+iter = 8;
+alph = 1e-3;
+neurons = 1:size(dat,1);
+all_diff = zeros(size(dat(neurons,:)));
+
+for i = 1:length(neurons)
+    fprintf('============================================================')
+    all_diff(i,:) = TVRegDiff( dat(neurons(i),:), iter, alph, [], 'large');
+end
+
+% Integrate to get smoothed data
+dat_struct.traces = cumtrapz(all_diff, 2)';
+
+% Build a model
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'global_signal_subset', {{'DT','VT','REV'}},...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','func_DMDc',...
+    ...'autocorrelation_noise_threshold', 0.4,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+my_model_base = CElegansModel(filename, settings);
+my_model_tvdiff_traces = CElegansModel(dat_struct, settings);
+
+% Plot
+my_model_tvdiff_traces.plot_reconstruction_interactive(false);
+title('TVdiff smoothed data')
+my_model_base.plot_reconstruction_interactive(false);
+title('Base model')
+% my_model_tvdiff_traces.plot_colored_reconstruction();
+
+%==========================================================================
+
+
+%% Use TVRegDiff as a preprocessor to smooth data; examine time-delay embedding
+% i.e. Total Variation Regularized Differentiation
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat_struct = importdata(filename);
+
+% Get derivatives
+dat = dat_struct.traces';
+iter = 8;
+alph = 1e-3;
+neurons = 1:size(dat,1);
+all_diff = zeros(size(dat(neurons,:)));
+
+for i = 1:length(neurons)
+    fprintf('============================================================')
+    all_diff(i,:) = TVRegDiff( dat(neurons(i),:), iter, alph, [], 'large');
+end
+
+% Integrate to get smoothed data
+dat_struct.traces = cumtrapz(all_diff, 2)';
+
+% Build a model
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'global_signal_subset', {{'DT','VT','REV'}},...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','func_DMDc',...
+    ...'autocorrelation_noise_threshold', 0.4,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+% Loop through different amounts of time-delay embedding
+max_augment = 15;
+all_models = cell(max_augment+1,1);
+
+% Original model
+all_models{1} = CElegansModel(dat_struct, settings);
+
+n = all_models{1}.dat_sz(1);
+all_corr = zeros(max_augment + 1, n);
+all_corr(1,:) = all_models{1}.calc_correlation_matrix();
+
+for i = 1:max_augment
+    settings.augment_data = i;
+    
+    all_models{i+1} = CElegansModel(dat_struct, settings);
+    % Note: we only want the correlations with the last datapoint (not
+    % time-delayed ones)
+    tmp = all_models{i+1}.calc_correlation_matrix(false, 'SVD');
+    all_corr(i+1,:) = tmp(1:n);
+end
+
+% Plot the different correlation coefficients
+figure;
+boxplot(real(all_corr)');
+title('Non-delayed neurons in time-delay embedded models')
+ylabel('Correlation coefficient')
+xlabel('Delay embedding')
+xticklabels(0:max_augment)
+
+%==========================================================================
+
+
+%% Analyze TVRegDiff derivatives directly; examine time-delay embedding
+% i.e. Total Variation Regularized Differentiation
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat_struct = importdata(filename);
+
+% Get derivatives
+dat = dat_struct.traces';
+iter = 7;
+alph = 1e-3;
+neurons = 1:size(dat,1);
+all_diff = zeros(size(dat(neurons,:)));
+
+for i = 1:length(neurons)
+    fprintf('============================================================')
+    all_diff(i,:) = TVRegDiff( dat(neurons(i),:), iter, alph, [], 'large');
+end
+
+% Integrate to get smoothed data
+dat_struct.traces = all_diff';
+
+% Build a model
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'global_signal_subset', {{'DT','VT','REV'}},...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','func_DMDc',...
+    ...'autocorrelation_noise_threshold', 0.4,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+% Loop through different amounts of time-delay embedding
+max_augment = 15;
+all_models = cell(max_augment+1,1);
+
+% Original model
+all_models{1} = CElegansModel(dat_struct, settings);
+
+n = all_models{1}.dat_sz(1);
+all_corr = zeros(max_augment + 1, n);
+all_corr(1,:) = all_models{1}.calc_correlation_matrix();
+
+for i = 1:max_augment
+    settings.augment_data = i;
+    
+%     all_models{i+1} = CElegansModel(dat_struct, settings);
+    % Note: we only want the correlations with the last datapoint (not
+    % time-delayed ones)
+%     tmp = all_models{i+1}.calc_correlation_matrix(false, 'SVD');
+    tmp = all_models{i+1}.calc_correlation_matrix(false);
+    all_corr(i+1,:) = tmp(1:n);
+end
+
+% Plot the different correlation coefficients
+figure;
+boxplot(real(all_corr)');
+title('Non-delayed neurons in time-delay embedded models')
+ylabel('Correlation coefficient')
+xlabel('Delay embedding')
+xticklabels(0:max_augment)
+
+%==========================================================================
