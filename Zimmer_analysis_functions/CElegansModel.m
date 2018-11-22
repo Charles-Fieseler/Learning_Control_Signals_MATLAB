@@ -377,6 +377,8 @@ classdef CElegansModel < SettingsImportableFromStruct
         lambda_global
         max_rank_global
         global_signal_mode
+        global_signal_subset
+        global_signal_pos_or_neg
         lambda_sparse
         enforce_diagonal_sparse_B
         enforce_zero_entries
@@ -387,7 +389,6 @@ classdef CElegansModel < SettingsImportableFromStruct
         filter_window_global
         filter_aggressiveness
         autocorrelation_noise_threshold
-        augment_data
         to_subtract_mean
         to_subtract_mean_sparse
         to_subtract_mean_global
@@ -396,6 +397,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         dmd_mode
         AdaptiveDmdc_settings
         % Data importing
+        augment_data
         use_deriv
         use_only_deriv
         to_normalize_deriv
@@ -429,6 +431,8 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         A_old
         dat_old
+        
+        A_unroll
         
         % Robust PCA matrices
         L_global
@@ -1297,11 +1301,21 @@ classdef CElegansModel < SettingsImportableFromStruct
         end
         
         function [corr_diag, corr_mat] = calc_correlation_matrix(self,...
-                return_derivatives)
+                return_derivatives, normalize_mode)
             % Calculates the correlation matrix between the data and the
             % reconstruction, returning the diagonal values first
+            %
+            % Input:
+            %   return_derivatives (false) - if derivatives are included in
+            %       the model, whether or not to return them
+            %   normalize_mode ('None') - whether to normalize the
+            %       correlations by e.g. the maximum variance left in that
+            %       neuron after optimal svd truncation (option: 'SVD')
             if ~exist('return_derivatives','var')
                 return_derivatives = false;
+            end
+            if ~exist('normalize_mode', 'var')
+                normalize_mode = 'None';
             end
             corr_mat = corrcoef([self.dat' ...
                 self.AdaptiveDmdc_obj.calc_reconstruction_control()']);
@@ -1313,16 +1327,32 @@ classdef CElegansModel < SettingsImportableFromStruct
             else
                 corr_diag = diag( corr_mat((n+1):end,1:n) );
             end
+            
+            if strcmp(normalize_mode, 'SVD')
+                % Look at the ratio of signal variance to total variance in each neuron
+                [~, dat_signal] = calc_snr(self.dat);
+                max_variance = var(dat_signal-mean(dat_signal,2), 0, 2) ./...
+                    var(self.dat-mean(self.dat,2), 0, 2);
+                corr_diag = corr_diag./sqrt(max_variance);
+            end
         end
         
-        function names = get_names(self, neuron_ind)
+        function names = get_names(self, neuron_ind, keep_nums)
             % Calls sub-object AdaptiveDmdc method of the same name in most
             % cases, but also works if that object has not been
             % initialized
             %   Note that this still uses a static function from the
             %   AdaptiveDmdc class
-            if ~exist('neuron_ind', 'var')
+            %
+            % Input:
+            %   neuron_ind ([]) - an integer or string refering to any
+            %       number of neurons; the default means all neurons
+            %   keep_nums (false) - to return numbers when no name is found
+            if ~exist('neuron_ind', 'var') || isempty(neuron_ind)
                 neuron_ind = 1:self.original_sz(1);
+            end
+            if ~exist('keep_nums', 'var')
+                keep_nums = false;
             end
             try 
                 names = self.AdaptiveDmdc_obj.get_names(neuron_ind,...
@@ -1354,6 +1384,26 @@ classdef CElegansModel < SettingsImportableFromStruct
                     names = names{1};
                 end
             end % try
+            
+            if keep_nums
+                if iscell(names)
+                    for i = 1:length(names)
+                        if isempty(names{i})
+                            names{i} = num2str(neuron_ind(i));
+                        end
+                    end
+                elseif isempty(names)
+                    names = num2str(neuron_ind);
+                end
+            end
+            
+            if self.augment_data > 1
+                if ischar(names)
+                    names = {names};
+                end
+                names = repmat(names, [1, self.augment_data]);
+            end
+            
         end %function
         
         function ind = name2ind(self, neuron_names)
@@ -1364,7 +1414,32 @@ classdef CElegansModel < SettingsImportableFromStruct
             %   returned
             %   The order of the indices doesn't correspond to the order of
             %   the input names (if a cell array)
-            ind = find(contains(self.get_names(), neuron_names));
+            if strcmp(neuron_names, 'all')
+                ind = 1:self.dat_sz(1);
+            else
+                ind = find(contains(self.get_names(), neuron_names));
+            end
+            if self.augment_data > 0
+                ind = ind(ind<self.original_sz(1));
+            end
+        end
+        
+        function calc_unrolled_matrix(self)
+            % Unrolls a matrix with time delay embedding
+            sz = self.dat_sz;
+            aug = self.augment_data;
+            n = self.original_sz(1);
+            all_unroll = zeros(n, aug, n);
+            A = self.AdaptiveDmdc_obj.A_separate(1:n,1:(aug*n));
+            if aug <= 1
+                self.A_unroll = A;
+                return
+            end
+            
+            for i = 1:self.original_sz(1)
+                all_unroll(:,:,i) = real(reshape(A(i,:), [sz(1)/aug, aug]));
+            end
+            self.A_unroll = all_unroll;
         end
     end
     
@@ -1513,6 +1588,9 @@ classdef CElegansModel < SettingsImportableFromStruct
                 neuron_ind = self.name2ind(neuron_ind);
                 assert(~isempty(neuron_ind),...
                     'No neuron of that name found')
+                if self.augment_data>1
+                    neuron_ind = neuron_ind(1);
+                end
             end
             if length(neuron_ind)>1
                 for i = 1:length(neuron_ind)
@@ -1526,7 +1604,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             [self.user_control_reconstruction, fig] = ...
                 self.AdaptiveDmdc_obj.plot_reconstruction(true, ...
                 include_control_signal, true, neuron_ind);
-            title('Data reconstructed with user-defined control signal')
+%             title('Data reconstructed with user-defined control signal')
             
             % If single neuron and control signal, then do a 2-panel
             % subplot
@@ -1641,7 +1719,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             if use_same_fig
                 plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), 'k*')
             else
-                fig = plot_colored(proj_3d,...
+                fig = plot_colored(real(proj_3d),...
                     self.state_labels_ind(end-size(proj_3d,2)+1:end),...
                     self.state_labels_key);
                 title('Dynamics of the low-rank component (reconstruction)')
@@ -2084,7 +2162,7 @@ classdef CElegansModel < SettingsImportableFromStruct
 
 %             neuron_colormap = sum(real(V(neuron,:)).*abs(V(neuron,:)),1);
             neuron_colormap = abs(V(neuron,:));
-            neuron_ind = (abs(neuron_colormap)>tol_eigen);
+%             neuron_ind = (abs(neuron_colormap)>tol_eigen);
             
             fig = figure;
             subplot(2,1,1)
@@ -2097,10 +2175,12 @@ classdef CElegansModel < SettingsImportableFromStruct
 %             ylabel('Imaginary part (oscillation)')
             
             subplot(2,1,2)
-            all_periods = abs(2*pi./angle(D(neuron_ind)));
-            p_max = self.original_sz(2);
+%             all_periods = abs(2*pi./angle(D(neuron_ind)));
+            all_periods = abs(2*pi./angle(D));
+            p_max = 2*self.original_sz(2);
             all_periods(all_periods>p_max) = 0;
-            all_factors = abs(D(neuron_ind));
+%             all_factors = abs(D(neuron_ind));
+            all_factors = abs(D);
             for i = 1:length(all_periods)
                 if all_periods(i)~=0
                     all_factors(i) = all_factors(i)^all_periods(i);
@@ -2112,7 +2192,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             scatter(all_periods(nonzero_ind),all_factors(nonzero_ind),...
                 [],neuron_colormap(nonzero_ind),'filled')
             colorbar
-            title('Period of 0 means constant')
+            title('Period of 0 means non-oscillatory decay')
             xlabel('Period (frames)')
             ylabel('Amplitude after one period')
             
@@ -2211,6 +2291,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             % Actually plot
             fig = figure;
             imagesc(real(A));
+            colormap(cmap_white_zero(real(A)));
             xticks(1:length(ind))
             xtickangle(90)
             yticks(1:length(ind))
@@ -2285,7 +2366,13 @@ classdef CElegansModel < SettingsImportableFromStruct
             colorbar
             
             if contains(which_controller, 'ID_binary')
-                xticklabels(self.state_labels_key)
+                if contains(which_controller, '3_transitions')
+                    ind = contains(self.state_labels_key, ...
+                        {'REV', 'DT', 'VT'});
+                    xticklabels(self.state_labels_key(ind))
+                else
+                    xticklabels(self.state_labels_key)
+                end
             end
             yticklabels(names(row_ind))
         end
@@ -2309,7 +2396,8 @@ classdef CElegansModel < SettingsImportableFromStruct
         end
         
         function fig = plot_correlation_histogram(self, ...
-                only_named, neurons_to_mark, fig)
+                only_named, neurons_to_mark, only_original,...
+                normalize_mode, fig)
             % Plots a histogram of the correlation coefficients between the
             % original data (smoothed, if applicable) and the
             % reconstruction
@@ -2317,6 +2405,11 @@ classdef CElegansModel < SettingsImportableFromStruct
             % Input:
             %   only_named (false) - only plot named neurons
             %   neurons_to_mark ([]) - neurons to mark on the plot
+            %   only_original (true) - if data are time-delay embedded,
+            %       only plot the original ones
+            %   normalize_mode ('SVD') - whether to normalize the
+            %       correlations by e.g. the maximum variance left in that
+            %       neuron after optimal svd truncation (option: 'SVD')
             %   fig ([]) - if not passed, will open a new figure
             if ~exist('only_named','var')
                 only_named = false;
@@ -2326,13 +2419,28 @@ classdef CElegansModel < SettingsImportableFromStruct
             elseif iscell(neurons_to_mark) || ischar(neurons_to_mark)
                 neurons_to_mark = self.name2ind(neurons_to_mark);
             end
+            if ~exist('only_original', 'var') || isempty(only_original)
+                only_original = true;
+            end
+            if ~exist('normalize_mode', 'var') || isempty(normalize_mode)
+                normalize_mode = 'None';
+            end
             if ~exist('fig', 'var')
                 fig = figure('DefaultAxesFontSize', 14);
             end
-            all_corr = real(self.calc_correlation_matrix());
+            all_corr = real(...
+                self.calc_correlation_matrix(false, normalize_mode));
+            if only_original
+                plot_ind = 1:self.original_sz(1);
+                all_corr = all_corr(plot_ind);
+                neurons_to_mark = ...
+                    neurons_to_mark(neurons_to_mark<self.original_sz(1));
+            else
+                plot_ind = 1:length(all_corr);
+            end
             
             if only_named
-                names = self.get_names();
+                names = self.get_names(plot_ind);
                 ind = ~cellfun(@isempty, names);
                 all_corr = all_corr(ind);
                 title_str = 'Histogram of named neuron correlations';
@@ -2345,6 +2453,11 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             histogram(all_corr, 'BinWidth', 0.05);
             title(title_str)
+            if strcmp(normalize_mode, 'SVD')
+                xlabel('SVD Normalized correlation')
+            else
+                xlabel('Correlation')
+            end
             hold on
             for i = 1:length(neurons_to_mark)
                 x = all_corr(neurons_to_mark(i));
@@ -2355,6 +2468,108 @@ classdef CElegansModel < SettingsImportableFromStruct
                 text(x, y(2), self.get_names(neurons_to_mark(i)),...
                     'FontSize',14, 'Rotation',90);
             end
+        end
+        
+        function fig = plot_unrolled_matrix(self, which_neuron,...
+                plot_mode, sort_mode, threshold, keep_nums, pos_mode)
+            % Plots unrolled matrix with various visualizations.
+            %
+            % Input:
+            %   which_neuron - the numerical index or name of the neuron to
+            %       plot. If 'all' or more than one neuron, an average is
+            %       taken over the set.
+            %   plot_mode ('imagesc') - which plotting function to use.
+            %       Other options include: 'waterfall', 'mean' (also
+            %       displays +-1 std), 'gray' (with partially transparent
+            %       lines)
+            %   sort_mode ('none') - whether to sort the resulting matrix
+            %   threshold (0) - below this value, rows are not displayed
+            %   keep_nums (false) - keep numbers in the neuron name lists
+            %   pos_mode ('both') - if 'pos' ('neg') only the positive
+            %       (negative) weights in the matrix are shown
+            if ischar(which_neuron)
+                which_neuron = self.name2ind(which_neuron);
+            end
+            if ~exist('plot_mode', 'var') || isempty(plot_mode)
+                plot_mode = 'imagesc';
+            end
+            if ~exist('sort_mode', 'var') || isempty(sort_mode)
+                sort_mode = 'none';
+            end
+            if ~exist('threshold', 'var') || isempty(threshold)
+                threshold = 0;
+            end
+            if ~exist('keep_nums', 'var') || isempty(keep_nums)
+                keep_nums = false;
+            end
+            if ~exist('pos_mode', 'var')
+                pos_mode = 'both';
+            end
+            if ~isfield(self, 'A_unroll')
+                self.calc_unrolled_matrix();
+            end
+            
+            if length(which_neuron) == 1
+                this_dat = reshape(mean(self.A_unroll(which_neuron,:,:),1),...
+                    [self.augment_data,self.original_sz(1)]);
+                y_label_str = 'Actuating neuron';
+            else
+                % If we're displaying more than one neuron, take an average
+                this_dat = reshape(mean(self.A_unroll,1),...
+                    [self.augment_data,self.original_sz(1)]);
+                y_label_str = 'Neuron being actuated';
+            end
+            if strcmp(pos_mode, 'pos')
+                this_dat = this_dat.*(this_dat>0);
+                title_str = 'Actuation plot for positive weights';
+            elseif strcmp(pos_mode, 'neg')
+                this_dat = this_dat.*(this_dat<0);
+                title_str = 'Actuation plot for negative weights';
+            else
+                title_str = 'Actuation plot for all weights';
+            end
+            thresh_ind = find(sum(abs(this_dat),1) > threshold);
+            this_dat = this_dat(:,thresh_ind);
+            
+            if isnumeric(sort_mode)
+                if round(sort_mode)==sort_mode
+                    [this_dat, sort_ind] = top_ind_then_sort(...
+                        this_dat', sort_mode);
+                else
+                    [this_dat, sort_ind] = top_ind_then_sort(...
+                        this_dat', [], sort_mode);
+                end
+                this_dat = this_dat';
+                ind = thresh_ind(sort_ind);
+            else
+                ind = thresh_ind;
+            end
+            
+            if strcmp(plot_mode, 'imagesc')
+                fig = figure('DefaultAxesFontSize', 14);
+                imagesc(this_dat')
+                colormap(cmap_white_zero(this_dat));
+                colorbar
+            elseif strcmp(plot_mode, 'waterfall')
+                fig = figure('DefaultAxesFontSize', 14);
+                h = waterfall(this_dat');
+                h.LineWidth = 3;
+                colormap(cmap_white_zero(this_dat));
+                colorbar
+            elseif strcmp(plot_mode, 'mean')
+                fig = plot_std_fill(this_dat, 2);
+                y_label_str = 'Mean amplitude';
+            elseif strcmp(plot_mode, 'gray')
+                fig = plot_gray_lines(this_dat');
+            end
+            
+            xlabel('Time delay')
+            ylabel(y_label_str)
+            yticks(1:length(ind))
+            names = self.get_names([], keep_nums);
+            yticklabels(names(ind))
+            title(title_str)
+            
         end
         
     end
@@ -2372,6 +2587,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'lambda_sparse', 0.043,...
                 'enforce_diagonal_sparse_B', false,...
                 'global_signal_mode', 'RPCA',...
+                'global_signal_subset', {{'REV1', 'REV2', 'DT', 'VT'}},...
+                'global_signal_pos_or_neg', 'only_pos',...
                 'enforce_zero_entries', {{}},...
                 'custom_control_signal',[],...
                 ...% Data processing
@@ -2501,6 +2718,9 @@ classdef CElegansModel < SettingsImportableFromStruct
             if ~ismember(fnames,'to_save_raw_data')
                 self.AdaptiveDmdc_settings.to_save_raw_data = false;
             end
+            if ~ismember(fnames,'data_already_augmented')
+                self.AdaptiveDmdc_settings.data_already_augmented = self.augment_data;
+            end
         end
         
         %Data processing
@@ -2535,9 +2755,10 @@ classdef CElegansModel < SettingsImportableFromStruct
             if aug>1
                 new_sz = [self.dat_sz(1)*aug, self.dat_sz(2)-aug];
                 new_dat = zeros(new_sz);
-                for j=1:aug
+                for j = 1:aug
                     old_cols = j:(new_sz(2)+j-1);
-                    new_rows = (1:self.dat_sz(1))+self.dat_sz(1)*(j-1);
+                    new_rows = (1:self.dat_sz(1)) + ...
+                        self.dat_sz(1)*(aug-j);
                     new_dat(new_rows,:) = self.raw(:,old_cols);
                 end
                 self.dat_sz = new_sz;
@@ -2581,6 +2802,12 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             % Also remove the corresponding metadata
             z = self.AdaptiveDmdc_settings.id_struct;
+            if strcmp(field, 'dat') && max(to_keep) > self.original_sz(1)
+                if self.augment_data==0
+                    error('Unknown reason for indices past edge of data')
+                end
+                to_keep = to_keep(to_keep<=self.original_sz(1));
+            end
             id_struct = struct('ID',{z.ID(to_keep)},...
                 'ID2',{z.ID2(to_keep)}, 'ID3',{z.ID3(to_keep)});
             self.AdaptiveDmdc_settings.id_struct = id_struct;
@@ -2664,6 +2891,10 @@ classdef CElegansModel < SettingsImportableFromStruct
                 self.add_custom_control_signal(this_ctr, this_name);
                 
                 all_ind = [all_ind, this_ind]; %#ok<AGROW>
+            end
+            if ~isequal(sort(all_ind), unique(all_ind))
+                warning(['Designated control signals have duplicated neurons' ...
+                    ' (This will not affect performance, only interpretation)'])
             end
             
             self.remove_neurons_and_metadata(all_ind, 'dat');
@@ -2821,6 +3052,51 @@ classdef CElegansModel < SettingsImportableFromStruct
                     binary_labels_grad = gradient(binary_labels);
                     binary_labels_grad = binary_labels_grad ./ ...
                         max(max(binary_labels_grad));
+                    if ~isempty(self.L_global_modes)
+                        self.L_global_modes = [self.L_global_modes...
+                            binary_labels_grad(:,1:size(self.L_global_modes,1)).'];
+                    else
+                        self.L_global_modes = binary_labels_grad.';
+                    end
+                    
+                    this_metadata.signal_indices = ...
+                        {1:size(binary_labels_grad,1)};
+                    
+                case 'ID_binary_transitions'
+                    % Only adds 'on' signals for the 3 main transitions by 
+                    %   default:
+                    %   REV1/REV2, DT, and VT
+                    % Alternate transitions can be specified in:
+                    %   self.global_signal_subset
+                    binary_labels = self.calc_binary_labels(...
+                        self.state_labels_ind, length(self.state_labels_key));
+                    % Also filter this so the gradients aren't so sharp
+                    if self.filter_window_global>0
+                        binary_labels = self.flat_filter(...
+                            binary_labels.', self.filter_window_global).';
+                    end
+                    binary_labels_grad = gradient(binary_labels);
+                    binary_labels_grad = binary_labels_grad ./ ...
+                        max(max(binary_labels_grad));
+                    % Now only keep the positive parts, and only of the
+                    % mentioned 3 transitions
+                    ind = contains(self.state_labels_key, ...
+                        self.global_signal_subset);
+                    binary_labels_grad = binary_labels_grad(ind,:);
+                    only_pos = binary_labels_grad.*(binary_labels_grad>0);
+                    only_neg = binary_labels_grad.*(binary_labels_grad<0);
+                    switch self.global_signal_pos_or_neg
+                        case 'only_pos'
+                            only_neg = [];
+                        case 'only_neg'
+                            only_pos = [];
+                        case 'pos_and_neg'
+%                             
+                        otherwise
+                            error('Unrecognized global_signal_pos_or_neg')
+                    end
+                    binary_labels_grad = [only_pos; only_neg];
+                    
                     if ~isempty(self.L_global_modes)
                         self.L_global_modes = [self.L_global_modes...
                             binary_labels_grad(:,1:size(self.L_global_modes,1)).'];
@@ -3201,9 +3477,10 @@ classdef CElegansModel < SettingsImportableFromStruct
             %   Prints neuron name
             this_neuron = round(evt.IntersectionPoint(2));
             if evt.Button==1
+%                 self.plot_reconstruction_interactive(false, this_neuron);
                 self.AdaptiveDmdc_obj.plot_reconstruction(true, ...
                     true, true, this_neuron, true);
-                warning('With a custom control signal the names might be off...')
+%                 warning('With a custom control signal the names might be off...')
             else
                 self.plot_reconstruction_interactive(true, this_neuron);
             end
