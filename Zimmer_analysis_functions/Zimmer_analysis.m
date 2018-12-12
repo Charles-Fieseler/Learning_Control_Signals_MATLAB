@@ -6779,6 +6779,137 @@ my_model_sparse.plot_unrolled_matrix('waterfall');
 %==========================================================================
 
 
+%% Try to cluster presynaptic weights
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 9,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','sparse_fast',...
+    'global_signal_subset', {{'DT','VT','REV'}},...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+my_model_cluster = CElegansModel(filename, settings);
+
+% Get the unrolled matrix into the proper format
+my_model_cluster.calc_unrolled_matrix();
+dat = my_model_cluster.A_unroll;
+n = size(dat,1);
+dat = reshape(permute(dat, [1 3 2]), [n*n, size(dat,2)]);
+
+% Get names as from-to pair
+names_original = my_model_cluster.get_names([], true);
+names_original = names_original(1:n)';
+
+tmp = cell(n*n, 1);
+for i = 1:n
+    ind = ((i-1)*n+1):(i*n);
+    tmp(ind) = cellfun(@(x) [x '_to_' names_original{i}], names_original,...
+        'UniformOutput',false);
+end
+names = tmp;
+
+name_pairs = cell(n*n, 2);
+for i = 1:n
+    ind = ((i-1)*n+1):(i*n);
+    name_pairs(ind,1) = names_original;
+    name_pairs(ind,2) = names_original(i);
+end
+
+use_only_named = true;
+if use_only_named
+    ind = cellfun(@(x) isequal(regexp(x, '[0-9]+'),1),name_pairs);
+    ind = ~any(ind, 2);
+    dat = dat(ind, :);
+    names = names(ind);
+    name_pairs = name_pairs(ind,:);
+end
+
+% threshold = 3e-1;
+threshold = 1e-2;
+significant_connection_ind = sum(abs(dat),2) > threshold;
+dat = dat(significant_connection_ind,:);
+names = names(significant_connection_ind);
+name_pairs = name_pairs(significant_connection_ind,:);
+fprintf('Using %d significant connections\n', ...
+    length(find(significant_connection_ind)))
+
+% Get distances and cluster
+which_metric = 'corr';
+disp('Calculating distances...')
+switch which_metric
+    case 'dtw'
+        % Dynamic Time Warping distance
+        all_dist = zeros(n,n);
+        for i = 1:n
+            for i2 = (i+1):n
+                all_dist(i,i2) = dtw(dat(i,:), dat(i2,:));
+                all_dist(i2,i) = all_dist(i,i2);
+            end
+        end
+        
+        all_dist_dtw = all_dist; % Save an extra because this takes a while
+
+    case 'corr'
+        % cross-correlation
+        all_dist = squareform(pdist(dat, 'correlation'));
+
+    case 'L2'
+        % Euclidean distance
+        all_dist = squareform(pdist(dat, 'euclidean'));
+
+    otherwise
+        error('Unrecognized metric')
+end
+% Cluster using linkage and plot
+disp('Creating linkages...')
+Z = linkage(all_dist);
+
+disp('Clustering...')
+max_clust = 400;
+c = cluster(Z, 'maxclust', max_clust);
+
+[~, ~, all_ind] = cluster_and_imagesc(all_dist, c, names, []);
+
+%---------------------------------------------
+% Visualize graphs for each cluster
+%---------------------------------------------
+
+% Look at centroids of clusters AND the graph
+%   (only the ones that have more than one member)
+all_centroids = [];
+all_graphs = {};
+for i = 1:length(all_ind)
+    if length(all_ind{i})<=5
+        continue
+    end
+    this_dat = dat(all_ind{i},:);
+    all_centroids = [all_centroids; mean(this_dat,1)]; %#ok<AGROW>
+    nodes1 = name_pairs(all_ind{i},1);
+    nodes2 = name_pairs(all_ind{i},2);
+    this_graph = digraph(nodes1, nodes2);
+    all_graphs = [all_graphs; {this_graph}]; %#ok<AGROW>
+    fig = figure('DefaultAxesFontSize',14);
+    subplot(2,1,1)
+    plot_std_fill(this_dat',2, [], [], fig);
+    title(sprintf('Centroid of cluster %d (%d traces)', i, length(all_ind{i})))
+    subplot(2,1,2)
+    plot(this_graph, 'LineWidth',2)
+    drawnow
+%     pause
+end
+%==========================================================================
+
+
+
+
 
 
 

@@ -487,3 +487,28 @@ for i = 1:length(all_figs)
     saveas(this_fig, fname, 'png');
 end
 %==========================================================================
+
+
+%% Figure 4e: Elimination path (Lasso)
+
+% all_figs{5} = figure('DefaultAxesFontSize', 14);
+% plot(all_err(which_ctr,:), 'LineWidth',2)
+% xticks(1:max_iter)
+% xticklabels
+
+% Make sure it's working
+% figure;
+% a = B_prime_lasso_td(:,:,1);
+% imagesc(a)
+% colormap(cmap_white_zero(a))
+% title('Original encoding')
+% figure;
+% a = B_prime_lasso_td(:,:,end);
+% imagesc(a)
+% colormap(cmap_white_zero(a))
+% title(sprintf('Encoding after %d removals', max_iter))
+
+% figure;
+% imagesc(all_err)
+% colorbar
+%==========================================================================

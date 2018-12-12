@@ -2711,3 +2711,355 @@ xlabel('Delay embedding')
 xticklabels(0:max_augment)
 
 %==========================================================================
+
+
+%% Old Figure 4a-d: Variable selection
+all_figs = cell(4,1);
+% Get the 'ideal' and single step models
+my_model_time_delay = CElegansModel(filename_ideal, settings_ideal);
+settings = settings_ideal;
+settings.augment_data = 0;
+my_model_single_step = CElegansModel(filename_ideal, settings);
+
+%---------------------------------------------
+% LASSO from a direct fit to data (time delay)
+%---------------------------------------------
+U2 = my_model_time_delay.control_signal(:,2:end);
+X1 = my_model_time_delay.dat(:,1:end-1);
+disp('Fitting lasso models...')
+all_intercepts_td = zeros(size(U2,1),1);
+B_prime_lasso_td = zeros(size(U2,1), size(X1,1));
+which_fit = 8;
+for i = 1:size(U2,1)
+    [all_fits, fit_info] = lasso(X1', U2(i,:), 'NumLambda',10);
+    all_intercepts_td(i) = fit_info.Intercept(which_fit);
+    B_prime_lasso_td(i,:) = all_fits(:,which_fit); % Which fit = determined by eye
+end
+%---------------------------------------------
+% LASSO from a direct fit to data (single step)
+%---------------------------------------------
+U2 = my_model_single_step.control_signal(:,2:end);
+X1 = my_model_single_step.dat(:,1:end-1);
+disp('Fitting lasso models...')
+all_intercepts_ss = zeros(size(U2,1),1);
+B_prime_lasso_ss = zeros(size(U2,1), size(X1,1));
+which_fit = 8;
+for i = 1:size(U2,1)
+    [all_fits, fit_info] = lasso(X1', U2(i,:), 'NumLambda',10);
+    all_intercepts_ss(i) = fit_info.Intercept(which_fit);
+    B_prime_lasso_ss(i,:) = all_fits(:,which_fit); % Which fit = determined by eye
+end
+
+%---------------------------------------------
+% Plot the unrolled matrix of one control signal
+%---------------------------------------------
+which_ctr = 1;
+names = my_model_time_delay.get_names([], true);
+% ind = contains(my_model_time_delay.state_labels_key, {'REV', 'DT', 'VT'});
+% Unroll one of the controllers
+unroll_sz = [my_model_time_delay.original_sz(1), settings_ideal.augment_data];
+dat_unroll1 = reshape(B_prime_lasso_td(which_ctr,:), unroll_sz);
+
+all_figs{1} = figure('DefaultAxesFontSize', 16);
+[ordered_dat, ordered_ind] = top_ind_then_sort(dat_unroll1, [], 1e-5);
+imagesc(ordered_dat)
+colormap(cmap_white_zero(ordered_dat));
+colorbar
+% title(sprintf('All predictors for control signal %d', which_ctr))
+title('All predictors for Dorsal Turn control signal')
+yticks(1:unroll_sz(1))
+yticklabels(names(ordered_ind))
+xlabel('Number of delay frames')
+
+%---------------------------------------------
+% Plot a waterfall plot for a couple important neurons
+%---------------------------------------------
+names_w_nums = my_model_time_delay.get_names([], true);
+all_figs{2} = figure('DefaultAxesFontSize', 16);
+[ordered_dat, ordered_ind] = top_ind_then_sort(dat_unroll1, 5);
+% Sort by largest initial value for better plotting
+h = waterfall(ordered_dat);
+colormap(cmap_white_zero(ordered_dat))
+h.LineWidth = 3;
+% h.FaceColor = repmat([1, 0, 0],5,1);
+h.FaceColor = [0.9, 0.9, 0.9];
+% h.FaceVertexCData = ;
+xlabel('Number of delay frames')
+xticks(1:unroll_sz(2))
+yticks(1:to_show)
+yticklabels(names_w_nums(ordered_ind))
+ylabel('Encoding Neuron')
+
+%---------------------------------------------
+% Plot reconstructions of some control signals
+%---------------------------------------------
+tspan = 100:1000;
+% Get the reconstructions
+X1 = my_model_time_delay.dat(:,1:end-1);
+ctr = my_model_time_delay.control_signal(which_ctr,:);
+ctr_reconstruct = zeros(size(ctr));
+ctr_reconstruct(1) = ctr(1);
+for i = 2:length(ctr)
+    ctr_reconstruct(i) = B_prime_lasso_td(which_ctr,:) * X1(:,i-1);
+end
+ctr_reconstruct_td = ctr_reconstruct + all_intercepts_td(which_ctr);
+
+X1 = my_model_single_step.dat(:,1:end-1);
+ctr = my_model_single_step.control_signal(which_ctr,:);
+ctr_reconstruct = zeros(size(ctr));
+ctr_reconstruct(1) = ctr(1);
+for i = 2:length(ctr)
+    ctr_reconstruct(i) = B_prime_lasso_ss(which_ctr,:) * X1(:,i-1);
+end
+ctr_reconstruct_ss = ctr_reconstruct + all_intercepts_ss(which_ctr);
+
+% Plot
+all_figs{3} = figure('DefaultAxesFontSize', 16);
+ctr = my_model_time_delay.control_signal(which_ctr,:);
+plot(ctr(tspan))
+hold on
+plot(ctr_reconstruct_td(tspan), 'Linewidth',2)
+plot(ctr_reconstruct_ss(tspan), 'Linewidth',2)
+title(sprintf('Sparse reconstruction of control signal %d',which_ctr))
+legend({'Data','Time-delay', 'Single-step'})
+
+% AND ANOTHER
+which_ctr = 1;
+% Get the reconstructions
+X1 = my_model_time_delay.dat(:,1:end-1);
+ctr = my_model_time_delay.control_signal(which_ctr,:);
+ctr_reconstruct = zeros(size(ctr));
+ctr_reconstruct(1) = ctr(1);
+for i = 2:length(ctr)
+    ctr_reconstruct(i) = B_prime_lasso_td(which_ctr,:) * X1(:,i-1);
+end
+ctr_reconstruct_td = ctr_reconstruct + all_intercepts_td(which_ctr);
+
+X1 = my_model_single_step.dat(:,1:end-1);
+ctr = my_model_single_step.control_signal(which_ctr,:);
+ctr_reconstruct = zeros(size(ctr));
+ctr_reconstruct(1) = ctr(1);
+for i = 2:length(ctr)
+    ctr_reconstruct(i) = B_prime_lasso_ss(which_ctr,:) * X1(:,i-1);
+end
+ctr_reconstruct_ss = ctr_reconstruct + all_intercepts_ss(which_ctr);
+
+% Plot
+all_figs{4} = figure('DefaultAxesFontSize', 16);
+ctr = my_model_time_delay.control_signal(which_ctr,:);
+plot(ctr(tspan))
+hold on
+plot(ctr_reconstruct_td(tspan), 'Linewidth',2)
+plot(ctr_reconstruct_ss(tspan), 'Linewidth',2)
+title(sprintf('Sparse reconstruction of control signal %d',which_ctr))
+legend({'Data','Time-delay', 'Single-step'})
+
+%---------------------------------------------
+% Save figures
+%---------------------------------------------
+
+if to_save
+    for i = 1:length(all_figs)
+        if isempty(all_figs{i}) || is_invalid_gui_obj_handle(all_figs{i})
+            continue;
+        end
+        fname = sprintf('%sfigure_5_%d', foldername, i);
+        this_fig = all_figs{i};
+        if i >= 3
+            prep_figure_no_axis(this_fig)
+        end
+        sz = {'0.9\columnwidth', '0.1\paperheight'};
+        matlab2tikz('figurehandle',this_fig,'filename',...
+            [fname '_raw.tex'], ...
+            'width', sz{1}, 'height', sz{2});
+        saveas(this_fig, fname, 'png');
+    end
+end
+%==========================================================================
+
+
+%% Potential Figure 5: Hypothesis generation for sparse A matrix
+all_figs = cell(2,1);
+
+ad_settings = struct('sparse_tol_factor', 1.2);
+settings = settings_ideal;
+%settings.dmd_mode = 'sparse_fast';
+settings.AdaptiveDmdc_settings = ad_settings;
+my_model_time_delay = CElegansModel(filename_ideal, settings);
+
+% Unroll the predictors of a single neuron
+this_neuron = 'AVAL';
+all_figs{1} = my_model_time_delay.plot_unrolled_matrix(...
+    this_neuron, 'imagesc', 1e-10, 1e-3, false);
+title(sprintf('Predictors for neuron %s', this_neuron))
+
+%---------------------------------------------
+% Plot a waterfall plot for a couple important neurons
+%---------------------------------------------
+all_figs{2} = ...
+    my_model_time_delay.plot_unrolled_matrix(this_neuron, 'waterfall', 5,...
+    [], true);
+                
+
+if to_save
+    for i = 1:length(all_figs)
+        if isempty(all_figs{i})
+            continue;
+        end
+        fname = sprintf('%sfigure_6_%d', foldername, i);
+        this_fig = all_figs{i};
+        if i >= 3
+            prep_figure_no_axis(this_fig)
+        end
+        sz = {'0.9\columnwidth', '0.1\paperheight'}
+        matlab2tikz('figurehandle',this_fig,'filename',...
+            [fname '_raw.tex'], ...
+            'width', sz{1}, 'height', sz{2});
+        saveas(this_fig, fname, 'png');
+    end
+end
+%==========================================================================
+
+
+%% Potential Figure 5 mark 2: Boxplots for different control signals
+all_figs = cell(6,1);
+
+%---------------------------------------------
+% Setup settings
+%---------------------------------------------
+settings = settings_ideal;
+settings_nc = settings_ideal;
+settings_nc.augment_data = 0;
+settings_nc.global_signal_mode = 'None';
+settings_nc.dmd_mode = 'tdmd';
+
+all_combinations = ...
+    {{'REV'}, {'DT','VT'}, {'FWD'},...
+    {'REV','DT','VT'}, {'REV','FWD'}, {'FWD','DT','VT'}};
+n = length(all_combinations);
+all_models = all_figs;
+all_corr = zeros(num_neurons, n);
+
+%---------------------------------------------
+% Calculate the models and correlations
+%---------------------------------------------
+model_nc = CElegansModel(filename_ideal, settings_nc);
+nc_corr = model_nc.calc_correlation_matrix();
+
+for i = 1:n
+%     settings.global_signal_subset = all_combinations{i};
+%     all_models{i} = CElegansModel(filename_ideal, settings);
+
+    tmp = all_models{i}.calc_correlation_matrix();
+    all_corr(:,i) = tmp(1:num_neurons);
+end
+
+%---------------------------------------------
+% Get clusters of neurons
+%---------------------------------------------
+% rev_labels = {'AVA', 'RIM', 'AVE', 'AIB', 'VA0', 'DA0'};
+% rev_ind = unique(model_nc.name2ind(rev_labels));
+% 
+% fwd_labels = {'AVB', 'RME', 'RIB', 'VB0', 'DB0'};
+% fwd_ind = unique(model_nc.name2ind(fwd_labels));
+
+% Look at heat map for possible clusters
+all_dist = squareform(pdist(model_nc.dat(1:num_neurons,:), 'correlation'));
+% Cluster using linkage and plot
+disp('Creating linkages...')
+Z = linkage(all_dist);
+disp('Clustering...')
+% Iteratively check cluster numbers to get nontrivial ones
+max_clust = 50;
+% min_nontrivial_clusters = 7;
+% min_nontrivial_size = 4;
+min_nontrivial_clusters = 5;
+min_nontrivial_size = 5;
+names = model_nc.get_names([], true);
+for i = 5:max_clust
+    c = cluster(Z, 'maxclust', i);
+    num_nontrivial= 0;
+    for i2 = 1:max_clust
+        clust_ind = find(c==i2);
+        if length(clust_ind) >= min_nontrivial_size
+            num_nontrivial = num_nontrivial + 1;
+        end
+    end
+    if num_nontrivial >= min_nontrivial_clusters
+        break
+    end
+end
+
+[~, ~, all_ind] = cluster_and_imagesc(...
+    all_dist, c, names, []);
+
+% Interpret the clusters by some dominant neurons
+rev_leader = model_nc.name2ind('AVAL');
+rev_cluster = c(rev_leader);
+rev_ind = find(c==rev_cluster);
+
+fwd_leader = model_nc.name2ind('AVBL');
+fwd_cluster = c(fwd_leader);
+fwd_ind = find(c==fwd_cluster);
+
+%---------------------------------------------
+% Box plots over control signals
+%---------------------------------------------
+fig = figure('DefaultAxesFontSize', 16);
+boxplot(real([nc_corr all_corr]))
+title('Correlations as a function of control signal')
+xticklabels(['NC', cellfun(@strjoin,all_combinations, 'UniformOutput',false)])
+ylim([-0.2, 1])
+
+fig = figure('DefaultAxesFontSize', 16);
+boxplot(real([nc_corr(rev_ind) all_corr(rev_ind,:)]))
+title('Correlations for reversal neurons')
+xticklabels(['NC', cellfun(@strjoin,all_combinations, 'UniformOutput',false)])
+xtickangle(60)
+ylim([-0.2, 1])
+
+fig = figure('DefaultAxesFontSize', 16);
+boxplot(real([nc_corr(fwd_ind) all_corr(fwd_ind,:)]))
+title('Correlations for forward neurons')
+xticklabels(['NC', cellfun(@strjoin,all_combinations, 'UniformOutput',false)])
+xtickangle(60)
+ylim([-0.2, 1])
+
+%---------------------------------------------
+%% Box + scatter plots; only good model
+%---------------------------------------------
+which_model = 4;
+
+y = real(all_corr(:,which_model));
+y = y.^4;
+f_jitter = @(n) (rand(n,1)-0.5)/5;
+f_scatter = @(offset, ind) ...
+    scatter(offset+f_jitter(length(ind)), y(ind),...
+    'LineWidth', 3);
+ind = cell(num_neurons, 1);
+for i = 1:length(rev_ind)
+    ind{rev_ind(i)} = 'REV';
+end
+for i = 1:length(fwd_ind)
+    ind{fwd_ind(i)} = 'FWD';
+end
+for i = 1:num_neurons
+    if isempty(ind{i})
+        ind{i} = 'Other';
+    end
+end
+
+fig = figure('DefaultAxesFontSize', 16);
+boxplot(y, ind)
+hold on
+f_scatter(3, fwd_ind);
+f_scatter(2, rev_ind);
+f_scatter(1, find(cellfun(@(x)strcmp(x,'Other'),ind)))
+
+title(sprintf(...
+    'Correlations by sub-category for model with control signal(s): %s',...
+    strjoin(all_combinations{which_model})))
+
+%==========================================================================
+
+
