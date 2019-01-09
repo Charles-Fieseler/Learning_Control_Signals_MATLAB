@@ -1309,16 +1309,22 @@ classdef CElegansModel < SettingsImportableFromStruct
             %   return_derivatives (false) - if derivatives are included in
             %       the model, whether or not to return them
             %   normalize_mode ('None') - whether to normalize the
-            %       correlations by e.g. the maximum variance left in that
-            %       neuron after optimal svd truncation (option: 'SVD')
+            %       correlations by e.g.: 
+            %       1) the maximum variance left in that
+            %           neuron after optimal svd truncation ('SVD')
+            %       2) the additive improvement over a correlation with a
+            %           straight line (will be strictly less than 1)
+            %           ('linear')
+            
             if ~exist('return_derivatives','var')
                 return_derivatives = false;
             end
             if ~exist('normalize_mode', 'var')
                 normalize_mode = 'None';
             end
-            corr_mat = corrcoef([self.dat' ...
-                self.AdaptiveDmdc_obj.calc_reconstruction_control()']);
+            dat_reconstruction = ...
+                self.AdaptiveDmdc_obj.calc_reconstruction_control();
+            corr_mat = corrcoef([self.dat' dat_reconstruction']);
             
             n = self.dat_sz(1);
             if self.use_deriv && ~return_derivatives
@@ -1334,6 +1340,16 @@ classdef CElegansModel < SettingsImportableFromStruct
                 max_variance = var(dat_signal-mean(dat_signal,2), 0, 2) ./...
                     var(self.dat-mean(self.dat,2), 0, 2);
                 corr_diag = corr_diag./sqrt(max_variance);
+            elseif strcmp(normalize_mode, 'linear')
+                % Look at the difference of correlation explained via
+                % reconstruction and via a straight line fit
+                linear_X = (1:self.dat_sz(2))';
+                linear_X = [ones(size(linear_X)), linear_X];
+                linear_reconstruction = linear_X*(linear_X\(self.dat'));
+                linear_corr = corrcoef([self.dat' linear_reconstruction]);
+                linear_corr_diag = diag( linear_corr((n+1):end,1:n) );
+                assert(~self.use_deriv, ('Does not work with derivatives'))
+                corr_diag = corr_diag - linear_corr_diag;
             end
         end
         
@@ -1353,6 +1369,11 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             if ~exist('keep_nums', 'var')
                 keep_nums = false;
+            end
+            if ischar(neuron_ind)
+                warning('Passed a character already; returning')
+                names = neuron_ind;
+                return
             end
             try 
                 names = self.AdaptiveDmdc_obj.get_names(neuron_ind,...
@@ -1414,6 +1435,11 @@ classdef CElegansModel < SettingsImportableFromStruct
             %   returned
             %   The order of the indices doesn't correspond to the order of
             %   the input names (if a cell array)
+            if isnumeric(neuron_names)
+                warning('Already passed a number; returning')
+                ind = neuron_names;
+                return;
+            end
             if strcmp(neuron_names, 'all')
                 ind = 1:self.dat_sz(1);
             else
@@ -1628,18 +1654,21 @@ classdef CElegansModel < SettingsImportableFromStruct
             
         end
         
-        function fig = plot_colored_data(self, plot_pca, plot_opt)
+        function fig = plot_colored_data(self, plot_pca, plot_opt, cmap)
+            if ~exist('cmap', 'var')
+                cmap = [];
+            end
             if ~exist('plot_pca','var')
                 plot_pca = false;
             end
             if ~exist('plot_opt','var')
-                plot_opt = 'o';
+                plot_opt = 'plot';
             end
             [self.L_sparse_modes,~,~,proj3d] = plotSVD(self.L_sparse,...
                 struct('PCA3d',plot_pca,'sigma',false));
             fig = plot_colored(proj3d,...
                 self.state_labels_ind(end-size(proj3d,2)+1:end),...
-                self.state_labels_key, plot_opt);
+                self.state_labels_key, plot_opt, cmap);
             title('Dynamics of the low-rank component (data)')
         end
         
@@ -1693,8 +1722,18 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
         end
         
-        function fig = plot_colored_reconstruction(self, fig, use_same_fig)
+        function fig = plot_colored_reconstruction(self, cmap, fig, use_same_fig)
             % Plots 3d colored reconstruction on top of colored original dataset
+            % Input:
+            %   cmap ([]) - Custom colormap
+            %   fig (see text) - Figure handle if plotting on top of one
+            %       that exists; otherwise, makes new figure with data
+            %   use_same_fig (false) - To plot the reconstruction on top of
+            %       the original data; if so, the reconstruction is in
+            %       black stars ('k*')
+            if ~exist('cmap', 'var')
+                cmap = [];
+            end
             if ~exist('use_same_fig','var')
                 use_same_fig = false;
             end
@@ -1721,7 +1760,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             else
                 fig = plot_colored(real(proj_3d),...
                     self.state_labels_ind(end-size(proj_3d,2)+1:end),...
-                    self.state_labels_key);
+                    self.state_labels_key, 'plot', cmap);
                 title('Dynamics of the low-rank component (reconstruction)')
             end
         end
@@ -1730,7 +1769,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 which_label, use_centroid, fig, use_only_global)
             % Plots the fixed point on top of colored original dataset
             if ~exist('fig','var') || isempty(fig)
-                fig = self.plot_colored_data(false, '.');
+                fig = self.plot_colored_data(false, 'plot');
             end
             if ~exist('use_centroid','var') || isempty(use_centroid)
                 use_centroid = false;
@@ -1768,7 +1807,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             assert(~isempty(self.user_control_reconstruction),...
                 'No reconstructed data stored')
             if ~exist('fig','var')
-                fig = self.plot_colored_data(false, '.');
+                fig = self.plot_colored_data(false, 'plot');
             end
             if ~exist('use_centroid','var')
                 use_centroid = false;
