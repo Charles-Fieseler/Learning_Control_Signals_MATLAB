@@ -34,6 +34,9 @@ my_cmap_3d(4,:) = [249, 222, 12]./256; % Make yellow more visible
 my_cmap_dict = containers.Map(...
     {1, 2, 3, 4, 5},... %original: NOSTATE, REV, VT, DT, FWD
     {5, 4, 1, 2, 3}); %Want: VT, DT, FWD, REV, NOSTATE
+my_cmap_dict_sort = containers.Map(... % For if they are sorted
+    {1, 2, 3, 4, 5},... %sorted: FWD, DT, VT, REV, NOSTATE
+    {3, 2, 1, 4, 5}); %Want: VT, DT, FWD, REV, NOSTATE
 
 close all
 %==========================================================================
@@ -58,7 +61,9 @@ settings_ideal = struct(...
     'lambda_sparse',0);
 settings_ideal.global_signal_mode = 'ID_binary_transitions';
 
+model_ideal = CElegansModel(filename_ideal, settings_ideal);
 %==========================================================================
+error('You probably do not want to run the entire file')
 
 
 
@@ -69,25 +74,30 @@ all_figs = cell(5,1);
 % First build a model with good parameters
 %---------------------------------------------
 % Use CElegans model to preprocess
-my_model_fig1 = CElegansModel(filename_ideal, settings_ideal);
+settings = settings_ideal;
+settings.global_signal_mode = 'None';
+my_model_fig1 = CElegansModel(filename_ideal, settings);
 
 %---------------------------------------------
 % Second get a representative neuron and control kicks
 %---------------------------------------------
-%   tspans decided by hand
-neuron = 'AVAL';
+neuron = 'AVAL'; % Important in reversals
 % tspan = 300:550;
-tspan = 100:1000;
+tspan = 100:1000; % decided by hand
 
 % Plot
-all_figs{1} = my_model_fig1.plot_reconstruction_interactive(false, 'AVAL');
+% all_figs{1} = my_model_fig1.plot_reconstruction_interactive(false, 'AVAL');
+neuron_ind = my_model_fig1.name2ind(neuron);
+all_figs{1} = figure('DefaultAxesFontSize',12);
+plot(my_model_fig1.dat(neuron_ind,:), 'LineWidth', 3);
 xlim([tspan(1) tspan(end)])
 xlabel('')
 xticks([])
 yticks([])
 ylabel('')
 set(gca, 'box', 'off')
-title(sprintf('Reconstruction of %s', neuron))
+% title(sprintf('Reconstruction of %s', neuron))
+title(sprintf('Data for neuron %s', neuron))
 legend('off')
 
 my_model_fig1.set_simple_labels();
@@ -145,9 +155,9 @@ if to_save
         fname = sprintf('%sfigure_1_%d', foldername, i);
         this_fig = all_figs{i};
         if i == 1
-            sz = {'0.9\columnwidth', '0.1\paperheight'}
+            sz = {'0.9\columnwidth', '0.1\paperheight'};
         else
-            sz = {'0.9\columnwidth', '0.025\paperheight'}
+            sz = {'0.9\columnwidth', '0.025\paperheight'};
         end
         matlab2tikz('figurehandle',this_fig,'filename',[fname '_raw.tex'], ...
             'width', sz{1}, 'height', sz{2});
@@ -230,6 +240,9 @@ end
 all_figs = cell(12,1);
 tspan = [500, 1500];
 
+ind = my_cmap_dict_sort.values;
+my_cmap_figure3 = my_cmap_3d([ind{:}],:);
+
 %---------------------------------------------
 % Get time-delayed model (best)
 %---------------------------------------------
@@ -238,20 +251,12 @@ my_model_fig3_a = CElegansModel(filename_ideal, settings_ideal);
 % Original data; same for all models
 my_model_fig3_a.set_simple_labels();
 new_labels_key = my_model_fig3_a.state_labels_key;
-all_figs{1} = my_model_fig3_a.plot_colored_data(false, 'o');
-for i=1:length(new_labels_key)
-    all_figs{1}.Children(2).Children(i).CData = ...
-        my_cmap_3d(my_cmap_dict(i),:);
-end
+all_figs{1} = my_model_fig3_a.plot_colored_data(false, 'plot', my_cmap_figure3);
 view(my_viewpoint)
 
 % 3d pca plot
-all_figs{2} = my_model_fig3_a.plot_colored_reconstruction();
+all_figs{2} = my_model_fig3_a.plot_colored_reconstruction(my_cmap_figure3);
 view(my_viewpoint)
-for i=1:length(new_labels_key)
-    all_figs{2}.Children(2).Children(i).CData = ...
-        my_cmap_3d(my_cmap_dict(i),:);
-end
 
 % Reconstruct some individual neurons
 neur_labels = {'AVAL', 'SMDDL'};
@@ -271,14 +276,6 @@ for i = 1:length(neur_id)
     xlabel('')
 end
 
-% Correlation histogram
-all_figs{5} = my_model_fig3_a.plot_correlation_histogram();
-xlim([-0.2, 1])
-ylim([0 15])
-title('')
-legend off
-set(gca, 'box', 'off')
-
 %---------------------------------------------
 % Compare with no time delay
 %---------------------------------------------
@@ -287,13 +284,8 @@ settings.augment_data = 0;
 my_model_fig3_b = CElegansModel(filename_ideal, settings);
 
 my_model_fig3_b.set_simple_labels();
-all_figs{3} = my_model_fig3_b.plot_colored_reconstruction();
+all_figs{3} = my_model_fig3_b.plot_colored_reconstruction(my_cmap_figure3);
 view(my_viewpoint)
-% Now make the colormap match the bar graphs
-for i=1:length(new_labels_key)
-    all_figs{3}.Children(2).Children(i).CData = ...
-        my_cmap_3d(my_cmap_dict(i),:);
-end
 
 % Get individual neurons (same as above)
 fig_dict = containers.Map(...
@@ -309,14 +301,6 @@ for i = 1:length(neur_id)
     xlabel('')
 end
 
-% Correlation histogram
-all_figs{6} = my_model_fig3_b.plot_correlation_histogram();
-xlim([-0.2, 1])
-ylim([0 15])
-title('')
-legend off
-set(gca, 'box', 'off')
-
 %---------------------------------------------
 % Simplest comparison: no control at all!
 %---------------------------------------------
@@ -327,7 +311,7 @@ settings.dmd_mode = 'tdmd';
 my_model_fig3_c = CElegansModel(filename_ideal, settings);
 
 my_model_fig3_c.set_simple_labels();
-all_figs{4} = my_model_fig3_c.plot_colored_reconstruction();
+all_figs{4} = my_model_fig3_c.plot_colored_reconstruction(my_cmap_figure3);
 view(my_viewpoint)
 % Now make the colormap match the bar graphs
 for i=1:length(new_labels_key)
@@ -335,20 +319,12 @@ for i=1:length(new_labels_key)
         my_cmap_3d(my_cmap_dict(i),:);
 end
 
-% Correlation histogram
-all_figs{7} = my_model_fig3_c.plot_correlation_histogram();
-xlim([-0.2, 1])
-ylim([0 15])
-title('')
-legend off
-set(gca, 'box', 'off')
-
 %---------------------------------------------
 % Save figures
 %---------------------------------------------
 if to_save
     for i = 1:length(all_figs)
-        if isempty(all_figs{i})
+        if isempty(all_figs{i}) || ~isvalid(all_figs{i})
             continue;
         end
         fname = sprintf('%sfigure_4_%d', foldername, i);
@@ -357,13 +333,16 @@ if to_save
             ax = this_fig.Children(2);
             ax.Clipping = 'Off';
             prep_figure_no_axis(this_fig)
-            zoom(1.17)
+            zoom(1.14)
+            if i==1
+                zoom(1.05)
+            end
         end
         if i >= 5 % Histograms and Single neurons
             if i >=8 %Single neurons
                 prep_figure_no_axis(this_fig)
             end
-            sz = {'0.9\columnwidth', '0.1\paperheight'}
+            sz = {'0.9\columnwidth', '0.14\paperheight'}
             matlab2tikz('figurehandle',this_fig,'filename',...
                 [fname '_raw.tex'], ...
                 'width', sz{1}, 'height', sz{2});
@@ -371,7 +350,6 @@ if to_save
         saveas(this_fig, fname, 'png');
     end
 end
-
 %==========================================================================
 
 %% Figure 3s: CDF
@@ -402,19 +380,26 @@ plot(x, td_cdf, 'LineWidth', 3)
 hold on
 plot(x, one_cdf, 'LineWidth', 3)
 plot(x, nc_cdf, 'LineWidth', 3)
+ylabel('Fraction of Neurons')
+xlabel('Correlation Coefficient (cumulative)')
+set(gca, 'box', 'off')
 legend({'Time Delay', 'Single Step', 'No Control'})
+legend boxoff
 
 % Also plot some circles for the individual neuron reconstructions
 % Use variable from above
-f_close = @(val) find(x>val,1); % Find closest value (in the x vector)
-for i = 1:length(neur_id)
-    neur = neur_id(i);
-    td_x = td_correlations(neur);
-%     text(td_x, td_cdf(f_close(td_x)), neur_labels{i})
-    plot(td_x, td_cdf(f_close(td_x)), 'ko', 'LineWidth', 5)
-    one_x = one_correlations(neur);
-%     text(one_x, one_cdf(f_close(one_x)), neur_labels{i})
-    plot(one_x, one_cdf(f_close(one_x)), 'ko', 'LineWidth', 5)
+to_plot_circles = false;
+if to_plot_circles
+    f_close = @(val) find(x>val,1); % Find closest value (in the x vector)
+    for i = 1:length(neur_id)
+        neur = neur_id(i);
+        td_x = td_correlations(neur);
+    %     text(td_x, td_cdf(f_close(td_x)), neur_labels{i})
+        plot(td_x, td_cdf(f_close(td_x)), 'ko', 'LineWidth', 5)
+        one_x = one_correlations(neur);
+    %     text(one_x, one_cdf(f_close(one_x)), neur_labels{i})
+        plot(one_x, one_cdf(f_close(one_x)), 'ko', 'LineWidth', 5)
+    end
 end
 
 %---------------------------------------------
@@ -520,6 +505,7 @@ imagesc(ordered_dat)
 colormap(cmap_white_zero(ordered_dat));
 % colorbar
 % title(sprintf('All predictors for control signal %d', which_ctr))
+% title('Predictors for Dorsal Turn (all neurons)')
 title('Predictors for Dorsal Turn control signal')
 yticks(1:unroll_sz(1))
 yticklabels(names(ordered_ind))
@@ -528,23 +514,32 @@ xlabel('Number of delay frames')
 %---------------------------------------------
 % Plot reconstructions of some control signals
 %---------------------------------------------
-tspan = 100:1000;
+% tspan = 100:1000;
 % Get the reconstructions
 X1 = my_model_time_delay.dat(:,1:end-1);
 ctr_reconstruct = [my_model_time_delay.control_signal(which_ctr,1)...
     B_prime_lasso_td(which_ctr,:) * X1];
 ctr_reconstruct_td = ctr_reconstruct + all_intercepts_td(which_ctr);
+ctr = my_model_time_delay.control_signal(which_ctr,:);
+
+% Get the threshold
+f = @(x) minimize_false_detection(ctr, ...
+    ctr_reconstruct_td, x, 0.1);
+this_threshold = fminsearch(f, 1.5);
 
 % Plot
-all_figs{2} = figure('DefaultAxesFontSize', 14);
-ctr = my_model_time_delay.control_signal(which_ctr,:);
-plot(ctr(tspan))
-hold on
-plot(ctr_reconstruct_td(tspan), 'Linewidth',2)
-xlim([0 length(tspan)])
-% title(sprintf('Sparse reconstruction of control signal %d',which_ctr))
+[~, ~, ~, ~, ~, all_figs{2}] = ...
+    calc_false_detection(ctr, ctr_reconstruct_td,...
+            this_threshold, [], [], true);
+% title('Sparse Reconstruction (all neurons)')
 title('Sparse Reconstruction')
-legend({'Data','Time-delay'})
+set(gca, 'box', 'off')
+legend off
+yticklabels('')
+ylabel('Arbitrary units')
+% xticklabels('')
+xlabel('Time (s)')
+% title(sprintf('Sparse reconstruction of control signal %d',which_ctr))
 
 %---------------------------------------------
 % Save figures
@@ -556,10 +551,10 @@ if to_save
         end
         fname = sprintf('%sfigure_5a_%d', foldername, i);
         this_fig = all_figs{i};
-        if i >= 2
-            prep_figure_no_axis(this_fig)
-        end
-        sz = {'0.9\columnwidth', '0.1\paperheight'};
+%         if i >= 2
+%             prep_figure_no_axis(this_fig)
+%         end
+        sz = {'0.9\columnwidth', '0.12\paperheight'};
         matlab2tikz('figurehandle',this_fig,'filename',...
             [fname '_raw.tex'], ...
             'width', sz{1}, 'height', sz{2});
@@ -574,7 +569,8 @@ all_figs = cell(3,1);
 %---------------------------------------------
 % Iteratively remove most important neurons
 %---------------------------------------------
-max_iter = 5;
+% max_iter = 5;
+max_iter = 20;
 which_fit = 4;
 
 U2 = my_model_time_delay.control_signal(:,2:end);
@@ -586,7 +582,7 @@ all_intercepts_td = zeros(num_ctr, max_iter);
 all_err = zeros(num_ctr, max_iter);
 all_fp = zeros(num_ctr, max_iter);
 all_fn = zeros(num_ctr, max_iter);
-all_thresholds = zeros(num_ctr, max_iter);
+all_thresholds_3d = zeros(num_ctr, max_iter);
 B_prime_lasso_td_3d = zeros(num_ctr, size(X1,1), max_iter);
 elimination_pattern = false(size(B_prime_lasso_td_3d));
 elimination_neurons = zeros(size(all_err));
@@ -628,10 +624,10 @@ for i = 1:max_iter
         % reconstruction
         f = @(x) minimize_false_detection(ctr(i2,:), ...
             ctr_reconstruct_td(i2,:), x, 0.1);
-        all_thresholds(i2, i) = fminsearch(f, 1);
+        all_thresholds_3d(i2, i) = fminsearch(f, 1);
         [all_fp(i2,i), all_fn(i2,i), num_spikes(i)] = ...
             calc_false_detection(ctr(i2,:), ctr_reconstruct_td(i2,:),...
-            all_thresholds(i2, i));
+            all_thresholds_3d(i2, i));
     end
 end
 
@@ -643,7 +639,7 @@ i = 1; % Dorsal Turn
 plot(all_fp(i,:) / num_spikes(i), 'LineWidth',2)
 hold on
 plot(all_fn(i,:) / num_spikes(i), 'LineWidth',2)
-legend({'False Positives', 'False Negatives'})
+legend({'False Positives', 'False Negatives'},'Location','northwest')
 
 a = arrayfun(@(x)my_model_time_delay.get_names(x,true),...
     elimination_neurons(:,2:end), 'UniformOutput',false);
@@ -654,8 +650,9 @@ xlim([1 max_iter])
 xticks(1:max_iter)
 xticklabels(['All neurons', eliminated_names(i,:)])
 xtickangle(60)
-xlabel('Eliminated neuron (cumulative)')
-ylabel('Percentage of total spikes')
+% xlabel('Eliminated neuron (cumulative)')
+ylabel('Percentage of transitions')
+title('Elimination Path')
 % disp(eliminated_names)
 
 %---------------------------------------------
@@ -674,8 +671,8 @@ all_figs{2} = figure('DefaultAxesFontSize', 16);
 imagesc(ordered_dat)
 colormap(cmap_white_zero(ordered_dat));
 % colorbar
-% title(sprintf('All predictors for control signal %d', which_ctr))
-title('All predictors for Dorsal Turn control signal')
+title(sprintf('Predictors with %d neurons eliminated', which_iter))
+% title('Predictors for Dorsal Turn control signal')
 yticks(1:unroll_sz(1))
 yticklabels(names(ordered_ind))
 xlabel('Number of delay frames')
@@ -683,7 +680,6 @@ xlabel('Number of delay frames')
 %---------------------------------------------
 % Plot a reconstruction
 %---------------------------------------------
-tspan = 100:1000;
 % Get the reconstructions
 X1 = my_model_time_delay.dat(:,1:end-1);
 ctr_reconstruct = [my_model_time_delay.control_signal(which_ctr,1)...
@@ -693,21 +689,18 @@ ctr_reconstruct_td = ctr_reconstruct + ...
 
 % Plot
 ctr = my_model_time_delay.control_signal(which_ctr,:);
-% all_figs{3} = figure('DefaultAxesFontSize', 16);
-% ctr = my_model_time_delay.control_signal(which_ctr,:);
-% plot(ctr(tspan))
-% hold on
-% plot(ctr_reconstruct_td(tspan), 'Linewidth',2)
-% title(sprintf('Reconstruction of control signal %d for iteration %d', ...
-%     which_ctr, which_iter))
-% legend({'Data','Time-delay'})
-
-% Test
 [~, ~, ~, ~, ~, all_figs{3}] = ...
     calc_false_detection(ctr, ctr_reconstruct_td,...
-            all_thresholds(which_ctr, which_iter), [], [], true);
-title(sprintf('Reconstruction of control signal %d for iteration %d', ...
-    which_ctr, which_iter))
+            all_thresholds_3d(which_ctr, which_iter), [], [], true);
+% title(sprintf('Reconstruction of control signal %d for iteration %d', ...
+%     which_ctr, which_iter))
+title('Sparse Reconstruction')
+set(gca, 'box', 'off')
+legend off
+yticklabels('')
+ylabel('Arbitrary units')
+% xticklabels('')
+xlabel('Time (s)')
 
 %---------------------------------------------
 % Save figures
@@ -719,7 +712,7 @@ if to_save
         end
         fname = sprintf('%sfigure_5e2_%d', foldername, i);
         this_fig = all_figs{i};
-        sz = {'0.9\columnwidth', '0.1\paperheight'};
+        sz = {'0.9\columnwidth', '0.12\paperheight'};
         matlab2tikz('figurehandle',this_fig,'filename',...
             [fname '_raw.tex'], ...
             'width', sz{1}, 'height', sz{2});
@@ -727,4 +720,157 @@ if to_save
     end
 end
 %==========================================================================
+
+
+%% Figure 6: Clustering on dynamic features
+all_figs = cell(2,1);
+% Note: use model defined in the header
+
+%---------------------------------------------
+% Analyze all neurons
+%---------------------------------------------
+num_neurons = model_ideal.original_sz(1);
+reconstruct_dat = real(...
+    model_ideal.AdaptiveDmdc_obj.calc_reconstruction_control());
+f = @(x) model_ideal.flat_filter(x, 10);
+threshold_vec = linspace(0.1, 1.5, 5);
+
+all_fp = zeros(num_neurons, 1);
+all_fn = all_fp;
+all_spikes = all_fp;
+used_thresholds = all_fp;
+
+for i = 1:num_neurons
+    this_dat = model_ideal.dat(i,:);
+    this_recon = reconstruct_dat(i,:);
+    % Analyze the derivatives
+    this_dat = abs(gradient(f(this_dat)));
+    this_recon = abs(gradient(f(this_recon)));
+    % Get false detections
+    f_detect = @(x) minimize_false_detection(this_dat, ...
+        this_recon, x, 0.5);
+    all_thresholds = zeros(length(threshold_vec),1);
+    all_vals = all_thresholds;
+    for i2 = 1:length(threshold_vec)
+        [all_thresholds(i2), all_vals(i2)] = ...
+            fminsearch(f_detect, threshold_vec(i2));
+    end
+    [~, ind] = min(all_vals);
+    used_thresholds(i) = all_thresholds(ind);
+    
+    [all_fp(i), all_fn(i), all_spikes(i)] = ...
+        calc_false_detection(this_dat, this_recon, used_thresholds(i));
+end
+
+norm_fp = all_fp./all_spikes;
+norm_fn = all_fn./all_spikes;
+ind_to_keep = ~(all_spikes==0);
+norm_spikes = all_spikes(ind_to_keep);
+norm_fp = norm_fp(ind_to_keep);
+norm_fn = norm_fn(ind_to_keep);
+names = model_ideal.get_names(find(ind_to_keep), true);
+
+all_corr = model_ideal.calc_correlation_matrix([], 'linear');
+all_corr = all_corr(1:num_neurons);
+
+names = model_ideal.get_names(1:num_neurons, true);
+% names{1} = '1';
+% names{49} = '49';
+
+this_dat = real(model_ideal.dat - mean(model_ideal.dat,2));
+[snr_vec, dat_signal, dat_noise] = calc_snr(this_dat);
+max_variance = var(dat_signal-mean(dat_signal,2), 0, 2) ./...
+    var(this_dat, 0, 2);
+max_variance = max_variance(1:num_neurons);
+snr_vec = snr_vec(1:num_neurons);
+this_recon = real(reconstruct_dat - mean(reconstruct_dat,2));
+% all_dist = vecnorm(this_dat - this_recon, 2, 2);
+all_dist = vecnorm(dat_signal - this_recon, 2, 2);
+all_dist = all_dist(1:num_neurons)./...
+    vecnorm(model_ideal.dat(1:num_neurons), 2, 2);
+
+disp('Finished analyzing all neurons')
+%---------------------------------------------
+% Build the feature set
+%---------------------------------------------
+raw_corr = model_ideal.calc_correlation_matrix();
+raw_corr = raw_corr(1:num_neurons);
+rng(2)
+num_dims = 2;
+f = @linear_sigmoid_middle_percentile;
+all_dat = table(real(all_corr), all_dist, all_fn, all_fp, all_spikes,...
+    f(all_fn), f(all_fp), f(all_spikes), snr_vec, max_variance,...
+    'VariableNames',{'Correlation','L2_distance','FN','FP','Spikes',...
+    'FN_thresh','FP_thresh','Spikes_thresh','SNR','max_variance'});
+% my_features = {'Correlation','L2_distance','FN','FP','Spikes'};
+my_features = {'Correlation','L2_distance','FN','FP','Spikes','max_variance'};
+to_cluster_dat = all_dat{:, my_features};
+neurons_with_activity = logical(ind_to_keep.*(snr_vec>median(snr_vec)));
+to_cluster_dat = to_cluster_dat(neurons_with_activity,:);
+% Normalize the data
+mappedX = whiten(to_cluster_dat);
+
+these_names = names(neurons_with_activity);
+
+disp('Finished building feature set')
+%---------------------------------------------
+% Build the co-occurrence matrix using Ensemble K-means
+%---------------------------------------------
+settings.which_metrics = {'silhouette', 'gap'};
+settings.total_m = 1000;
+settings.max_clusters = 10;
+settings.cluster_func = @(X,K)(kmeans(X, K, 'emptyaction','singleton',...
+    'replicate',1));
+[co_occurrence, all_cluster_evals] = ensemble_clustering(mappedX, settings);
+
+%---------------------------------------------
+% Hierarchical clustering on the co-occurence matrix (and plot)
+%---------------------------------------------
+% Get 'best' number of clusters
+E = evalclusters(co_occurrence,...
+    'linkage', 'silhouette', 'KList', 1:settings.max_clusters);
+figure;
+plot(E)
+k = E.OptimalK;
+
+% Dendrogram
+tree = linkage(co_occurrence,'Ward');
+figure()
+cutoff = median([tree(end-k+1,3) tree(end-k+2,3)]);
+[H,T,outperm] = dendrogram(tree, 15, ...
+    'Orientation','left','ColorThreshold',cutoff);
+tree_names = cell(length(outperm),1);
+for i = 1:length(outperm)
+    tree_names{outperm==i} = strjoin(these_names(T==i), ';');
+end
+yticklabels(tree_names)
+title(sprintf('Dendrogram with %d clusters', k))
+
+% Heatmap
+idx = E.OptimalY;
+% idx = @(X) cluster(linkage(X,'Ward'), 'maxclust',k);
+cluster_and_imagesc(co_occurrence, idx, these_names, []);
+title(sprintf('Number of clusters: %d', k))
+
+%---------------------------------------------
+% Save
+%---------------------------------------------
+to_save = false;
+if to_save
+    for i = 1:length(all_figs)
+        if isempty(all_figs{i}) || ~isvalid(all_figs{i})
+            continue;
+        end
+        fname = sprintf('%sfigure_cluster_%d', foldername, i);
+        this_fig = all_figs{i};
+        sz = {'0.9\columnwidth', '0.25\paperheight'};
+        matlab2tikz('figurehandle',this_fig,'filename',...
+            [fname '_raw.tex'], ...
+            'width', sz{1}, 'height', sz{2});
+        saveas(this_fig, fname, 'png');
+    end
+end
+
+%==========================================================================
+
 

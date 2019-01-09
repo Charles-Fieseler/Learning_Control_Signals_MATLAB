@@ -2947,8 +2947,8 @@ model_nc = CElegansModel(filename_ideal, settings_nc);
 nc_corr = model_nc.calc_correlation_matrix();
 
 for i = 1:n
-%     settings.global_signal_subset = all_combinations{i};
-%     all_models{i} = CElegansModel(filename_ideal, settings);
+    settings.global_signal_subset = all_combinations{i};
+    all_models{i} = CElegansModel(filename_ideal, settings);
 
     tmp = all_models{i}.calc_correlation_matrix();
     all_corr(:,i) = tmp(1:num_neurons);
@@ -3030,8 +3030,21 @@ ylim([-0.2, 1])
 %---------------------------------------------
 which_model = 4;
 
-y = real(all_corr(:,which_model));
-y = y.^4;
+%---------------------------------------------
+% The metric here is very important and I really don't have it figured out!
+%---------------------------------------------
+% dat = all_models{which_model}.dat(1:num_neurons,:);
+% tmp = all_models{which_model}.AdaptiveDmdc_obj.calc_reconstruction_control();
+% dat_recon = tmp(1:num_neurons,:);
+% Dynamic Time Warping distance
+% y = zeros(num_neurons,1);
+% for i = 1:num_neurons
+%     y(i) = dtw(dat(i,:), dat_recon(i,:));
+% end
+
+y = real(all_corr(:,which_model)); 
+% y = y.^4;
+
 f_jitter = @(n) (rand(n,1)-0.5)/5;
 f_scatter = @(offset, ind) ...
     scatter(offset+f_jitter(length(ind)), y(ind),...
@@ -3063,3 +3076,1110 @@ title(sprintf(...
 %==========================================================================
 
 
+%% TO DO: CDF for all datasets
+filename_template = '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
+
+settings_ideal = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 9,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','func_DMDc',...
+    'global_signal_subset', {{'DT','VT','REV'}},...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings_ideal.global_signal_mode = 'ID_binary_transitions';
+
+num_datasets = 5;
+all_models = cell(num_datasets, 3);
+
+%---------------------------------------------
+% Build model
+%---------------------------------------------
+for i = 1:5
+    fname = sprintf(filename_template, i);
+    all_models{i,1} = CElegansModel(fname, settings_ideal);
+
+    settings = settings_ideal;
+    settings.augment_data = 0;
+    all_models{i,2} = CElegansModel(fname, settings);
+
+    settings = settings_ideal;
+    settings.augment_data = 0;
+    settings.global_signal_mode = 'None';
+    settings.dmd_mode = 'tdmd';
+    all_models{i,3} = CElegansModel(fname, settings);
+end
+
+%---------------------------------------------
+% Calculate CDFs
+%---------------------------------------------
+
+
+
+
+
+
+
+%==========================================================================
+
+
+%% Individual Correlation histograms
+
+% Correlation histogram
+% all_figs{5} = my_model_fig3_a.plot_correlation_histogram();
+% xlim([-0.2, 1])
+% ylim([0 15])
+% title('')
+% legend off
+% set(gca, 'box', 'off')
+
+
+% Correlation histogram
+% all_figs{6} = my_model_fig3_b.plot_correlation_histogram();
+% xlim([-0.2, 1])
+% ylim([0 15])
+% title('')
+% legend off
+% set(gca, 'box', 'off')
+
+% Correlation histogram
+% all_figs{7} = my_model_fig3_c.plot_correlation_histogram();
+% xlim([-0.2, 1])
+% ylim([0 15])
+% title('')
+% legend off
+% set(gca, 'box', 'off')
+
+
+%==========================================================================
+
+
+%% Look at false negatives and positives in reconstructions
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+settings_ideal = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 9,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','func_DMDc',...
+    'global_signal_subset', {{'DT','VT','REV'}},...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings_ideal.global_signal_mode = 'ID_binary_transitions';
+
+% Build model and get data
+my_model_td = CElegansModel(filename, settings_ideal);
+%% Analyze all neurons
+num_neurons = my_model_td.original_sz(1);
+reconstruct_dat = real(...
+    my_model_td.AdaptiveDmdc_obj.calc_reconstruction_control());
+f = @(x) my_model_td.flat_filter(x, 10);
+threshold_vec = linspace(0.1, 1.5, 5);
+
+all_fp = zeros(num_neurons, 1);
+all_fn = all_fp;
+all_spikes = all_fp;
+used_thresholds = all_fp;
+
+for i = 1:num_neurons
+    this_dat = my_model_td.dat(i,:);
+    this_recon = reconstruct_dat(i,:);
+    % Analyze the derivatives
+    this_dat = abs(gradient(f(this_dat)));
+    this_recon = abs(gradient(f(this_recon)));
+    % Get false detections
+    f_detect = @(x) minimize_false_detection(this_dat, ...
+        this_recon, x, 0.5);
+    all_thresholds = zeros(length(threshold_vec),1);
+    all_vals = all_thresholds;
+    for i2 = 1:length(threshold_vec)
+        [all_thresholds(i2), all_vals(i2)] = ...
+            fminsearch(f_detect, threshold_vec(i2));
+    end
+    [~, ind] = min(all_vals);
+    used_thresholds(i) = all_thresholds(ind);
+    
+    [all_fp(i), all_fn(i), all_spikes(i)] = ...
+        calc_false_detection(this_dat, this_recon, used_thresholds(i));
+%     [all_fp(i), all_fn(i), all_spikes(i)] = ...
+%         calc_false_detection(this_dat, this_recon, this_threshold,...
+%         [], 10, true);
+%     drawnow
+%     pause
+end
+
+norm_fp = all_fp./all_spikes;
+norm_fn = all_fn./all_spikes;
+ind_to_keep = ~(all_spikes==0);
+norm_spikes = all_spikes(ind_to_keep);
+norm_fp = norm_fp(ind_to_keep);
+norm_fn = norm_fn(ind_to_keep);
+names = my_model_td.get_names(find(ind_to_keep), true); %#ok<FNDSB>
+
+% Plot
+figure
+[~, ind] = sort(norm_fp);
+plot(norm_fp(ind))
+hold on
+plot(norm_fn(ind))
+xticks(1:length(norm_spikes))
+xticklabels(names)
+xtickangle(60)
+legend({'False positives', 'False negatives'})
+
+figure
+[~, ind] = sort(norm_spikes);
+plot3(1:length(norm_spikes), norm_spikes(ind),...
+    norm_fn(ind) + 0.2*norm_fp(ind), 'o')
+xticks(1:length(norm_spikes))
+xticklabels(names)
+xtickangle(60)
+ylabel('All spikes')
+zlabel('False detection')
+
+% Now with correlation
+all_corr = my_model_td.calc_correlation_matrix();
+all_corr = all_corr(1:num_neurons);
+all_corr = all_corr(ind_to_keep);
+
+figure
+plot3(real(all_corr), norm_spikes,...
+    norm_fn + norm_fp, 'o')
+xlabel('Correlation coefficient')
+ylabel('All spikes')
+zlabel('False detection')
+%% Diagnostics regarding metrics
+all_corr = my_model_td.calc_correlation_matrix([], 'linear');
+all_corr = all_corr(1:num_neurons);
+
+names = my_model_td.get_names(1:num_neurons, false);
+names{1} = '1';
+names{49} = '49';
+
+this_dat = real(my_model_td.dat - mean(my_model_td.dat,2));
+[snr_vec, dat_signal, dat_noise] = calc_snr(this_dat);
+max_variance = var(dat_signal-mean(dat_signal,2), 0, 2) ./...
+    var(this_dat, 0, 2);
+max_variance = max_variance(1:num_neurons);
+snr_vec = snr_vec(1:num_neurons);
+this_recon = real(reconstruct_dat - mean(reconstruct_dat,2));
+% all_dist = vecnorm(this_dat - this_recon, 2, 2);
+all_dist = vecnorm(dat_signal - this_recon, 2, 2);
+all_dist = all_dist(1:num_neurons)./...
+    vecnorm(my_model_td.dat(1:num_neurons), 2, 2);
+
+% Correlation and L2 distance
+figure
+x = real(all_corr(ind_to_keep));
+y = all_dist(ind_to_keep);
+% z = norm_fn + norm_fp;
+z = all_fn(ind_to_keep) + all_fp(ind_to_keep);
+plot3(x, y, z, '.')
+text(x, y, z, names(ind_to_keep))
+xlabel('Correlation coefficient')
+ylabel('Normalized L2 distance')
+zlabel('False detection')
+
+% Autocorrelation
+% which_neuron = 75;
+% figure;
+% subplot(2,1,1)
+% acf(my_model_td.dat(which_neuron,:)', 50);
+% title('Autocorrelation of the data')
+% subplot(2,1,2)
+% acf(reconstruct_dat(which_neuron,:)', 50);
+% title('Autocorrelation of the reconstruction')
+%% Do isomap on the above 3d graph
+raw_corr = my_model_td.calc_correlation_matrix();
+raw_corr = raw_corr(1:num_neurons);
+rng(2)
+num_dims = 2;
+% isomap_dat = [real(all_corr), all_dist, all_fn, all_fp, all_spikes, max_variance];
+isomap_dat = [real(all_corr), all_dist, all_fn, all_fp, all_spikes];
+% isomap_dat = [real(all_corr), real(raw_corr), all_dist,...
+%     all_fn, all_fp, all_spikes];
+neurons_with_activity = logical(ind_to_keep.*(snr_vec>median(snr_vec)));
+isomap_dat = isomap_dat(neurons_with_activity,:);
+% Normalize the data
+isomap_dat = whiten(isomap_dat);
+% Get the "ideal" k value and perform the algorithm at the same time
+[k, mapping, mappedX] = calc_isomap_K(isomap_dat, num_dims);
+% [mappedX, mapping] = isomap(isomap_dat, num_dims, k);
+
+% Plot
+% figure;
+% plot3(isomap_dat(:,1), isomap_dat(:,2), isomap_dat(:,3), '.');
+% text(isomap_dat(:,1), isomap_dat(:,2), isomap_dat(:,3), names(neurons_with_activity));
+% title('Original data (normalized)')
+
+these_names = names(neurons_with_activity);
+these_names = these_names(mapping.conn_comp);
+% figure;
+% if num_dims==3
+%     plot3(mappedX(:,1), mappedX(:,2), mappedX(:,3), '.');
+%     text(mappedX(:,1), mappedX(:,2), mappedX(:,3), these_names);
+% elseif num_dims==2
+%     plot(mappedX(:,1), mappedX(:,2), '.');
+%     textfit(mappedX(:,1), mappedX(:,2), these_names);
+% end
+% title(sprintf('Isomap of the connected component (%d/%d neurons)', ...
+%     length(these_names), size(isomap_dat,1)))
+%% Cluster on the isomap basis
+rng(2)
+max_clusters = 8;
+AICc = zeros(1,max_clusters);
+BIC = AICc;
+GMModels = cell(1,max_clusters);
+options = statset('MaxIter',500);
+for k = 1:max_clusters
+    GMModels{k} = fitgmdist(mappedX,k,'Options',options,...
+        'CovarianceType','full','Replicates',100);%, 'RegularizationValue',1e-8);
+    % Use corrected AIC instead
+    AICc(k)= GMModels{k}.AIC + ...
+        (2*k^2+2*k)/(size(mappedX,1)-k-1);
+    BIC(k)= GMModels{k}.BIC;
+end
+[minAIC,numComponentsAIC] = min(AICc);
+delta_minAIC = abs(minAIC - AICc(min([numComponentsAIC+1,max_clusters])));
+[minBIC,numComponentsBIC] = min(BIC);
+delta_minBIC = abs(minBIC - BIC(numComponentsBIC+1));
+% If there are several scores that are very similar, choose the smallest
+% one
+numComponentsAIC = find(AICc<=(minAIC+delta_minAIC), 1 );
+numComponentsBIC = find(BIC<=(minBIC+delta_minBIC), 1 );
+if numComponentsAIC < max_clusters
+    numComponents = round(mean([numComponentsAIC, numComponentsBIC]));
+else
+    % AIC sometimes just decreases forever and is known to have problems
+    % selecting too many parameters
+    warning('Minimum AIC was found at the maximum number of clusters')
+    numComponents = numComponentsBIC + 1*(numComponentsBIC<=max_clusters/2);
+end
+fprintf('Minimum mean(AIC,BIC) model has %d clusters\n',numComponents)
+gmmobj = GMModels{numComponents};
+[idx,nlogL,P,logpdf] = cluster(gmmobj, mappedX);
+
+figure;
+imagesc(P);
+xlabel('Cluster')
+yticks(1:length(these_names));
+yticklabels(these_names)
+title('Cluster Assignments with confidence')
+
+%---------------------------------------------
+%% Cluster Plotting
+%---------------------------------------------
+all_figs = cell(2,1);
+
+all_figs{1} = plot_colored(mappedX, idx);
+xticklabels('')
+yticklabels('')
+if num_dims==2
+    h_iso = textfit(mappedX(:,1), mappedX(:,2), these_names,...
+        'FontSize',10, 'FontWeight','bold');
+elseif num_dims==3
+    text(mappedX(:,1), mappedX(:,2), mappedX(:,3), these_names);
+end
+% title(sprintf('%d-cluster Isomap of the connected component (%d/%d neurons)', ...
+%     numComponents, length(these_names), size(isomap_dat,1)))
+title(sprintf('%d clusters in Isomap basis', numComponents))
+
+% Original basis
+% x = real(raw_corr(neurons_with_activity));
+x = isomap_dat(:,1); % Normalized Correlation
+% y = isomap_dat(:,3) + isomap_dat(:,4); % All false detections
+% y = isomap_dat(:,2); % L2 error
+% y = isomap_dat(:,3); % False positives
+y = isomap_dat(:,4); % False negatives
+% y = isomap_dat(:,4)./isomap_dat(:,5); % Normalized false negatives
+all_figs{2} = plot_colored([x, y], idx);
+h_ori = textfit(x, y, these_names, 'FontSize',10, 'FontWeight','bold');
+% title(sprintf('%d-cluster Isomap of the connected component (%d/%d neurons)', ...
+%     numComponents, length(these_names), size(isomap_dat,1)))
+title(sprintf('%d clusters in Original basis', numComponents))
+xlabel('Correlation')
+ylabel('False detection')
+xticklabels('')
+yticklabels('')
+% ylabel('L2 error')
+
+drawnow
+% Add some single-neuron insets to the above
+inset_neurons = {'RMED', 1, 49, 'ASKR', 'RID'};
+% inset_neurons = {'RMED'};
+sz = [0.25, 0.25];
+tspan = 750:1750;
+which_figure = [1 1 1 2 2];
+for i = 1:length(inset_neurons)
+    figure(all_figs{which_figure(i)});
+    this_name = inset_neurons{i};
+    if ischar(this_name)
+        this_ind = my_model_td.name2ind(this_name);
+    else
+        this_ind = this_name;
+        this_name = my_model_td.get_names(this_name, true);
+        if iscell(this_name)
+            this_name = this_name{1};
+        end
+    end
+    axes('Position',[rand(1,2)/2 sz])
+    box on
+    plot(my_model_td.dat(this_ind,tspan), 'LineWidth',2);
+    xticklabels('')
+    yticklabels('')
+    hold on
+    plot(reconstruct_dat(this_ind,tspan), 'LineWidth',2);
+    xticklabels('')
+    yticklabels('')
+    xlim([0 length(tspan)])
+    title(['Neuron ' this_name])
+end
+%% Save cluster plots
+to_save = false;
+foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\figures\';
+if to_save
+    for i = 1:length(all_figs)
+        if isempty(all_figs{i}) || ~isvalid(all_figs{i})
+            continue;
+        end
+        fname = sprintf('%sfigure_cluster_%d', foldername, i);
+        this_fig = all_figs{i};
+        sz = {'0.9\columnwidth', '0.12\paperheight'};
+        matlab2tikz('figurehandle',this_fig,'filename',...
+            [fname '_raw.tex'], ...
+            'width', sz{1}, 'height', sz{2});
+        saveas(this_fig, fname, 'png');
+    end
+end
+%% Look at the false detection plot for a single neuron
+% i = my_model_td.name2ind('SMDDL');
+% i = my_model_td.name2ind('AVFR');
+i = 49;
+
+% f = @(x) my_model_td.flat_filter(x, 5); % original filter
+f = @(x) my_model_td.flat_filter(x, 10);
+% this_dat = my_model_td.dat(i,:);
+this_dat = dat_signal(i,:);
+this_recon = reconstruct_dat(i,:);
+this_recon = this_recon - mean(this_recon);
+figure;
+plot(this_dat); hold on; plot(this_recon);
+title('Reconstruction and data'); drawnow
+% Analyze the derivatives
+this_dat = abs(gradient(f(this_dat)));
+this_recon = abs(gradient(f(this_recon)));
+% Get false detections
+f_detect = @(x) minimize_false_detection(this_dat, ...
+    this_recon, x, 0.5);
+all_thresholds = zeros(length(threshold_vec),1);
+all_vals = all_thresholds;
+for i2 = 1:length(threshold_vec)
+    [all_thresholds(i2), all_vals(i2)] = ...
+        fminsearch(f_detect, threshold_vec(i2));
+end
+[~, ind] = min(all_vals);
+this_threshold = all_thresholds(ind);
+
+calc_false_detection(this_dat, this_recon, this_threshold,...
+    1, 10, true);
+
+
+%% Above analysis but for Diffusion maps
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+settings_ideal = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 9,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','func_DMDc',...
+    ...'global_signal_subset', {{'DT','VT','REV'}},...
+    'global_signal_subset', {{'DT','VT','REV','FWD','SLOW'}},...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings_ideal.global_signal_mode = 'ID_binary_transitions';
+
+% Build model and get data
+my_model_td = CElegansModel(filename, settings_ideal);
+%% Analyze all neurons
+num_neurons = my_model_td.original_sz(1);
+reconstruct_dat = real(...
+    my_model_td.AdaptiveDmdc_obj.calc_reconstruction_control());
+f = @(x) my_model_td.flat_filter(x, 10);
+threshold_vec = linspace(0.1, 1.5, 20);
+
+all_fp = zeros(num_neurons, 1);
+all_fn = all_fp;
+all_spikes = all_fp;
+used_thresholds = all_fp;
+
+for i = 1:num_neurons
+    this_dat = my_model_td.dat(i,:);
+    this_recon = reconstruct_dat(i,:);
+    % Analyze the derivatives
+    this_dat = abs(gradient(f(this_dat)));
+    this_recon = abs(gradient(f(this_recon)));
+    % Get false detections
+    f_detect = @(x) minimize_false_detection(this_dat, ...
+        this_recon, x, 0.5);
+    all_thresholds = zeros(length(threshold_vec),1);
+    all_vals = all_thresholds;
+    for i2 = 1:length(threshold_vec)
+        [all_thresholds(i2), all_vals(i2)] = ...
+            fminsearch(f_detect, threshold_vec(i2));
+    end
+    [~, ind] = min(all_vals);
+    used_thresholds(i) = all_thresholds(ind);
+    
+    [all_fp(i), all_fn(i), all_spikes(i)] = ...
+        calc_false_detection(this_dat, this_recon, used_thresholds(i));
+%     [all_fp(i), all_fn(i), all_spikes(i)] = ...
+%         calc_false_detection(this_dat, this_recon, this_threshold,...
+%         [], 10, true);
+%     drawnow
+%     pause
+end
+
+norm_fp = all_fp./all_spikes;
+norm_fn = all_fn./all_spikes;
+ind_to_keep = ~(all_spikes==0);
+norm_spikes = all_spikes(ind_to_keep);
+norm_fp = norm_fp(ind_to_keep);
+norm_fn = norm_fn(ind_to_keep);
+names = my_model_td.get_names(find(ind_to_keep), true); %#ok<FNDSB>
+
+% Now with correlation
+all_corr = my_model_td.calc_correlation_matrix();
+all_corr = all_corr(1:num_neurons);
+all_corr = all_corr(ind_to_keep);
+
+figure
+plot3(real(all_corr), norm_spikes,...
+    norm_fn + norm_fp, 'o')
+xlabel('Correlation coefficient')
+ylabel('All spikes')
+zlabel('False detection')
+% Diagnostics regarding metrics
+all_corr = my_model_td.calc_correlation_matrix([], 'linear');
+all_corr = all_corr(1:num_neurons);
+
+names = my_model_td.get_names(1:num_neurons, false);
+names{1} = '1';
+names{49} = '49';
+
+this_dat = real(my_model_td.dat - mean(my_model_td.dat,2));
+[snr_vec, dat_signal, dat_noise] = calc_snr(this_dat);
+max_variance = var(dat_signal-mean(dat_signal,2), 0, 2) ./...
+    var(this_dat, 0, 2);
+max_variance = max_variance(1:num_neurons);
+snr_vec = snr_vec(1:num_neurons);
+this_recon = real(reconstruct_dat - mean(reconstruct_dat,2));
+% all_dist = vecnorm(this_dat - this_recon, 2, 2);
+all_dist = vecnorm(dat_signal - this_recon, 2, 2);
+all_dist = all_dist(1:num_neurons)./...
+    vecnorm(my_model_td.dat(1:num_neurons), 2, 2);
+%% Do DfMaps on the above 3d graph
+raw_corr = my_model_td.calc_correlation_matrix();
+raw_corr = raw_corr(1:num_neurons);
+rng(2)
+% isomap_dat = [real(all_corr), all_dist, all_fn, all_fp, all_spikes, max_variance];
+raw_dat = [real(all_corr), all_dist, all_fn, all_fp, all_spikes];
+% dfm_dat = [real(all_corr), real(raw_corr), all_dist,...
+%     all_fn, all_fp, all_spikes];
+neurons_with_activity = logical(ind_to_keep.*(snr_vec>median(snr_vec)));
+raw_dat = raw_dat(neurons_with_activity,:);
+% Normalize the data
+[dfm_dat, whiten_map] = prewhiten(raw_dat);
+
+% Try to calculate the intrinsic dimensionality
+fprintf('Intrinsic dimensionality by different methods:\n')
+fprintf('MLE: %.2f\n',intrinsic_dim(dfm_dat, 'MLE'))
+fprintf('CorrDim: %.2f\n',intrinsic_dim(dfm_dat, 'CorrDim'))
+% fprintf('NearNb: %.2f\n',round(intrinsic_dim(dfm_dat, 'NearNb')))
+fprintf('PackingNumbers: %.2f\n',intrinsic_dim(dfm_dat, 'PackingNumbers'))
+fprintf('GMST: %.2f\n',intrinsic_dim(dfm_dat, 'GMST'))
+num_dims = 3;
+
+% Use diffusion mapping
+%   TO DO: parameter search
+[mappedX, mapping] = compute_mapping(dfm_dat, 'DiffusionMaps', num_dims);	
+disp('Finished Mapping')
+
+% Plot
+% figure;
+% plot3(dfm_dat(:,1), dfm_dat(:,2), dfm_dat(:,3), '.');
+% text(dfm_dat(:,1), dfm_dat(:,2), dfm_dat(:,3), names(neurons_with_activity));
+% title('Original data (normalized)')
+
+these_names = names(neurons_with_activity);
+% figure;
+% if num_dims==3
+%     plot3(mappedX(:,1), mappedX(:,2), mappedX(:,3), '.');
+%     text(mappedX(:,1), mappedX(:,2), mappedX(:,3), these_names);
+% elseif num_dims==2
+%     plot(mappedX(:,1), mappedX(:,2), '.');
+%     textfit(mappedX(:,1), mappedX(:,2), these_names);
+% end
+% title(sprintf('Isomap of the connected component (%d/%d neurons)', ...
+%     length(these_names), size(dfm_dat,1)))
+%% Cluster on the DfM basis
+rng(2)
+max_clusters = 8;
+AICc = zeros(1,max_clusters);
+BIC = AICc;
+GMModels = cell(1,max_clusters);
+options = statset('MaxIter',500);
+for k = 1:max_clusters
+    GMModels{k} = fitgmdist(mappedX,k,'Options',options,...
+        'CovarianceType','full','Replicates',100);%, 'RegularizationValue',1e-8);
+    % Use corrected AIC instead
+    AICc(k)= GMModels{k}.AIC + ...
+        (2*k^2+2*k)/(size(mappedX,1)-k-1);
+    BIC(k)= GMModels{k}.BIC;
+end
+[minAIC,numComponentsAIC] = min(AICc);
+delta_minAIC = abs(minAIC - AICc(min([numComponentsAIC+1,max_clusters])));
+[minBIC,numComponentsBIC] = min(BIC);
+delta_minBIC = abs(minBIC - BIC(numComponentsBIC+1));
+% If there are several scores that are very similar, choose the smallest
+% one
+numComponentsAIC = find(AICc<=(minAIC+delta_minAIC), 1 );
+numComponentsBIC = find(BIC<=(minBIC+delta_minBIC), 1 );
+if numComponentsAIC < max_clusters
+    numComponents = round(mean([numComponentsAIC, numComponentsBIC]));
+else
+    % AIC sometimes just decreases forever and is known to have problems
+    % selecting too many parameters
+    warning('Minimum AIC was found at the maximum number of clusters')
+    numComponents = numComponentsBIC + 1*(numComponentsBIC<=max_clusters/2);
+end
+fprintf('Minimum mean(AIC,BIC) model has %d clusters\n',numComponents)
+gmmobj = GMModels{numComponents};
+[idx,nlogL,P,logpdf] = cluster(gmmobj, mappedX);
+
+figure;
+imagesc(P);
+xlabel('Cluster')
+yticks(1:length(these_names));
+yticklabels(these_names)
+title('Cluster Assignments with confidence')
+
+figure;
+plot(AICc);
+hold on;
+plot(BIC);
+line([numComponents,numComponents], [min(AICc),max(AICc)])
+legend({'AICc', 'BIC', 'Number of clusters'})
+
+% Produce a table of the cluster centroids
+centroid_table = cell(numComponents, size(dfm_dat,2)+1);
+for i = 1:numComponents
+    these_ind = find(idx==i);
+    for i2 = 1:size(dfm_dat,2)
+        centroid_table{i,i2} = round(mean(raw_dat(these_ind,i2)),2);
+    end
+    for i3 = 1:length(these_ind)
+        if ~isempty(names{these_ind(i3)})
+            centroid_table{i,end} = names{these_ind(i3)};
+            break
+        end
+    end
+end
+centroid_table = cell2table(centroid_table);
+centroid_table.Properties.VariableNames = ...
+    {'Correlation', 'L2_error', 'FN', 'FP', 'Spikes', 'Representative_neuron'};
+disp(centroid_table)
+
+%---------------------------------------------
+%% Cluster Plotting
+%---------------------------------------------
+all_figs = cell(2,1);
+
+all_figs{1} = plot_colored(mappedX, idx);
+xticklabels('')
+yticklabels('')
+if num_dims==2
+    h_iso = textfit(mappedX(:,1), mappedX(:,2), these_names,...
+        'FontSize',10, 'FontWeight','bold');
+elseif num_dims==3
+    text(mappedX(:,1), mappedX(:,2), mappedX(:,3), these_names);
+end
+% title(sprintf('%d-cluster Isomap of the connected component (%d/%d neurons)', ...
+%     numComponents, length(these_names), size(dfm_dat,1)))
+title(sprintf('%d clusters in Diffusion map basis', numComponents))
+
+% Original basis
+% x = real(raw_corr(neurons_with_activity));
+x = dfm_dat(:,1); % Normalized Correlation
+% y = dfm_dat(:,3) + dfm_dat(:,4); % All false detections
+% y = dfm_dat(:,2); % L2 error
+% y = dfm_dat(:,3); % False positives
+y = dfm_dat(:,4); % False negatives
+% y = dfm_dat(:,4)./dfm_dat(:,5); % Normalized false negatives
+all_figs{2} = plot_colored([x, y], idx);
+h_ori = textfit(x, y, these_names, 'FontSize',10, 'FontWeight','bold');
+% title(sprintf('%d-cluster Isomap of the connected component (%d/%d neurons)', ...
+%     numComponents, length(these_names), size(dfm_dat,1)))
+title(sprintf('%d clusters in Original basis', numComponents))
+xlabel('Correlation')
+ylabel('False detection')
+xticklabels('')
+yticklabels('')
+% ylabel('L2 error')
+
+drawnow
+% Add some single-neuron insets to the above
+inset_neurons = {'RMED', 1, 49, 'ASKR', 'RID'};
+% inset_neurons = {'RMED'};
+sz = [0.25, 0.25];
+tspan = 750:1750;
+which_figure = [1 1 1 2 2];
+% for i = 1:length(inset_neurons)
+%     figure(all_figs{which_figure(i)});
+%     this_name = inset_neurons{i};
+%     if ischar(this_name)
+%         this_ind = my_model_td.name2ind(this_name);
+%     else
+%         this_ind = this_name;
+%         this_name = my_model_td.get_names(this_name, true);
+%         if iscell(this_name)
+%             this_name = this_name{1};
+%         end
+%     end
+%     axes('Position',[rand(1,2)/2 sz])
+%     box on
+%     plot(my_model_td.dat(this_ind,tspan), 'LineWidth',2);
+%     xticklabels('')
+%     yticklabels('')
+%     hold on
+%     plot(reconstruct_dat(this_ind,tspan), 'LineWidth',2);
+%     xticklabels('')
+%     yticklabels('')
+%     xlim([0 length(tspan)])
+%     title(['Neuron ' this_name])
+% end
+%% Save cluster plots
+to_save = false;
+foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\figures\';
+if to_save
+    for i = 1:length(all_figs)
+        if isempty(all_figs{i}) || ~isvalid(all_figs{i})
+            continue;
+        end
+        fname = sprintf('%sfigure_cluster_%d', foldername, i);
+        this_fig = all_figs{i};
+        sz = {'0.9\columnwidth', '0.12\paperheight'};
+        matlab2tikz('figurehandle',this_fig,'filename',...
+            [fname '_raw.tex'], ...
+            'width', sz{1}, 'height', sz{2});
+        saveas(this_fig, fname, 'png');
+    end
+end
+%% Look at the false detection plot for a single neuron
+% i = my_model_td.name2ind('SMDDL');
+% i = my_model_td.name2ind('AVFR');
+% i = my_model_td.name2ind('RMED');
+% i = my_model_td.name2ind('AVAL');
+% i = my_model_td.name2ind('AIBL');
+i = my_model_td.name2ind('AVER');
+% i = 49;
+
+% f = @(x) my_model_td.flat_filter(x, 5); % original filter
+f = @(x) my_model_td.flat_filter(x, 10);
+% this_dat = my_model_td.dat(i,:);
+this_dat = dat_signal(i,:);
+this_recon = reconstruct_dat(i,:);
+this_recon = this_recon - mean(this_recon);
+figure;
+plot(this_dat); hold on; plot(this_recon);
+title('Reconstruction and data'); drawnow
+% Analyze the derivatives
+this_dat = abs(gradient(f(this_dat)));
+this_recon = abs(gradient(f(this_recon)));
+% Get false detections
+f_detect = @(x) minimize_false_detection(this_dat, ...
+    this_recon, x, 0.5);
+all_thresholds = zeros(length(threshold_vec),1);
+all_vals = all_thresholds;
+for i2 = 1:length(threshold_vec)
+    [all_thresholds(i2), all_vals(i2)] = ...
+        fminsearch(f_detect, threshold_vec(i2));
+end
+[~, ind] = min(all_vals);
+this_threshold = all_thresholds(ind);
+
+[num_fp, num_fn, num_spikes] = ...
+    calc_false_detection(this_dat, this_recon, this_threshold,...
+    1, 10, true);
+
+
+%% Above analysis; no nonlinear DR except visualization
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+
+settings_ideal = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 9,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','func_DMDc',...
+    'global_signal_subset', {{'DT','VT','REV','FWD','SLOW'}},...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings_ideal.global_signal_mode = 'ID_binary_transitions';
+
+% Build model and get data
+my_model_td = CElegansModel(filename, settings_ideal);
+%% Analyze all neurons
+num_neurons = my_model_td.original_sz(1);
+reconstruct_dat = real(...
+    my_model_td.AdaptiveDmdc_obj.calc_reconstruction_control());
+f = @(x) my_model_td.flat_filter(x, 10);
+threshold_vec = linspace(0.1, 1.5, 5);
+
+all_fp = zeros(num_neurons, 1);
+all_fn = all_fp;
+all_spikes = all_fp;
+used_thresholds = all_fp;
+
+for i = 1:num_neurons
+    this_dat = my_model_td.dat(i,:);
+    this_recon = reconstruct_dat(i,:);
+    % Analyze the derivatives
+    this_dat = abs(gradient(f(this_dat)));
+    this_recon = abs(gradient(f(this_recon)));
+    % Get false detections
+    f_detect = @(x) minimize_false_detection(this_dat, ...
+        this_recon, x, 0.5);
+    all_thresholds = zeros(length(threshold_vec),1);
+    all_vals = all_thresholds;
+    for i2 = 1:length(threshold_vec)
+        [all_thresholds(i2), all_vals(i2)] = ...
+            fminsearch(f_detect, threshold_vec(i2));
+    end
+    [~, ind] = min(all_vals);
+    used_thresholds(i) = all_thresholds(ind);
+    
+    [all_fp(i), all_fn(i), all_spikes(i)] = ...
+        calc_false_detection(this_dat, this_recon, used_thresholds(i));
+%     [all_fp(i), all_fn(i), all_spikes(i)] = ...
+%         calc_false_detection(this_dat, this_recon, this_threshold,...
+%         [], 10, true);
+%     drawnow
+%     pause
+end
+
+norm_fp = all_fp./all_spikes;
+norm_fn = all_fn./all_spikes;
+ind_to_keep = ~(all_spikes==0);
+norm_spikes = all_spikes(ind_to_keep);
+norm_fp = norm_fp(ind_to_keep);
+norm_fn = norm_fn(ind_to_keep);
+names = my_model_td.get_names(find(ind_to_keep), true); %#ok<FNDSB>
+
+% Diagnostics regarding metrics
+all_corr = my_model_td.calc_correlation_matrix([], 'linear');
+all_corr = all_corr(1:num_neurons);
+
+names = my_model_td.get_names(1:num_neurons, true);
+names{1} = '1';
+names{49} = '49';
+
+this_dat = real(my_model_td.dat - mean(my_model_td.dat,2));
+[snr_vec, dat_signal, dat_noise] = calc_snr(this_dat);
+max_variance = var(dat_signal-mean(dat_signal,2), 0, 2) ./...
+    var(this_dat, 0, 2);
+max_variance = max_variance(1:num_neurons);
+snr_vec = snr_vec(1:num_neurons);
+this_recon = real(reconstruct_dat - mean(reconstruct_dat,2));
+% all_dist = vecnorm(this_dat - this_recon, 2, 2);
+all_dist = vecnorm(dat_signal - this_recon, 2, 2);
+all_dist = all_dist(1:num_neurons)./...
+    vecnorm(my_model_td.dat(1:num_neurons), 2, 2);
+
+disp('Finished analyzing all neurons')
+%% Build the feature set
+raw_corr = my_model_td.calc_correlation_matrix();
+raw_corr = raw_corr(1:num_neurons);
+rng(2)
+num_dims = 2;
+f = @linear_sigmoid_middle_percentile;
+all_dat = table(real(all_corr), all_dist, all_fn, all_fp, all_spikes,...
+    f(all_fn), f(all_fp), f(all_spikes), snr_vec, max_variance,...
+    'VariableNames',{'Correlation','L2_distance','FN','FP','Spikes',...
+    'FN_thresh','FP_thresh','Spikes_thresh','SNR','max_variance'});
+% my_features = {'Correlation','L2_distance','FN','FP','Spikes',...
+%     'FN_thresh','FP_thresh','Spikes_thresh'};
+% my_features = {'Correlation','L2_distance','FN','FP','Spikes'};
+my_features = {'Correlation','L2_distance','FN','FP','Spikes','max_variance'};
+% my_features = {'Correlation','L2_distance','FN_thresh','FP_thresh','Spikes_thresh'};
+to_cluster_dat = all_dat{:, my_features};
+neurons_with_activity = logical(ind_to_keep.*(snr_vec>median(snr_vec)));
+to_cluster_dat = to_cluster_dat(neurons_with_activity,:);
+
+% figure; plot(to_cluster_dat(1,:)); xticklabels(my_features);xtickangle(60)
+% Normalize the data
+mappedX = whiten(to_cluster_dat);
+% mappedX(:,3:end) = mappedX(:,3:end)./2; % These columns have repeats
+
+these_names = names(neurons_with_activity);
+
+disp('Finished building feature set')
+%% Single-pass clustering with the original basis
+rng(3)
+max_clusters = 8;
+AICc = zeros(1,max_clusters);
+BIC = AICc;
+GMModels = cell(1,max_clusters);
+options = statset('MaxIter',500);
+for k = 1:max_clusters
+    GMModels{k} = fitgmdist(mappedX,k,'Options',options,...
+        'CovarianceType','diagonal','Replicates',100);%, 'RegularizationValue',1e-8);
+    % Use corrected AIC instead
+    AICc(k)= GMModels{k}.AIC + ...
+        (2*k^2+2*k)/(size(mappedX,1)-k-1);
+    BIC(k)= GMModels{k}.BIC;
+end
+[minAIC,numComponentsAIC] = min(AICc);
+delta_minAIC = abs(minAIC - AICc(min([numComponentsAIC+1,max_clusters])));
+[minBIC,numComponentsBIC] = min(BIC);
+delta_minBIC = abs(minBIC - BIC(numComponentsBIC+1));
+% If there are several scores that are very similar, choose the smallest
+% one
+numComponentsAIC = find(AICc<=(minAIC+delta_minAIC), 1 );
+numComponentsBIC = find(BIC<=(minBIC+delta_minBIC), 1 );
+if numComponentsAIC < max_clusters
+    numComponents = round(mean([numComponentsAIC, numComponentsBIC]));
+else
+    % AIC sometimes just decreases forever and is known to have problems
+    % selecting too many parameters
+    warning('Minimum AIC was found at the maximum number of clusters')
+    numComponents = numComponentsBIC + 1*(numComponentsBIC<=max_clusters/2);
+end
+fprintf('Minimum mean(AIC,BIC) model has %d clusters\n',numComponents)
+gmmobj = GMModels{numComponents};
+[idx,nlogL,P,logpdf] = cluster(gmmobj, mappedX);
+
+figure;
+imagesc(P);
+xlabel('Cluster')
+yticks(1:length(these_names));
+yticklabels(these_names)
+title('Cluster Assignments with confidence')
+
+figure;
+plot(AICc);
+hold on;
+plot(BIC);
+line([numComponents,numComponents], [min(AICc),max(AICc)])
+legend({'AICc', 'BIC', 'Number of clusters'})
+%% Do ensemble clustering
+%---------------------------------------------
+% Build the Co-occurrence matrix using K-means
+%---------------------------------------------
+settings.which_metrics = {'silhouette', 'gap'};
+settings.total_m = 1000;
+settings.max_clusters = 10;
+settings.cluster_func = @(X,K)(kmeans(X, K, 'emptyaction','singleton',...
+    'replicate',1));
+
+[co_occurrence, all_cluster_evals] = ensemble_clustering(mappedX, settings);
+
+%---------------------------------------------
+% Hierarchical clustering on the co-occurence matrix (and plot)
+%---------------------------------------------
+% Get 'best' number of clusters
+E = evalclusters(co_occurrence,...
+    'linkage', 'silhouette', 'KList', 1:settings.max_clusters);
+figure;
+plot(E)
+% k = E.OptimalK;
+k = 6;
+
+% Dendrogram
+tree = linkage(co_occurrence,'Ward');
+figure()
+cutoff = median([tree(end-k+1,3) tree(end-k+2,3)]);
+[H,T,outperm] = dendrogram(tree, 15, ...
+    'Orientation','left','ColorThreshold',cutoff);
+tree_names = cell(length(outperm),1);
+for i = 1:length(outperm)
+    tree_names{outperm==i} = strjoin(these_names(T==i), ';');
+end
+yticklabels(tree_names)
+title(sprintf('Dendrogram with %d clusters', k))
+
+% Heatmap
+% idx = E.OptimalY;
+idx = @(X) cluster(linkage(X,'Ward'), 'maxclust',k);
+cluster_and_imagesc(co_occurrence, idx, these_names, []);
+title(sprintf('Number of clusters: %d', k))
+%---------------------------------------------
+%% Cluster Plotting
+%---------------------------------------------
+all_figs = cell(2,1);
+rng(2)
+
+[t_sne_data] = compute_mapping(to_cluster_dat,'t-SNE', 3);
+plot_colored(t_sne_data, idx);
+h_ori = textfit(t_sne_data(:,1), t_sne_data(:,2), t_sne_data(:,3),...
+    these_names, 'FontSize',10, 'FontWeight','bold');
+title('t-SNE visualization')
+drawnow
+
+% Original basis
+% x = real(raw_corr(neurons_with_activity));
+x = to_cluster_dat(:,1); % Normalized Correlation
+% y = to_cluster_dat(:,3) + to_cluster_dat(:,4); % All false detections
+% y = to_cluster_dat(:,2); % L2 error
+% y = to_cluster_dat(:,3); % False positives
+y = to_cluster_dat(:,4); % False negatives
+% y = to_cluster_dat(:,4)./to_cluster_dat(:,5); % Normalized false negatives
+all_figs{2} = plot_colored([x, y], idx);
+h_ori = textfit(x, y, these_names, 'FontSize',10, 'FontWeight','bold');
+% title(sprintf('%d-cluster Isomap of the connected component (%d/%d neurons)', ...
+%     numComponents, length(these_names), size(to_cluster_dat,1)))
+title(sprintf('%d clusters in Original basis', numComponents))
+xlabel('Correlation')
+ylabel('False detection')
+xticklabels('')
+yticklabels('')
+% ylabel('L2 error')
+
+drawnow
+% Add some single-neuron insets to the above
+% inset_neurons = {'RMED', 1, 49, 'ASKR', 'RID'};
+inset_neurons = {};
+sz = [0.25, 0.25];
+tspan = 750:1750;
+which_figure = [1 1 1 2 2];
+for i = 1:length(inset_neurons)
+    figure(all_figs{which_figure(i)});
+    this_name = inset_neurons{i};
+    if ischar(this_name)
+        this_ind = my_model_td.name2ind(this_name);
+    else
+        this_ind = this_name;
+        this_name = my_model_td.get_names(this_name, true);
+        if iscell(this_name)
+            this_name = this_name{1};
+        end
+    end
+    axes('Position',[rand(1,2)/2 sz])
+    box on
+    plot(my_model_td.dat(this_ind,tspan), 'LineWidth',2);
+    xticklabels('')
+    yticklabels('')
+    hold on
+    plot(reconstruct_dat(this_ind,tspan), 'LineWidth',2);
+    xticklabels('')
+    yticklabels('')
+    xlim([0 length(tspan)])
+    title(['Neuron ' this_name])
+end
+%% Save cluster plots
+to_save = false;
+foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\figures\';
+if to_save
+    for i = 1:length(all_figs)
+        if isempty(all_figs{i}) || ~isvalid(all_figs{i})
+            continue;
+        end
+        fname = sprintf('%sfigure_cluster_%d', foldername, i);
+        this_fig = all_figs{i};
+        sz = {'0.9\columnwidth', '0.12\paperheight'};
+        matlab2tikz('figurehandle',this_fig,'filename',...
+            [fname '_raw.tex'], ...
+            'width', sz{1}, 'height', sz{2});
+        saveas(this_fig, fname, 'png');
+    end
+end
+%% Look at the false detection plot for a single neuron
+% i = my_model_td.name2ind('SMDDL');
+% i = my_model_td.name2ind('AVFR');
+i = my_model_td.name2ind('RMED');
+% i = 1;
+
+% f = @(x) my_model_td.flat_filter(x, 5); % original filter
+f = @(x) my_model_td.flat_filter(x, 10);
+% this_dat = my_model_td.dat(i,:);
+this_dat = dat_signal(i,:);
+this_recon = reconstruct_dat(i,:);
+this_recon = this_recon - mean(this_recon);
+figure;
+plot(f(this_dat)); hold on; plot(f(this_recon));
+title('Filtered reconstruction and data'); drawnow
+% Analyze the derivatives
+this_dat = abs(gradient(f(this_dat)));
+this_recon = abs(gradient(f(this_recon)));
+% Get false detections
+f_detect = @(x) minimize_false_detection(this_dat, ...
+    this_recon, x, 0.5);
+all_thresholds = zeros(length(threshold_vec),1);
+all_vals = all_thresholds;
+for i2 = 1:length(threshold_vec)
+    [all_thresholds(i2), all_vals(i2)] = ...
+        fminsearch(f_detect, threshold_vec(i2));
+end
+[~, ind] = min(all_vals);
+this_threshold = all_thresholds(ind);
+
+calc_false_detection(this_dat, this_recon, this_threshold,...
+    1, 10, true);
+
+%% Analyze a couple of neurons
+% good_neuron = my_model_td.name2ind('AVAL'); % reversal
+good_neuron = my_model_td.name2ind('AVBL'); % reversal
+bad_neuron = my_model_td.name2ind('SMDDL'); % Turning
+good_dat = my_model_td.dat(good_neuron,:);
+bad_dat = my_model_td.dat(bad_neuron,:);
+reconstruct_dat = real(...
+    my_model_td.AdaptiveDmdc_obj.calc_reconstruction_control());
+good_reconstruct_dat = reconstruct_dat(good_neuron,:);
+bad_reconstruct_dat = reconstruct_dat(bad_neuron,:);
+
+% Actually do analysis on the derivatives
+f = @(x) my_model_td.flat_filter(x, 5);
+good_dat = abs(gradient(f(good_dat)));
+bad_dat = abs(gradient(f(bad_dat)));
+good_reconstruct_dat = abs(gradient(f(good_reconstruct_dat)));
+bad_reconstruct_dat = abs(gradient(f(bad_reconstruct_dat)));
+
+% Calculate the number of false detections
+f_good = @(x) minimize_false_detection(good_dat, ...
+    good_reconstruct_dat, x, 0.1);
+good_threshold = fminsearch(f_good, 0.75);
+[good_fp, good_fn, good_spikes] = ...
+    calc_false_detection(good_dat, good_reconstruct_dat, good_threshold,...
+    [], 10, true);
+title('False detection for AVAL')
+
+f_bad = @(x) minimize_false_detection(bad_dat, ...
+    bad_reconstruct_dat, x, 0.1);
+bad_threshold = fminsearch(f_bad, 0.5);
+[bad_fp, bad_fn, bad_spikes] = ...
+    calc_false_detection(bad_dat, bad_reconstruct_dat, bad_threshold,...
+    [], 10, true);
+title('False detection for SMDDL')
+
+% Output
+fprintf('Number of fp (fn) for AVAL: %d (%d)\n', good_fp, good_fn)
+fprintf('Number of fp (fn) for SMDDL: %d (%d)\n', bad_fp, bad_fn)
+%==========================================================================
