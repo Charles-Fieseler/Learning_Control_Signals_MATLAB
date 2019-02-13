@@ -42,26 +42,27 @@ close all
 %==========================================================================
 
 %% Define 'ideal' settings
-filename_ideal = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+filename_template = ...
+    '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
+filename_ideal = sprintf(filename_template, 5);
 dat_ideal = importdata(filename_ideal);
 num_neurons = size(dat_ideal.traces,2);
 
 settings_ideal = struct(...
     'to_subtract_mean',false,...
+    'to_subtract_baselines',true,...
     'to_subtract_mean_sparse',false,...
     'to_subtract_mean_global',false,...
     'add_constant_signal',false,...
     'use_deriv',false,...
-    'augment_data', 9,...
+    'augment_data', 7,...
     ...'filter_window_global', 0,...
     'filter_window_dat', 1,...
     'dmd_mode','func_DMDc',...
-    'global_signal_subset', {{'DT','VT','REV'}},...
+    'global_signal_subset', {{'DT', 'VT', 'REV', 'FWD', 'SLOW'}},...
     ...'autocorrelation_noise_threshold', 0.3,...
     'lambda_sparse',0);
 settings_ideal.global_signal_mode = 'ID_binary_transitions';
-
-model_ideal = CElegansModel(filename_ideal, settings_ideal);
 %==========================================================================
 error('You probably do not want to run the entire file')
 
@@ -421,7 +422,6 @@ if to_save
 end
 %==========================================================================
 
-
 %% Figure 3d: time-delay embeddings 
 all_figs = cell(1);
 max_augment = 12;
@@ -562,7 +562,6 @@ if to_save
     end
 end
 %==========================================================================
-
 
 %% Figure 4e: Elimination path (Lasso)
 all_figs = cell(3,1);
@@ -723,121 +722,123 @@ end
 
 
 %% Figure 6: Clustering on dynamic features
-all_figs = cell(2,1);
-% Note: use model defined in the header
+all_figs = cell(4,1);
+rng(13);
 
 %---------------------------------------------
-% Analyze all neurons
+% Get feature set from models
 %---------------------------------------------
-num_neurons = model_ideal.original_sz(1);
-reconstruct_dat = real(...
-    model_ideal.AdaptiveDmdc_obj.calc_reconstruction_control());
-f = @(x) model_ideal.flat_filter(x, 10);
-threshold_vec = linspace(0.1, 1.5, 5);
-
-all_fp = zeros(num_neurons, 1);
-all_fn = all_fp;
-all_spikes = all_fp;
-used_thresholds = all_fp;
-
-for i = 1:num_neurons
-    this_dat = model_ideal.dat(i,:);
-    this_recon = reconstruct_dat(i,:);
-    % Analyze the derivatives
-    this_dat = abs(gradient(f(this_dat)));
-    this_recon = abs(gradient(f(this_recon)));
-    % Get false detections
-    f_detect = @(x) minimize_false_detection(this_dat, ...
-        this_recon, x, 0.5);
-    all_thresholds = zeros(length(threshold_vec),1);
-    all_vals = all_thresholds;
-    for i2 = 1:length(threshold_vec)
-        [all_thresholds(i2), all_vals(i2)] = ...
-            fminsearch(f_detect, threshold_vec(i2));
-    end
-    [~, ind] = min(all_vals);
-    used_thresholds(i) = all_thresholds(ind);
-    
-    [all_fp(i), all_fn(i), all_spikes(i)] = ...
-        calc_false_detection(this_dat, this_recon, used_thresholds(i));
+my_features = {'Correlation','L2_distance','dtw',...
+    'FN_norm','FP_norm','TP_norm','FN','FP','TP'};
+sz = 5;
+all_co_occurrence = cell(sz,1);
+all_names = cell(sz,1);
+all_models = cell(sz,1);
+all_dat = cell(sz, 1);
+for i = 1:sz
+    filename = sprintf(filename_template, i);
+    [all_co_occurrence{i}, all_names{i}, all_models{i}, all_dat{i}] = ...
+        zimmer_dynamic_clustering(filename, my_features, false);
 end
 
-norm_fp = all_fp./all_spikes;
-norm_fn = all_fn./all_spikes;
-ind_to_keep = ~(all_spikes==0);
-norm_spikes = all_spikes(ind_to_keep);
-norm_fp = norm_fp(ind_to_keep);
-norm_fn = norm_fn(ind_to_keep);
-names = model_ideal.get_names(find(ind_to_keep), true);
-
-all_corr = model_ideal.calc_correlation_matrix([], 'linear');
-all_corr = all_corr(1:num_neurons);
-
-names = model_ideal.get_names(1:num_neurons, true);
-% names{1} = '1';
-% names{49} = '49';
-
-this_dat = real(model_ideal.dat - mean(model_ideal.dat,2));
-[snr_vec, dat_signal, dat_noise] = calc_snr(this_dat);
-max_variance = var(dat_signal-mean(dat_signal,2), 0, 2) ./...
-    var(this_dat, 0, 2);
-max_variance = max_variance(1:num_neurons);
-snr_vec = snr_vec(1:num_neurons);
-this_recon = real(reconstruct_dat - mean(reconstruct_dat,2));
-% all_dist = vecnorm(this_dat - this_recon, 2, 2);
-all_dist = vecnorm(dat_signal - this_recon, 2, 2);
-all_dist = all_dist(1:num_neurons)./...
-    vecnorm(model_ideal.dat(1:num_neurons), 2, 2);
-
-disp('Finished analyzing all neurons')
-%---------------------------------------------
-% Build the feature set
-%---------------------------------------------
-raw_corr = model_ideal.calc_correlation_matrix();
-raw_corr = raw_corr(1:num_neurons);
-rng(2)
-num_dims = 2;
-f = @linear_sigmoid_middle_percentile;
-all_dat = table(real(all_corr), all_dist, all_fn, all_fp, all_spikes,...
-    f(all_fn), f(all_fp), f(all_spikes), snr_vec, max_variance,...
-    'VariableNames',{'Correlation','L2_distance','FN','FP','Spikes',...
-    'FN_thresh','FP_thresh','Spikes_thresh','SNR','max_variance'});
-% my_features = {'Correlation','L2_distance','FN','FP','Spikes'};
-my_features = {'Correlation','L2_distance','FN','FP','Spikes','max_variance'};
-to_cluster_dat = all_dat{:, my_features};
-neurons_with_activity = logical(ind_to_keep.*(snr_vec>median(snr_vec)));
-to_cluster_dat = to_cluster_dat(neurons_with_activity,:);
-% Normalize the data
-mappedX = whiten(to_cluster_dat);
-
-these_names = names(neurons_with_activity);
-
-disp('Finished building feature set')
-%---------------------------------------------
-% Build the co-occurrence matrix using Ensemble K-means
-%---------------------------------------------
-settings.which_metrics = {'silhouette', 'gap'};
-settings.total_m = 1000;
-settings.max_clusters = 10;
-settings.cluster_func = @(X,K)(kmeans(X, K, 'emptyaction','singleton',...
-    'replicate',1));
-[co_occurrence, all_cluster_evals] = ensemble_clustering(mappedX, settings);
+disp('Finished building all co-occurrence matrices')
 
 %---------------------------------------------
-% Hierarchical clustering on the co-occurence matrix (and plot)
+% Build the global name list
 %---------------------------------------------
+sz = 5;
+max_length = 5; % Only keep unambiguously identified neurons
+total_names = {};
+for i = 1:sz
+    this_names = all_names{i};
+    to_keep_ind = false(size(this_names));
+    for i2 = 1:length(this_names)
+        x = this_names{i2};
+        to_keep_ind(i2) = ( length(x) <=max_length && ...
+            ~isempty(regexp(x,'\D(?#any non-digit)', 'once')));
+    end
+    
+    total_names = union(total_names, this_names(to_keep_ind));
+end
+
+%---------------------------------------------
+% Build the total co-occurrence matrix
+%---------------------------------------------
+total_co_occurrence_3d = nan(length(total_names),length(total_names),sz);
+num_identifications = zeros(size(total_names));
+
+for i = 1:sz
+    [this_names, this_ind] = sort(all_names{i});
+    this_dat = all_co_occurrence{i}(this_ind,this_ind);
+    [~, ~, ib] = unique(this_names, 'stable');
+    repeat_names = find(hist(ib, unique(ib))>1);
+    if ~isempty(repeat_names)
+        this_names(strcmp(this_names{repeat_names}, this_names)) = [];
+    end
+    
+    to_keep_names = intersect(this_names, total_names);
+    ind_in_individual = cellfun(@(x) any(strcmp(x, to_keep_names)),...
+        this_names);
+    ind_in_total = cellfun(@(x) any(strcmp(x, to_keep_names)),...
+        total_names);
+    num_identifications = num_identifications + ind_in_total;
+    
+    total_co_occurrence_3d(ind_in_total, ind_in_total, i) = ...
+        this_dat(ind_in_individual, ind_in_individual);
+end
+
+% Remove rarely identified neurons
+min_identifications = 3;
+to_keep_ind = (num_identifications >= min_identifications);
+total_co_occurrence_3d = total_co_occurrence_3d(to_keep_ind, to_keep_ind, :);
+
+%---------------------------------------------
+% Normalize according to how many times the neuron appeared
+%---------------------------------------------
+tmp = total_co_occurrence_3d;
+tmp = tmp - min(min(tmp));
+sz = length(find(to_keep_ind));
+I = logical(eye(sz));
+for i3 = 1:size(tmp,3)
+    for i = 1:sz
+        for i2 = 1:sz
+            if i==i2
+                continue;
+            end
+            tmp(i,i2,i3) = tmp(i,i2,i3) / min([tmp(i,i,i3), tmp(i2,i2,i3)]);
+        end
+    end
+    tmp(:,:, i3) = tmp(:,:, i3) - diag(diag(tmp(:,:, i3))) + I;
+end
+total_co_occurrence_std = std(tmp, 0, 3, 'omitnan');
+tmp(isnan(tmp)) = 0;
+total_co_occurrence = mean(tmp, 3);
+total_names = total_names(to_keep_ind);
+
+disp('Finished building TOTAL co-occurrence matrix')
+
+%---------------------------------------------
+% Hierarchical clustering on the co-occurence matrix and plot
+%---------------------------------------------
+rng(4);
 % Get 'best' number of clusters
 E = evalclusters(co_occurrence,...
     'linkage', 'silhouette', 'KList', 1:settings.max_clusters);
-figure;
+all_figs{4} = figure('DefaultAxesFontSize',16); % Note: for the supplement
 plot(E)
 k = E.OptimalK;
 
+% Heatmap
+idx = E.OptimalY;
+[all_figs{1}, c, all_ind] = cluster_and_imagesc(...
+    co_occurrence, idx, these_names, []);
+title(sprintf('Number of clusters: %d', k))
+
 % Dendrogram
 tree = linkage(co_occurrence,'Ward');
-figure()
+all_figs{2} = figure('DefaultAxesFontSize', 16);
 cutoff = median([tree(end-k+1,3) tree(end-k+2,3)]);
-[H,T,outperm] = dendrogram(tree, 15, ...
+[H, T, outperm] = dendrogram(tree, 15, ...
     'Orientation','left','ColorThreshold',cutoff);
 tree_names = cell(length(outperm),1);
 for i = 1:length(outperm)
@@ -846,11 +847,10 @@ end
 yticklabels(tree_names)
 title(sprintf('Dendrogram with %d clusters', k))
 
-% Heatmap
-idx = E.OptimalY;
-% idx = @(X) cluster(linkage(X,'Ward'), 'maxclust',k);
-cluster_and_imagesc(co_occurrence, idx, these_names, []);
-title(sprintf('Number of clusters: %d', k))
+% Silhouette diagram
+all_figs{3} = figure('DefaultAxesFontSize',16);
+[all_scores_table, S] = silhouette_with_names(...
+    total_co_occurrence, c, total_names, [all_ind{:}]);
 
 %---------------------------------------------
 % Save

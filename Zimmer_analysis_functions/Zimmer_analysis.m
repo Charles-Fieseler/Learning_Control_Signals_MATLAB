@@ -6420,10 +6420,10 @@ my_model_important_neurons.plot_reconstruction_interactive(false);
 
 %% Iteratively solve directly for control signals
 % Overall solver settings
-to_use_L1 = true;
-num_iter = 4;
-r_ctr = 4;
-to_use_model_U = true;
+to_use_L1 = false;
+num_iter = 20;
+r_ctr = 2;
+to_use_model_U = false;
 tspan = 1:1000;
 to_solve_PCA_basis = false;
 
@@ -6441,7 +6441,7 @@ settings = struct(...
     ...'filter_window_global', 0,...
     'filter_window_dat', 1,...
     'dmd_mode','func_DMDc',...
-    'autocorrelation_noise_threshold', 0.3,...
+    'autocorrelation_noise_threshold', 0.6,...
     'lambda_sparse',0);
 settings.global_signal_mode = 'ID_binary_transitions';
 
@@ -6473,11 +6473,16 @@ all_err = zeros(num_iter,2);
 if to_use_model_U
     U = my_model_base.control_signal(1:r_ctr,1:m);
 else
-    U = rand(r_ctr, m);
+%     U = rand(r_ctr, m);
+    % Initialize with the errors from a naive DMD fit
+    [~, ~, U] = svd(real(X2 - (X2/X1)*X1));
+    U = U(:,1:r_ctr)';
 end
 if to_use_L1
     % lambda = 1e15; % The U matrix has entries on the order of 1e-16...
-    lambda = 1e-2;
+%     lambda = 1e-2;
+    which_fit = 9;
+    all_U = cell(num_iter, 1);
 else
     lambda = 1e-2;
     sparsity_pattern = false(size(U));
@@ -6486,7 +6491,7 @@ end
 
 tstart = tic;
 for i = 1:num_iter
-    fprintf('Iteration %d\n', i)
+    fprintf('Iteration %d/%d\n', i, num_iter)
     % Step 1:
     %   Get A and B matrix, given U
 %     [~, ~, B, ~, Uhat, ~, ~, ~, ~, ~, A] = ...
@@ -6499,24 +6504,49 @@ for i = 1:num_iter
     
     % Step 2:
     %   Use cvx to get A and U, given B
+    %   NEVERMIND, just solve for U; otherwise takes too long
     %   Also try to sparsify U
     if to_use_L1
-        cvx_begin
-            variable A(n,n)
-            variable U(r_ctr, m)
-            minimize( norm(A*X1 + B*U - X2, 2) + lambda*norm(U,1) )
-        cvx_end
+%         cvx_begin
+%             variable A(n,n)
+%             variable U(r_ctr, m)
+%             minimize( norm(A*X1 + B*U - X2, 2) + lambda*norm(U,1) )
+%         cvx_end
+        res = X2 - A*X1;
+        all_fits = zeros(m,5);
+        all_intercepts = zeros(m,1);
+        this_U = zeros(size(U));
+%         for i2 = 1:(m-1)
+        for i2 = 1:m
+%             [all_fits, fit_info] = lasso(B, res(:,i2+1),...
+%                 'NumLambda', 10);
+            [all_fits, fit_info] = lasso(B, res(:,i2),...
+                'NumLambda', 10);
+            this_U(:, i2) = all_fits(:,which_fit); % Which fit = determined by eye
+            all_intercepts(i2) = fit_info.Intercept(which_fit);
+        end
+        all_U{i} = this_U + all_intercepts';
+        U = this_U;
+        fprintf('Number of nonzero control signals: %d\n', nnz(U))
+        
     else
         % Use sequential LS
-        cvx_begin
-            variable A(n,n)
-            variable U(r_ctr, m)
-%             minimize( norm(A*X1 + B*U - X2, 2) + lambda*norm(U,1) )
-            minimize( norm(A*X1 + B*U - X2, 2) )
-            U(sparsity_pattern) == 0 %#ok<NOPTS,EQEFF>
-        cvx_end
+%         cvx_begin
+%             variable A(n,n)
+%             variable U(r_ctr, m)
+% %             minimize( norm(A*X1 + B*U - X2, 2) + lambda*norm(U,1) )
+%             minimize( norm(A*X1 + B*U - X2, 2) )
+%             U(sparsity_pattern) == 0 %#ok<NOPTS,EQEFF>
+%         cvx_end
         
-        threshold = median(median(abs(U)));
+        U = B\(X2 - A*X1);
+        U(sparsity_pattern) = 0;
+        fprintf('Number of nonzero control signals: %d\n', nnz(U))
+        % Get rid of bottom 10% of nonzeros
+        tmp = reshape(abs(U), [m*r_ctr, 1]);
+        threshold = quantile(tmp(tmp>0),0.1);
+        
+%         threshold = median(median(abs(U)));
         sparsity_pattern = abs(U)<threshold;
         all_U{i} = U;
     end
@@ -6554,7 +6584,7 @@ plot(X1(i,:));
 hold on; 
 plot(approx_X1(i,:))
 
-plot_2imagesc_colorbar(U, B, '2 1');
+plot_2imagesc_colorbar(U, B, '2 1', 'Control signal', 'B matrix');
 
 %==========================================================================
 
@@ -6905,6 +6935,399 @@ for i = 1:length(all_ind)
     drawnow
 %     pause
 end
+%==========================================================================
+
+
+%% Reprise: Iteratively solve directly for control signals
+% Overall solver settings
+to_use_L1 = false;
+num_iter = 80;
+iter_removal_fraction = 0.05;
+iter_re_up_fraction = 0;%0.01;
+r_ctr = 15;
+to_use_model_U = false;
+to_threshold_total_U = false;
+only_positive_U = true;
+tspan = 1:3021;
+% tspan = 1:500;
+to_solve_PCA_basis = false;
+
+rng(13);
+
+% Create model
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat_struct = importdata(filename);
+
+% TEST
+dat_struct.traces = smoothdata(dat_struct.traces, 'gaussian', 3);
+all_max = max(dat_struct.traces, [], 1);
+all_max = max(all_max, 1);
+dat_struct.traces = dat_struct.traces ./ all_max;
+% dat_struct.traces = dat_struct.traces.^2;
+warning('USING SQUARED DATA')
+
+settings = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'designated_controller_channels', {{'sensory', 1}},...
+    ...'augment_data', 5,...
+    'filter_window_dat', 1,...
+    'dmd_mode','func_DMDc',...
+    'autocorrelation_noise_threshold', 0.6,...
+    'lambda_sparse',0);
+settings.global_signal_mode = 'ID_binary_transitions';
+
+% First get a baseline model as a preprocessor
+my_model_base = CElegansModel(dat_struct, settings);
+
+% Then use the model
+X1 = my_model_base.dat(:,tspan(1:end-2));
+X2 = my_model_base.dat(:,tspan(2:end-1));
+X3 = my_model_base.dat(:,tspan(3:end));
+
+[n, m] = size(X1);
+S_left = diag(ones(m-1,1), 1);
+S_right = diag(ones(m-1,1), -1);
+
+all_err = zeros(num_iter,2);
+if to_use_model_U
+    U = my_model_base.control_signal(1:r_ctr,1:m);
+else
+    if ~only_positive_U
+        % Initialize with the errors from a naive DMD fit
+        [~, ~, U0] = svd(real(X2 - (X2/X1)*X1));
+        U = U0(:,1:r_ctr)';
+    else
+        % Initialize with non-negative factorization
+        [~, U0] = nnmf(real(X2 - (X2/X1)*X1), r_ctr);
+        U = 2*U0(1:r_ctr,:);
+    end
+end
+
+all_D = zeros(10,1);
+res = real(X2 - (X2/X1)*X1);
+for i = 1:30
+    [W0, U0, all_D(i)] = nnmf(res, i);
+end
+figure;plot(all_D)
+
+sparsity_pattern = false(size(U));
+all_U = cell(num_iter, 1);
+
+if only_positive_U
+    sparse_func = @(x) x;
+else
+    sparse_func = @(x) abs(x);
+end
+
+tstart = tic;
+for i = 1:num_iter
+    fprintf('Iteration %d/%d\n', i, num_iter)
+    % Step 1:
+    %   Get A and B matrix, given U
+    AB = X2/[X1; full(U)];
+    A = AB(:,1:n);
+    B = AB(:,(n+1):end);
+    
+    all_err(i, 1) = norm(A*X1 + B*U - X2, 2);
+    
+    % Step 2:
+    %   Use cvx to get A and U, given B
+    %   NEVERMIND, just solve for U; otherwise takes too long
+    %   Also try to sparsify U
+    U_raw = B\(X2 - A*X1);
+    U = U_raw;
+    if to_threshold_total_U
+        % Normalize U by the actual effect it has on the data, i.e. include B
+        U_effective = zeros(size(U));
+        for i2 = 1:r_ctr
+            U_effective(i2,:) = sum(abs(B(:,i2))*U(i2,:), 1);
+        end
+        U_effective_nonsparse = U_effective;
+        U_effective_nonsparse(~sparsity_pattern) = 0;
+        U_effective(sparsity_pattern) = 0;
+        % Get rid of bottom 5% of BU nonzeros
+        tmp = reshape(sparse_func(U_effective), [m*r_ctr, 1]);
+        threshold = quantile(tmp(tmp>0),iter_removal_fraction);
+        sparsity_pattern = sparse_func(U_effective) < threshold;
+
+        % Add entries back in for the top 1% of the ignored matrix, if they
+        % are above the median of the entries that are left
+        tmp2 = reshape(sparse_func(U_effective_nonsparse), [m*r_ctr, 1]);
+        threshold_top = max([quantile(tmp2(tmp2>0),1-iter_re_up_fraction), median(tmp)]);
+        re_up_pattern = sparse_func(U_effective_nonsparse) > threshold_top;
+    %     U(re_up_pattern) = U_effective_nonsparse(re_up_pattern);
+    else
+        % Threshold per row of U
+        U_nonsparse = U;
+        U(sparsity_pattern) = 0;
+        U_nonsparse(~sparsity_pattern) = 0;
+        re_up_pattern = false(size(sparsity_pattern));
+        for i2 = 1:r_ctr
+            tmp = U(i2,:);
+            threshold = quantile(tmp(tmp>0),iter_removal_fraction);
+            sparsity_pattern(i2,:) = sparse_func(tmp) < threshold;
+            
+            tmp2 = U_nonsparse(i2,:);
+            threshold_top = max([quantile(tmp2(tmp2>0),1-iter_re_up_fraction), median(tmp)]);
+            re_up_pattern(i2,:) = sparse_func(tmp2) > threshold_top;
+        end
+        
+    end
+    
+    sparsity_pattern = (sparsity_pattern - re_up_pattern)==1;
+    U(sparsity_pattern) = 0;
+    % Smooth the controller slightly; increasing factor is heuristic
+    U = 1.02*smoothdata(U, 2, 'gaussian', [1 0]);
+    all_U{i} = U;
+    
+    fprintf('Number of nonzero control signals: %d\n', nnz(U))
+    fprintf('Number of signals added back in: %d\n', nnz(re_up_pattern))
+    
+    all_err(i, 2) = norm(A*X1 + B*U - X2, 2);
+end
+toc(tstart)
+
+% Visualizing "non-trivial" benefit of the control signal and dynamics
+all_errs_no_A = zeros(num_iter, 1);
+all_errs_Ai = zeros(num_iter, 1);
+all_errs_model = zeros(num_iter, 1);
+all_nnz = zeros(num_iter, 1);
+% all_errs_A = all_errs_Ai;
+% all_errs_A_mat = zeros(num_iter, n, m);
+err_persistence = norm(X2 - X1(:,1));
+deltaX = X2 - X1;
+for i = 1:num_iter
+%     fprintf('Iteration %d/%d\n', i, num_iter)
+    Ui = all_U{i};
+    all_errs_no_A(i) = norm((X2/Ui)*Ui-X2);
+    all_errs_Ai(i) = norm((deltaX/Ui)*Ui-deltaX);
+    all_nnz(i) = nnz(Ui);
+end
+figure('DefaultAxesFontSize', 16);
+subplot(2,1,1)
+plot(all_errs_no_A, 'LineWidth', 2);
+hold on
+plot(all_err, 'LineWidth', 2);
+line([0 num_iter], [err_persistence err_persistence],...
+    'Color', 'k', 'LineWidth', 2)
+legend({'Only BU', 'Full model', 'Persistence model'})
+title('Error: no A matrix')
+subplot(2,1,2)
+dynamic_improvement = all_errs_Ai./all_err(:,1);
+plot(dynamic_improvement, 'LineWidth', 2)
+hold on
+[~, best_U] = max(dynamic_improvement(round(num_iter/5):end));
+best_U = best_U + round(num_iter/5) - 1;
+plot(best_U, dynamic_improvement(best_U), 'ro', 'LineWidth', 2)
+title('Error: improvement over trivial dynamics')
+
+% Plot control signal
+U = all_U{best_U};
+plot_2imagesc_colorbar(U, B, '2 1', 'Control signal', 'B matrix');
+
+ind = my_model_base.state_labels_ind(1:size(U,2));
+key = my_model_base.state_labels_key;
+i = 1;
+plot_colored(U(i, :), ind, key, 'plot');
+title(sprintf('Control signal %d', i))
+
+% Learn a new model with this controller
+settings2 = settings;
+settings2.augment_data = 0;
+this_ctr = [smoothdata(5*U,2,'movmean',2), zeros(r_ctr,2)];
+settings2.custom_control_signal = this_ctr(:, 1:end-settings2.augment_data);
+settings2.global_signal_mode = 'None';
+% settings2.dmd_mode = 'naive';
+settings2.dmd_mode = 'func_DMDc';
+% settings2.dmd_mode = 'sparse_fast';
+% settings2.filter_window_dat = 3;
+% settings2.filter_window_global = 10; % Does NOT affect custom signals
+my_model_learned = CElegansModel(dat_struct, settings2);
+
+my_model_learned.plot_reconstruction_interactive(false);
+
+%% Some additional error plots
+
+% Look at the cross-validation errors
+ad_settings = struct(...
+    'hold_out_fraction',0.2,...
+    'cross_val_window_size_percent', 0.8);
+settings2.AdaptiveDmdc_settings = ad_settings;
+my_model_crossval = CElegansModel(dat_struct, settings2);
+
+err_train = my_model_crossval.AdaptiveDmdc_obj.calc_baseline_error();
+err_test = my_model_crossval.AdaptiveDmdc_obj.calc_test_error();
+
+all_figs{1} = figure('DefaultAxesFontSize',14);
+boxplot(err_test,'colors',[1 0 0])
+hold on
+boxplot(err_train)
+ylim([0, 1.1*max([err_test;err_train])])
+ylabel('L2 error')
+title('Training and Test Data Reconstruction')
+
+% Cross validation across control signals
+err_train = zeros(200, num_iter);
+err_test = zeros(200, num_iter);
+ad_settings = struct(...
+    'hold_out_fraction',0.2,...
+    'cross_val_window_size_percent', 0.8);
+settings2.AdaptiveDmdc_settings = ad_settings;
+for i = 1:num_iter
+    fprintf('Iteration %d/%d\n', i, num_iter)
+    Ui = all_U{i};
+    this_ctr = [smoothdata(5*Ui,2,'movmean',2), zeros(r_ctr,2)];
+    settings2.custom_control_signal = this_ctr(:, 1:end-settings2.augment_data);
+    my_model_crossval = CElegansModel(dat_struct, settings2);
+    
+    % Use crossvalidation functions
+    err_train(:,i) = my_model_crossval.AdaptiveDmdc_obj.calc_baseline_error();
+    err_test(:,i) = my_model_crossval.AdaptiveDmdc_obj.calc_test_error();
+end
+all_figs{1} = figure('DefaultAxesFontSize',14);
+boxplot(err_test,'colors',[1 0 0])
+hold on
+boxplot(err_train)
+ylim([0, 1.1*max(max([err_test;err_train]))])
+ylabel('L2 error')
+xlabel('Worm ID number')
+title('Training and Test Data Reconstruction')
+%==========================================================================
+
+
+%% Scratch for above
+
+% Raw Error plots
+% figure
+% plot(all_err(:,1))
+% hold on
+% plot(all_err(:,2))
+% title('Errors for alternating minimization')
+% legend({'Initial (L2) step', 'Second (cvx) step'})
+% xlabel('Iteration')
+% ylabel('L2 error')
+
+% TEST
+% dat_struct.traces = smoothdata(dat_struct.traces, 'sgolay').^2;
+dat_struct.traces = smoothdata(dat_struct.traces, 'gaussian', 3);
+% dat_struct.traces = dat_struct.traces.^2;
+% dat_struct.traces = dat_struct.traces ./ sum(dat_struct.traces.^2,1);
+% dat_struct.traces = dat_struct.traces ./ std(dat_struct.traces,1);
+if to_solve_PCA_basis
+    % Truncate the data first for speed purposes
+    [r, d, ~, U_X1] = optimal_truncation(X1);
+    r = round(r/4);
+    U_X1 = U_X1(:,1:r);
+    X1 = U_X1'*X1;
+    % X2 = U_X1'*(X2-mean(X2,2));
+    X2 = U_X1'*X2;
+    % Regularize the modes so the 1st isn't dominant
+    X1 = X1./sqrt(d(1:r)+1e-1);
+    X2 = X2./sqrt(d(1:r)+1e-1);
+end
+
+
+if to_use_L1
+    % lambda = 1e15; % The U matrix has entries on the order of 1e-16...
+%     lambda = 1e-2;
+    which_fit = 9;
+    all_U = cell(num_iter, 1);
+else
+end
+    % Note: func_dmdc doesn't work well because it tries to do an SVD on U,
+    % which is sparse and throws everything off
+    %     [~, ~, B, ~, Uhat, ~, ~, ~, ~, ~, A] = ...
+    %         func_DMDc(X1, X2, full(U), r, r_ctr);
+    %     Uhat = Uhat(:,1:r);
+    %     A = Uhat*A*Uhat';
+    if to_use_L1
+%         cvx_begin
+%             variable A(n,n)
+%             variable U(r_ctr, m)
+%             minimize( norm(A*X1 + B*U - X2, 2) + lambda*norm(U,1) )
+%         cvx_end
+        res = X2 - A*X1;
+        all_fits = zeros(m,5);
+        all_intercepts = zeros(m,1);
+        this_U = zeros(size(U));
+%         for i2 = 1:(m-1)
+        for i2 = 1:m
+%             [all_fits, fit_info] = lasso(B, res(:,i2+1),...
+%                 'NumLambda', 10);
+            [all_fits, fit_info] = lasso(B, res(:,i2),...
+                'NumLambda', 10);
+            this_U(:, i2) = all_fits(:,which_fit); % Which fit = determined by eye
+            all_intercepts(i2) = fit_info.Intercept(which_fit);
+        end
+        all_U{i} = this_U + all_intercepts';
+        U = this_U;
+        fprintf('Number of nonzero control signals: %d\n', nnz(U))
+        
+    else      
+    end
+        % Use sequential LS
+%         cvx_begin
+%             variable A(n,n)
+%             variable U(r_ctr, m)
+% %             minimize( norm(A*X1 + B*U - X2, 2) + lambda*norm(U,1) )
+%             minimize( norm(A*X1 + B*U - X2, 2) )
+%             U(sparsity_pattern) == 0 %#ok<NOPTS,EQEFF>
+%         cvx_end
+
+
+%         else
+    %   Try 2-step penalization
+%         AB = A*B;
+%     %     ABB = [AB, B];
+%         A2 = A^2;
+%     %     U_raw = ABB\(X3 - A2*X1);
+%     %     U = U_raw(1:r_ctr,:);
+%         U_raw = AB\(X3 - A2*X1 - B*U*S_left);
+%         U_raw = U_raw*S_right;
+%         U = (U_raw + U) ./ 2;
+%     end
+%     cvx_begin
+%         variable U1(r_ctr, m)
+%         variable U2(r_ctr, m)
+%         minimize( norm(A2*X1 + AB*U1 + B*U2 - X3, 2))
+%         U1(:,1:end-1) == U2(:,2:end) %#ok<NOPTS,EQEFF>
+%     cvx_end
+%     U_raw = U1;
+
+
+    
+approx_X1 = zeros(size(X1));
+approx_X1 = [X1(:,1) approx_X1];
+if ~to_use_L1
+    U = all_U{end-1};
+end
+AB = X2/[X1; full(U)];
+A = AB(:,1:n);
+B = AB(:,(n+1):end);
+for i = 1:m
+    approx_X1(:,i+1) = A*approx_X1(:,i) + B*U(:,i);
+end
+plot_2imagesc_colorbar(X1, approx_X1, '2 1', 'Data', 'Reconstruction');
+
+figure;
+this_neuron = 'AVAL';
+i = my_model_base.name2ind(this_neuron);
+plot(X1(i,:));
+hold on; 
+plot(approx_X1(i,:))
+title(this_neuron)
+
+%     X1U = [X1; Ui];
+% %     all_errs_A(i, :, :) = (X2/X1U)*X1U-X2;
+%     all_errs_A_mat(i, :, :) = (X3/X1U)*X1U-X3;
+%     all_errs_A(i) = norm(reshape(all_errs_A_mat(i, :, :), n, m));
+%     this_model = CElegansModel(dat_struct, settings2);
+%     all_errs_model(i) = ...
+%         this_model.AdaptiveDmdc_obj.calc_reconstruction_error();
 %==========================================================================
 
 

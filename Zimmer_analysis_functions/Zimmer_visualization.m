@@ -1,4 +1,4 @@
-%% Use a t-SNE for visualization
+%% Use t-SNE for visualization
 filename = 'C:\Users\charl\Documents\MATLAB\Collaborations/Zimmer_data/WildType_adult/simplewt1/wbdataset.mat';
 dat1 = importdata(filename);
 [mapped_data2, mapping2] = compute_mapping(dat1.traces,'t-SNE',3);
@@ -3994,7 +3994,7 @@ legend({'AICc', 'BIC', 'Number of clusters'})
 %---------------------------------------------
 % Build the Co-occurrence matrix using K-means
 %---------------------------------------------
-settings.which_metrics = {'silhouette', 'gap'};
+settings.which_metrics_cluster_size = {'silhouette', 'gap'};
 settings.total_m = 1000;
 settings.max_clusters = 10;
 settings.cluster_func = @(X,K)(kmeans(X, K, 'emptyaction','singleton',...
@@ -4032,7 +4032,7 @@ idx = @(X) cluster(linkage(X,'Ward'), 'maxclust',k);
 cluster_and_imagesc(co_occurrence, idx, these_names, []);
 title(sprintf('Number of clusters: %d', k))
 %---------------------------------------------
-%% Cluster Plotting
+%% t-SNE and original basis cluster plotting
 %---------------------------------------------
 all_figs = cell(2,1);
 rng(2)
@@ -4144,6 +4144,466 @@ this_threshold = all_thresholds(ind);
 calc_false_detection(this_dat, this_recon, this_threshold,...
     1, 10, true);
 
+
+%% Same as above, with other individuals
+% filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+filename = '../../Zimmer_data/WildType_adult/simplewt4/wbdataset.mat';
+
+settings_ideal = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 7,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','func_DMDc',...
+    'global_signal_subset', {{'DT','VT','REV','FWD','SLOW'}},...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings_ideal.global_signal_mode = 'ID_binary_transitions';
+
+% Build model and get data
+my_model_td = CElegansModel(filename, settings_ideal);
+%% Analyze all neurons
+num_neurons = my_model_td.original_sz(1);
+reconstruct_dat = real(...
+    my_model_td.AdaptiveDmdc_obj.calc_reconstruction_control());
+f = @(x) my_model_td.flat_filter(x, 10);
+threshold_vec = linspace(0.1, 1.5, 5);
+
+all_fp = zeros(num_neurons, 1);
+all_fn = all_fp;
+all_ind_fp = all_fp;
+all_ind_fn = all_fp;
+all_spikes = all_fp;
+used_thresholds = all_fp;
+
+for i = 1:num_neurons
+    this_dat = my_model_td.dat(i,:);
+    this_recon = reconstruct_dat(i,:);
+    % Analyze the derivatives
+    this_dat = abs(gradient(f(this_dat)));
+    this_recon = abs(gradient(f(this_recon)));
+    % Get false detections
+    f_detect = @(x) minimize_false_detection(this_dat, ...
+        this_recon, x, 0.5, true);
+    all_thresholds = zeros(length(threshold_vec),1);
+    all_vals = all_thresholds;
+    for i2 = 1:length(threshold_vec)
+        [all_thresholds(i2), all_vals(i2)] = ...
+            fminsearch(f_detect, threshold_vec(i2));
+    end
+    [~, ind] = min(all_vals);
+    used_thresholds(i) = all_thresholds(ind);
+    
+    % Use partial detection of false positives/negatives
+    [all_fp(i), all_fn(i), all_spikes(i), ind_fp, ind_fn] = ...
+        calc_false_detection(this_dat, this_recon, used_thresholds(i),...
+        [], [], false, true);
+    all_ind_fp = length(ind_fp);
+    all_ind_fn = length(ind_fn);
+end
+
+% Diagnostics regarding metrics
+all_corr = my_model_td.calc_correlation_matrix([], 'linear');
+all_corr = all_corr(1:num_neurons);
+ind_to_keep = ~(all_spikes==0);
+
+names = my_model_td.get_names(1:num_neurons, true);
+% names{1} = '1';
+% names{49} = '49';
+
+this_dat = real(my_model_td.dat - mean(my_model_td.dat,2));
+[snr_vec, dat_signal, dat_noise] = calc_snr(this_dat);
+max_variance = var(dat_signal-mean(dat_signal,2), 0, 2) ./...
+    var(this_dat, 0, 2);
+max_variance = max_variance(1:num_neurons);
+snr_vec = snr_vec(1:num_neurons);
+this_recon = real(reconstruct_dat - mean(reconstruct_dat,2));
+% all_dist = vecnorm(this_dat - this_recon, 2, 2);
+all_dist = vecnorm(dat_signal - this_recon, 2, 2);
+all_dist = all_dist(1:num_neurons)./...
+    vecnorm(my_model_td.dat(1:num_neurons), 2, 2);
+
+disp('Finished analyzing all neurons')
+%% Build the feature set
+raw_corr = my_model_td.calc_correlation_matrix();
+raw_corr = raw_corr(1:num_neurons);
+rng(2)
+num_dims = 2;
+f = @linear_sigmoid_middle_percentile;
+all_dat = table(real(all_corr), all_dist, all_fn, all_fp, all_spikes,...
+    f(all_fn), f(all_fp), f(all_spikes), snr_vec, max_variance,...
+    'VariableNames',{'Correlation','L2_distance','FN','FP','Spikes',...
+    'FN_thresh','FP_thresh','Spikes_thresh','SNR','max_variance'});
+% my_features = {'Correlation','L2_distance','FN','FP','Spikes',...
+%     'FN_thresh','FP_thresh','Spikes_thresh'};
+my_features = {'Correlation','L2_distance','FN','FP','Spikes'};
+% my_features = {'Correlation','L2_distance','FN','FP','Spikes','max_variance'};
+% my_features = {'Correlation','L2_distance','FN_thresh','FP_thresh','Spikes_thresh'};
+to_cluster_dat = all_dat{:, my_features};
+neurons_with_activity = logical(ind_to_keep.*(snr_vec>median(snr_vec)));
+to_cluster_dat = to_cluster_dat(neurons_with_activity,:);
+
+% figure; plot(to_cluster_dat(1,:)); xticklabels(my_features);xtickangle(60)
+% Normalize the data
+mappedX = whiten(to_cluster_dat);
+% mappedX(:,3:end) = mappedX(:,3:end)./2; % These columns have repeats
+
+these_names = names(neurons_with_activity);
+
+disp('Finished building feature set')
+%% Do ensemble clustering
+%---------------------------------------------
+% Build the Co-occurrence matrix using K-means
+%---------------------------------------------
+settings.which_metrics_cluster_size = {'silhouette', 'gap'};
+settings.total_m = 1000;
+settings.max_clusters = 10;
+settings.cluster_func = @(X,K)(kmeans(X, K, 'emptyaction','singleton',...
+    'replicate',1));
+
+[co_occurrence, all_cluster_evals] = ensemble_clustering(mappedX, settings);
+
+%---------------------------------------------
+% Hierarchical clustering on the co-occurence matrix (and plot)
+%---------------------------------------------
+% Get 'best' number of clusters
+E = evalclusters(co_occurrence,...
+    'linkage', 'silhouette', 'KList', 1:settings.max_clusters);
+figure;
+plot(E)
+k = E.OptimalK;
+% k = 4;
+
+% Dendrogram
+tree = linkage(co_occurrence,'Ward');
+figure()
+cutoff = median([tree(end-k+1,3) tree(end-k+2,3)]);
+[H,T,outperm] = dendrogram(tree, 15, ...
+    'Orientation','left','ColorThreshold',cutoff);
+tree_names = cell(length(outperm),1);
+for i = 1:length(outperm)
+    tree_names{outperm==i} = strjoin(these_names(T==i), ';');
+end
+yticklabels(tree_names)
+title(sprintf('Dendrogram with %d clusters', k))
+
+% Heatmap
+% idx = E.OptimalY;
+idx = @(X) cluster(linkage(X,'Ward'), 'maxclust',k);
+cluster_and_imagesc(co_occurrence, idx, these_names, []);
+title(sprintf('Number of clusters: %d', k))
+%---------------------------------------------
+%% Save cluster plots
+to_save = false;
+foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\figures\';
+if to_save
+    for i = 1:length(all_figs)
+        if isempty(all_figs{i}) || ~isvalid(all_figs{i})
+            continue;
+        end
+        fname = sprintf('%sfigure_cluster_%d', foldername, i);
+        this_fig = all_figs{i};
+        sz = {'0.9\columnwidth', '0.12\paperheight'};
+        matlab2tikz('figurehandle',this_fig,'filename',...
+            [fname '_raw.tex'], ...
+            'width', sz{1}, 'height', sz{2});
+        saveas(this_fig, fname, 'png');
+    end
+end
+%% Look at the false detection plot for a single neuron
+% i = my_model_td.name2ind('SMDDL');
+% i = my_model_td.name2ind('AVFR');
+% i = my_model_td.name2ind('RMED');
+% i = my_model_td.name2ind('AVAL');
+% i = my_model_td.name2ind('SMDVL');
+i = my_model_td.name2ind('RIMR');
+% i = 1;
+
+% f = @(x) my_model_td.flat_filter(x, 5); % original filter
+f = @(x) my_model_td.flat_filter(x, 10);
+% this_dat = my_model_td.dat(i,:);
+this_dat = dat_signal(i,:);
+this_recon = reconstruct_dat(i,:);
+this_recon = this_recon - mean(this_recon);
+figure;
+plot(f(this_dat)); hold on; plot(f(this_recon));
+title('Filtered reconstruction and data'); drawnow
+% Analyze the derivatives
+this_dat = abs(gradient(f(this_dat)));
+this_recon = abs(gradient(f(this_recon)));
+% Get false detections
+f_detect = @(x) minimize_false_detection(this_dat, ...
+    this_recon, x, 0.5);
+all_thresholds = zeros(length(threshold_vec),1);
+all_vals = all_thresholds;
+for i2 = 1:length(threshold_vec)
+    [all_thresholds(i2), all_vals(i2)] = ...
+        fminsearch(f_detect, threshold_vec(i2));
+end
+[~, ind] = min(all_vals);
+this_threshold = all_thresholds(ind);
+
+calc_false_detection(this_dat, this_recon, this_threshold,...
+    1, 10, true);
+
+
+%% Do dynamic clustering on all individuals, and analyze total results
+% First build models and dynamic features
+filename_template = ...
+    '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
+
+% my_features = {'Correlation','L2_distance','FN','FP','TP','Spikes'};
+% my_features = {'Correlation','L2_distance','FN_norm','FP_norm','TP_norm','Spikes'};
+% my_features = {'Correlation','L2_distance','dtw',...
+%     'FN_norm','FP_norm','TP_norm','FN','FP','TP'};
+% my_features = {'Raw_Correlation','L2_distance','dtw',...
+%     'FN_norm','FP_norm','TP_norm','FN','FP','TP'};
+my_features = {'Raw_Correlation','L2_distance',...
+    'FN_norm','FP_norm','TP_norm','FN','FP','TP'};
+% my_features = {'Raw_Correlation','L2_distance',...
+%     'FN_norm','FP_norm','TP_norm','Spikes'};
+use_PCA = true;
+
+sz = 5;
+all_co_occurrence = cell(sz,1);
+all_names = cell(sz,1);
+all_models = cell(sz,1);
+all_dat = cell(sz, 1);
+all_out = cell(sz, 1);
+for i = 1:sz
+    filename = sprintf(filename_template, i);
+    [all_co_occurrence{i}, all_names{i}, all_models{i}, all_dat{i}, all_out{i}] = ...
+        zimmer_dynamic_clustering(filename, my_features, false, use_PCA);
+end
+
+disp('Finished building all co-occurrence matrices')
+%% REDO ensemble clustering (with features already built)
+%---------------------------------------------
+% Build the Co-occurrence matrix using K-means
+%---------------------------------------------
+settings.which_metrics_cluster_size = {'silhouette', 'gap'};
+settings.total_m = 1000;
+settings.max_clusters = 10;
+settings.cluster_func = @(X,K)(kmeans(X, K, 'emptyaction','singleton',...
+    'replicate',5));
+sz = 5;
+
+for i = 1:sz
+    this_dat = all_dat{i}{all_out{i}(1).neurons_with_activity,my_features};
+    all_co_occurrence{i} = ensemble_clustering(this_dat, settings);
+end
+%% Align the data (only named neurons)
+%---------------------------------------------
+% First build the name list
+%---------------------------------------------
+sz = 5;
+max_length = 5; % Only keep unambiguously identified neurons
+total_names = {};
+for i = 1:sz
+    this_names = all_names{i};
+    to_keep_ind = false(size(this_names));
+    for i2 = 1:length(this_names)
+        x = this_names{i2};
+        to_keep_ind(i2) = ( length(x) <=max_length && ...
+            ~isempty(regexp(x,'\D(?#any non-digit)', 'once')));
+    end
+    
+    total_names = union(total_names, this_names(to_keep_ind));
+end
+
+%---------------------------------------------
+% Build the total co-occurrence matrix
+%---------------------------------------------
+total_co_occurrence_3d = nan(length(total_names),length(total_names),sz);
+num_identifications = zeros(size(total_names));
+
+for i = 1:sz
+    [this_names, this_ind] = sort(all_names{i});
+    this_dat = all_co_occurrence{i}(this_ind,this_ind);
+    [~, ~, ib] = unique(this_names, 'stable');
+    repeat_names = find(hist(ib, unique(ib))>1);
+    if ~isempty(repeat_names)
+        this_names(strcmp(this_names{repeat_names}, this_names)) = [];
+    end
+    
+    to_keep_names = intersect(this_names, total_names);
+    ind_in_individual = cellfun(@(x) any(strcmp(x, to_keep_names)),...
+        this_names);
+    ind_in_total = cellfun(@(x) any(strcmp(x, to_keep_names)),...
+        total_names);
+    num_identifications = num_identifications + ind_in_total;
+    
+    total_co_occurrence_3d(ind_in_total, ind_in_total, i) = ...
+        this_dat(ind_in_individual, ind_in_individual);
+end
+
+% Remove rarely identified neurons
+min_identifications = 3;
+to_keep_ind = (num_identifications >= min_identifications);
+total_co_occurrence_3d = total_co_occurrence_3d(to_keep_ind, to_keep_ind, :);
+
+%---------------------------------------------
+% Normalize according to how many times the neuron appeared
+%---------------------------------------------
+tmp = total_co_occurrence_3d;
+tmp = tmp - min(min(tmp));
+sz = length(find(to_keep_ind));
+I = logical(eye(sz));
+for i3 = 1:size(tmp,3)
+    for i = 1:sz
+        for i2 = 1:sz
+            if i==i2
+                continue;
+            end
+            tmp(i,i2,i3) = tmp(i,i2,i3) / min([tmp(i,i,i3), tmp(i2,i2,i3)]);
+        end
+    end
+    tmp(:,:, i3) = tmp(:,:, i3) - diag(diag(tmp(:,:, i3))) + I;
+end
+total_co_occurrence_std = std(tmp, 0, 3, 'omitnan');
+tmp(isnan(tmp)) = 0;
+total_co_occurrence = mean(tmp, 3);
+total_names = total_names(to_keep_ind);
+
+disp('Finished building TOTAL co-occurrence matrix')
+%% Actually cluster
+rng(4);
+%---------------------------------------------
+% Build the Co-occurrence matrix using K-means
+%---------------------------------------------
+settings.which_metrics_cluster_size = {'silhouette', 'gap'};
+settings.total_m = 10000;
+settings.max_clusters = 10;
+settings.cluster_func = @(X,K)(kmeans(X, K, 'emptyaction','singleton',...
+    'replicate',5));
+
+% E = evalclusters(total_co_occurrence,...
+%     'linkage', 'silhouette', 'KList', 1:settings.max_clusters);
+E = evalclusters(total_co_occurrence,...
+    'linkage', 'gap', 'KList', 1:settings.max_clusters);
+figure;
+plot(E)
+k = E.OptimalK;
+% k = 4;
+
+idx = @(X) cluster(linkage(X,'Ward'), 'maxclust',k);
+[fig, c, all_ind] = cluster_and_imagesc(...
+    total_co_occurrence, idx, total_names, []);
+title(sprintf('Number of clusters: %d', k))
+
+% Silhouette diagram for all clusters
+figure
+[all_scores_table, S] = silhouette_with_names(...
+    total_co_occurrence, c, total_names, [all_ind{:}]);
+
+% Dendrogram
+tree = linkage(total_co_occurrence,'Ward');
+figure()
+cutoff = median([tree(end-k+1,3) tree(end-k+2,3)]);
+[H,T,outperm] = dendrogram(tree, 15, ...
+    'Orientation','left','ColorThreshold',cutoff);
+tree_names = cell(length(outperm),1);
+for i = 1:length(outperm)
+    tree_names{outperm==i} = strjoin(total_names(T==i), ';');
+end
+yticklabels(tree_names)
+title(sprintf('Dendrogram with %d clusters', k))
+
+% Centroids of the clusters
+% all_centroids = zeros(k, length(my_features));
+all_features = all_dat{1}.Properties.VariableNames;
+all_centroids = zeros(k, length(all_features));
+clust_names = cell(k,1);
+for i = 1:k
+    this_names = total_names(all_ind{i});
+    clust_names{i} = sprintf('%s_etc',this_names{1});
+    % Get the data from all tables
+    num_pts = 0;
+    for i2 = 1:length(all_dat)
+        this_ind = all_models{i2}.name2ind(this_names);
+%         tmp = mean(all_dat{i2}{this_ind, my_features},1,'omitnan');
+        tmp = all_dat{i2}{this_ind, :};
+        num_pts = num_pts + length(this_ind) - sum(any(isnan(tmp),2));
+        if i2 == 1
+            this_dat = sum(tmp, 1, 'omitnan');
+        else
+            this_dat = this_dat + sum(tmp, 1, 'omitnan');
+        end
+    end
+    this_dat = this_dat./num_pts;
+    
+    all_centroids(i,:) = this_dat;
+end
+
+centroid_table = array2table(all_centroids);
+% centroid_table.Properties.VariableNames = my_features;
+centroid_table.Properties.VariableNames = all_features;
+% clust_names = strsplit(sprintf('Cluster %d;', 1:k),';');
+% centroid_table.Properties.RowNames = clust_names(1:end-1);
+centroid_table.Properties.RowNames = clust_names;
+disp(centroid_table)
+%==========================================================================
+%% Sanity checks for silhouette scores
+% my_si = zeros(length(total_names),1);
+% all_ind_one_vec = [all_ind{:}];
+% for i = 1:length(total_names)
+%     this_neuron = all_ind_one_vec(i);
+% %     [my_si(this_neuron)] = my_silhouette(total_co_occurrence, c,
+% %     this_neuron); % SAME AS MATLAB VECTOR
+%     [my_si(i)] = my_silhouette(total_co_occurrence, c, this_neuron);
+% end
+% matlab_silhouette_table = table(...
+%     all_scores_table, total_names(all_ind_one_vec), sort(c), my_si);
+% disp(matlab_silhouette_table)
+%% Look at the false detection plot for a single neuron
+which_model = 2;
+my_model_td = all_models{which_model};
+[fig, c] = cluster_and_imagesc(all_co_occurrence{which_model},...
+    idx, all_names{which_model}, []);
+% i = my_model_td.name2ind('SMDDL');
+i = my_model_td.name2ind('RIS');
+% i = 1;
+if isempty(i)
+    error('Neuron not found in this model')
+end
+
+% f = @(x) my_model_td.flat_filter(x, 5); % original filter
+f = @(x) my_model_td.flat_filter(x, 10);
+this_dat = my_model_td.dat(i,:) - mean(my_model_td.dat(i,:));
+reconstruct_dat = my_model_td.AdaptiveDmdc_obj.calc_reconstruction_control();
+% this_dat = dat_signal(i,:);
+this_recon = reconstruct_dat(i,:);
+this_recon = real(this_recon - mean(this_recon));
+figure;
+plot(f(this_dat)); hold on; plot(f(this_recon));
+title('Filtered reconstruction and data'); drawnow
+% Analyze the derivatives
+this_dat = abs(gradient(f(this_dat)));
+this_recon = abs(gradient(f(this_recon)));
+% Get false detections
+f_detect = @(x) minimize_false_detection(this_dat, ...
+    this_recon, x, 0.5);
+all_thresholds = zeros(length(threshold_vec),1);
+all_vals = all_thresholds;
+for i2 = 1:length(threshold_vec)
+    [all_thresholds(i2), all_vals(i2)] = ...
+        fminsearch(f_detect, threshold_vec(i2));
+end
+[~, ind] = min(all_vals);
+this_threshold = all_thresholds(ind);
+
+[num_fp, num_fn, num_spikes, ind_fp, ind_fn, true_pos] = ...
+    calc_false_detection(this_dat, this_recon, this_threshold,...
+    1, 10, true, true);
+
+
+%==========================================================================
+
+
 %% Analyze a couple of neurons
 % good_neuron = my_model_td.name2ind('AVAL'); % reversal
 good_neuron = my_model_td.name2ind('AVBL'); % reversal
@@ -4183,3 +4643,1361 @@ title('False detection for SMDDL')
 fprintf('Number of fp (fn) for AVAL: %d (%d)\n', good_fp, good_fn)
 fprintf('Number of fp (fn) for SMDDL: %d (%d)\n', bad_fp, bad_fn)
 %==========================================================================
+
+
+%% Testing out the findpeaks function for event detection
+filename_template = ...
+    '../../Zimmer_data/WildType_adult/simplewt%d/wbdataset.mat';
+filename_ideal = sprintf(filename_template, 5);
+dat_ideal = importdata(filename_ideal);
+num_neurons = size(dat_ideal.traces,2);
+
+settings_ideal = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 9,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','func_DMDc',...
+    'global_signal_subset', {{'DT', 'VT', 'REV', 'FWD', 'SLOW'}},...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings_ideal.global_signal_mode = 'ID_binary_transitions';
+
+% my_model_peaks = CElegansModel(filename_ideal, settings_ideal);
+
+this_dat = my_model_peaks.dat;
+% [r, ~, this_dat ] = optimal_truncation(my_model_peaks.dat(1:num_neurons,:));
+for i = 1:num_neurons
+    raw_x = this_dat(i,:);
+    x = smoothdata(raw_x, 'sgolay');
+%     offset = quantile(x,0.1);
+%     x = x - offset;
+%     x = this_dat(i,:);
+%     res = norm(x - my_model_peaks.dat(i,:) + offset)/norm(x);
+    res = norm(x - raw_x)/norm(x);
+%     dx = abs(TVRegDiff(x, 10, 1e-4));%, [], 'large'));
+    dx = abs(TVRegDiff(raw_x, 10, 1e-4, [], [], [], [], false, false));
+%     outlier_ind = find(isoutlier(raw_x, 'ThresholdFactor',5));
+%     if length(outlier_ind)>3
+%         findpeaks(x(outlier_ind), outlier_ind, 'MinPeakProminence',var(x))
+%         hold on
+%     end
+%     findpeaks(x, 'MinPeakDistance',20, 'MinPeakProminence',var(x),...
+%         ...'MinPeakHeight',std(x), 'MinPeakWidth',10);
+%         'MinPeakWidth',10, 'Annotate', 'extents');
+%     [~, ~, ~, proms] = findpeaks(x, 'MinPeakDistance',20, ...
+%         'MinPeakProminence',var(x), 'MinPeakWidth',10);
+%     findpeaks(x, 'MinPeakDistance',20, 'MinPeakProminence',quantile(proms,0.25),...
+%         'MinPeakWidth',10, 'Annotate', 'extents');
+%     findpeaks(dx, 'MinPeakDistance',20, 'MinPeakProminence',std(dx),...
+%         'MinPeakWidth',0, 'Annotate', 'extents')
+    findpeaks(dx,'MinPeakProminence',std(dx))
+    hold off
+    if acf(x', 1, false) < 0.5
+        title('Should skip this one')
+    else
+        title(sprintf('Residual is %.2f', res))
+    end
+    fig = figure;
+%     histogram(proms,'BinWidth', 0.01)
+    plot(x)
+    drawnow
+%     pause
+    close(fig);
+end
+
+
+%==========================================================================
+
+
+%% Use new findpeaks function for clustering
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+% filename = '../../Zimmer_data/WildType_adult/simplewt4/wbdataset.mat';
+
+settings_ideal = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 7,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','func_DMDc',...
+    'global_signal_subset', {{'DT','VT','REV','FWD','SLOW'}},...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings_ideal.global_signal_mode = 'ID_binary_transitions';
+
+% Build model and get data
+my_model_td = CElegansModel(filename, settings_ideal);
+%% Analyze all neurons
+num_neurons = my_model_td.original_sz(1);
+reconstruct_dat = real(...
+    my_model_td.AdaptiveDmdc_obj.calc_reconstruction_control());
+f = @(x) abs(TVRegDiff(x, 5, 1e-4, [], [], [], [], false, false));
+threshold_vec = linspace(0.1, 1.5, 3);
+
+all_fp = zeros(num_neurons, 1);
+all_fn = all_fp;
+all_ind_fp = all_fp;
+all_ind_fn = all_fp;
+all_spikes = all_fp;
+used_thresholds = all_fp;
+
+for i = 1:num_neurons
+    this_dat = my_model_td.dat(i,:);
+    this_recon = reconstruct_dat(i,:);
+    % Analyze the derivatives
+    this_dat = f(this_dat);
+    this_recon = f(this_recon);
+    % Get false detections
+%     f_detect = @(x) minimize_false_detection(this_dat, ...
+%         this_recon, x, 0.5, true);
+    all_thresholds = ones(length(threshold_vec),1);
+%     all_vals = all_thresholds;
+%     for i2 = 1:length(threshold_vec)
+%         [all_thresholds(i2), all_vals(i2)] = ...
+%             fminsearch(f_detect, threshold_vec(i2));
+%     end
+%     [~, ind] = min(all_vals);
+    used_thresholds(i) = all_thresholds(ind);
+    
+    % Use partial detection of false positives/negatives
+    [all_fp(i), all_fn(i), all_spikes(i), ind_fp, ind_fn, true_pos(i)] = ...
+        calc_false_detection(this_dat, this_recon, used_thresholds(i),...
+        [], [], false, false, true);
+    all_ind_fp = length(ind_fp);
+    all_ind_fn = length(ind_fn);
+end
+
+% Diagnostics regarding metrics
+all_corr = my_model_td.calc_correlation_matrix([], 'linear');
+all_corr = all_corr(1:num_neurons);
+ind_to_keep = ~(all_spikes==0);
+
+names = my_model_td.get_names(1:num_neurons, true);
+% names{1} = '1';
+% names{49} = '49';
+
+this_dat = real(my_model_td.dat - mean(my_model_td.dat,2));
+[snr_vec, dat_signal, dat_noise] = calc_snr(this_dat);
+max_variance = var(dat_signal-mean(dat_signal,2), 0, 2) ./...
+    var(this_dat, 0, 2);
+max_variance = max_variance(1:num_neurons);
+snr_vec = snr_vec(1:num_neurons);
+this_recon = real(reconstruct_dat - mean(reconstruct_dat,2));
+% all_dist = vecnorm(this_dat - this_recon, 2, 2);
+L2_dist = vecnorm(dat_signal - this_recon, 2, 2);
+L2_dist = L2_dist(1:num_neurons)./...
+    vecnorm(my_model_td.dat(1:num_neurons), 2, 2);
+
+disp('Finished analyzing all neurons')
+%% Build the feature set
+raw_corr = my_model_td.calc_correlation_matrix();
+raw_corr = raw_corr(1:num_neurons);
+rng(2)
+num_dims = 2;
+all_dat = table(real(raw_corr), real(all_corr), L2_dist,...
+    all_fn, all_fp, true_pos, all_spikes,...
+    all_fn./all_spikes, all_fp./all_spikes, true_pos./all_spikes,...
+    snr_vec, max_variance,...
+    'VariableNames', {...
+    'Raw_Correlation', 'Correlation', 'L2_distance',...
+    'FN', 'FP', 'TP', 'Spikes',...
+    'FN_norm', 'FP_norm', 'TP_norm',...
+    'SNR', 'max_variance'});
+to_cluster_dat = all_dat{:, my_features};
+neurons_with_activity = logical(ind_to_keep.*(snr_vec>median(snr_vec)));
+to_cluster_dat = to_cluster_dat(neurons_with_activity,:);
+
+% figure; plot(to_cluster_dat(1,:)); xticklabels(my_features);xtickangle(60)
+% Normalize the data
+mappedX = whiten(to_cluster_dat);
+% mappedX(:,3:end) = mappedX(:,3:end)./2; % These columns have repeats
+
+these_names = names(neurons_with_activity);
+
+disp('Finished building feature set')
+%% Do ensemble clustering
+%---------------------------------------------
+% Build the Co-occurrence matrix using K-means
+%---------------------------------------------
+settings.which_metrics_cluster_size = {'silhouette', 'gap'};
+settings.total_m = 1000;
+settings.max_clusters = 10;
+settings.cluster_func = @(X,K)(kmeans(X, K, 'emptyaction','singleton',...
+    'replicate',1));
+
+[co_occurrence, all_cluster_evals] = ensemble_clustering(mappedX, settings);
+
+%---------------------------------------------
+% Hierarchical clustering on the co-occurence matrix (and plot)
+%---------------------------------------------
+% Get 'best' number of clusters
+E = evalclusters(co_occurrence,...
+    'linkage', 'silhouette', 'KList', 1:settings.max_clusters);
+figure;
+plot(E)
+k = E.OptimalK;
+% k = 4;
+
+% Dendrogram
+tree = linkage(co_occurrence,'Ward');
+figure()
+cutoff = median([tree(end-k+1,3) tree(end-k+2,3)]);
+[H,T,outperm] = dendrogram(tree, 15, ...
+    'Orientation','left','ColorThreshold',cutoff);
+tree_names = cell(length(outperm),1);
+for i = 1:length(outperm)
+    tree_names{outperm==i} = strjoin(these_names(T==i), ';');
+end
+yticklabels(tree_names)
+title(sprintf('Dendrogram with %d clusters', k))
+
+% Heatmap
+% idx = E.OptimalY;
+idx = @(X) cluster(linkage(X,'Ward'), 'maxclust',k);
+cluster_and_imagesc(co_occurrence, idx, these_names, []);
+title(sprintf('Number of clusters: %d', k))
+%---------------------------------------------
+%% Save cluster plots
+to_save = false;
+foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\figures\';
+if to_save
+    for i = 1:length(all_figs)
+        if isempty(all_figs{i}) || ~isvalid(all_figs{i})
+            continue;
+        end
+        fname = sprintf('%sfigure_cluster_%d', foldername, i);
+        this_fig = all_figs{i};
+        sz = {'0.9\columnwidth', '0.12\paperheight'};
+        matlab2tikz('figurehandle',this_fig,'filename',...
+            [fname '_raw.tex'], ...
+            'width', sz{1}, 'height', sz{2});
+        saveas(this_fig, fname, 'png');
+    end
+end
+%% Look at the false detection plot for a single neuron
+% i = my_model_td.name2ind('SMDDL');
+% i = my_model_td.name2ind('AVFR');
+% i = my_model_td.name2ind('RMED');
+% i = my_model_td.name2ind('AVAL');
+% i = my_model_td.name2ind('SMDVL');
+i = my_model_td.name2ind('RIMR');
+% i = 1;
+
+% f = @(x) my_model_td.flat_filter(x, 5); % original filter
+f = @(x) my_model_td.flat_filter(x, 10);
+% this_dat = my_model_td.dat(i,:);
+this_dat = dat_signal(i,:);
+this_recon = reconstruct_dat(i,:);
+this_recon = this_recon - mean(this_recon);
+figure;
+plot(f(this_dat)); hold on; plot(f(this_recon));
+title('Filtered reconstruction and data'); drawnow
+% Analyze the derivatives
+this_dat = abs(gradient(f(this_dat)));
+this_recon = abs(gradient(f(this_recon)));
+% Get false detections
+f_detect = @(x) minimize_false_detection(this_dat, ...
+    this_recon, x, 0.5);
+all_thresholds = zeros(length(threshold_vec),1);
+all_vals = all_thresholds;
+for i2 = 1:length(threshold_vec)
+    [all_thresholds(i2), all_vals(i2)] = ...
+        fminsearch(f_detect, threshold_vec(i2));
+end
+[~, ind] = min(all_vals);
+this_threshold = all_thresholds(ind);
+
+calc_false_detection(this_dat, this_recon, this_threshold,...
+    1, 10, true);
+
+%% Do dynamic clustering on ALL 15 individuals using new findpeaks function
+% First build models and dynamic features
+%---------------------------------------------
+% Build filename array (different data formats...)
+%---------------------------------------------
+n = 15;
+all_filenames = cell(n, 1);
+foldername1 = '../../Zimmer_data/WildType_adult/';
+filename1_template = 'simplewt%d/wbdataset.mat';
+num_type_1 = 5;
+foldername2 = 'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\npr1_1_PreLet\';
+filename2_template = 'wbdataset.mat';
+
+for i = 1:n
+    if i <= num_type_1
+        all_filenames{i} = sprintf([foldername1, filename1_template], i);
+    else
+        subfolder = dir(foldername2);
+        all_filenames{i} = [foldername2, ...
+            subfolder(i-num_type_1+2).name, '\', filename2_template];
+    end
+end
+
+%---------------------------------------------
+% Build models and features
+%---------------------------------------------
+my_features = {'Raw_Correlation','L2_distance',...
+    'FN_norm','FP_norm','TP_norm','FN','FP','TP'};
+use_findpeaks = true;
+
+all_co_occurrence = cell(n,1);
+all_names = cell(n,1);
+all_models = cell(n,1);
+all_dat = cell(n, 1);
+all_out = cell(n, 1);
+for i = 1:n
+    fprintf('Analyzing model %d of %d...\n', i, n)
+    filename = all_filenames{i};
+    [all_co_occurrence{i}, all_names{i}, all_models{i},...
+        all_dat{i}, all_out{i}] = ...
+        zimmer_dynamic_clustering(filename, my_features,...
+        false, false, use_findpeaks);
+end
+
+disp('Finished building all co-occurrence matrices')
+%% REDO ensemble clustering (with features already built)
+
+% redo_features = {'Raw_Correlation','L2_distance',...
+%     'FN_norm','FP_norm','TP_norm','FN','FP','TP'};
+% redo_features = 'all_ind_fn';
+% redo_features = 'static_correlation';
+redo_features = 'static_correlation_deriv';
+%---------------------------------------------
+% Build the Co-occurrence matrix using K-means
+%---------------------------------------------
+settings.which_metrics_cluster_size = {'silhouette', 'gap'};
+settings.total_m = 1000;
+settings.max_clusters = 10;
+settings.cluster_func = @(X,K)(kmeans(X, K, 'emptyaction','singleton',...
+    'replicate',5));
+% settings.cluster_func = @(X,K)(kmeans(X, K, 'emptyaction','singleton',...
+%     'replicate',5, 'Distance', 'hamming'));
+sz = length(all_models);
+
+for i = 1:sz
+    fprintf('Analyzing model %d of %d...\n', i, sz)
+    ind = all_out{i}.neurons_with_activity;
+    if iscell(redo_features)
+        this_dat = all_dat{i}{ind,redo_features};
+    elseif ischar(redo_features) && isfield(all_out{1}, redo_features)
+        this_dat = all_out{i}.(redo_features);
+        this_dat = squareform(pdist(this_dat(ind,:), 'jaccard'));
+%         this_dat = squareform(pdist(this_dat(ind,:), 'hamming'));
+    elseif strcmp(redo_features, 'static_correlation')
+        this_dat = squareform(pdist(all_models{i}.dat(ind,:), 'correlation'));
+    elseif strcmp(redo_features, 'static_correlation_deriv')
+        f = @(x) abs(TVRegDiff(x, 5, 1e-4, [], [], [], [], false, false));
+        this_dat = all_models{i}.dat(ind,:);
+        for i2 = 1:length(ind)
+             tmp = f(this_dat(i,:));
+             this_dat(i,:) = tmp(1:end-1)';
+        end
+        this_dat = squareform(pdist(all_models{i}.dat(ind,:), 'correlation'));
+    else
+        error('Unrecognized features')
+    end
+    all_co_occurrence{i} = ensemble_clustering(this_dat, settings);
+end
+%% Align the data (only named neurons)
+%---------------------------------------------
+% First build the name list
+%---------------------------------------------
+sz = length(all_models);
+max_length = 5; % Only keep unambiguously identified neurons
+total_names = {};
+for i = 1:sz
+    this_names = all_names{i};
+    to_keep_ind = false(size(this_names));
+    for i2 = 1:length(this_names)
+        x = this_names{i2};
+        to_keep_ind(i2) = ( length(x) <=max_length && ...
+            ~isempty(regexp(x,'\D(?#any non-digit)', 'once')));
+    end
+    
+    total_names = union(total_names, this_names(to_keep_ind));
+end
+
+%---------------------------------------------
+% Build the total co-occurrence matrix
+%---------------------------------------------
+n = length(total_names);
+total_co_occurrence_3d = nan(n, n, sz);
+maximum_co_occurrence = zeros(n, n);
+num_identifications = zeros(size(total_names));
+
+for i = 1:sz
+    [this_names, this_ind] = sort(all_names{i});
+    this_dat = all_co_occurrence{i}(this_ind,this_ind);
+    [~, ~, ib] = unique(this_names, 'stable');
+    repeat_names = find(hist(ib, unique(ib))>1);
+    if ~isempty(repeat_names)
+        this_names(strcmp(this_names{repeat_names}, this_names)) = [];
+    end
+    
+    to_keep_names = intersect(this_names, total_names);
+    ind_in_individual = cellfun(@(x) any(strcmp(x, to_keep_names)),...
+        this_names);
+    ind_in_total = cellfun(@(x) any(strcmp(x, to_keep_names)),...
+        total_names);
+    num_identifications = num_identifications + ind_in_total;
+    
+    % Calculate max co_occurrence
+    maximum_co_occurrence(ind_in_total,ind_in_total) = ...
+        maximum_co_occurrence(ind_in_total,ind_in_total) + 1;
+%     for i2 = 1:n
+%         for i3 = 1:n
+%             maximum_co_occurrence(i2,i3) = maximum_co_occurrence(i2,i3) + ...
+%                 double();
+%         end
+%     end
+    
+    total_co_occurrence_3d(ind_in_total, ind_in_total, i) = ...
+        this_dat(ind_in_individual, ind_in_individual);
+end
+
+% Remove rarely identified neurons
+min_identifications = floor(sz/5);
+to_keep_ind = (num_identifications >= min_identifications);
+% Remove neurons that have unknown similarities (i.e. no co-occurrence)
+tmp = maximum_co_occurrence(to_keep_ind,to_keep_ind);
+while true
+    [possible_zero_co_occurrence, ind] = ...
+        sort(sum(tmp==0), 'descend');
+    ind_in_to_keep = find(to_keep_ind);
+    this_false_ind = ind_in_to_keep(ind(1));
+    to_keep_ind(this_false_ind) = false; % If we're here, an additional neuron needs to be out
+    tmp = maximum_co_occurrence(to_keep_ind,to_keep_ind);
+    if sum(sum(tmp==0))==0
+        break;
+    end
+end
+
+% Reducing to final set of neurons
+total_co_occurrence_3d = total_co_occurrence_3d(to_keep_ind, to_keep_ind, :);
+maximum_co_occurrence = ...
+    maximum_co_occurrence(to_keep_ind, to_keep_ind) ./ sz;
+total_names = total_names(to_keep_ind);
+
+%---------------------------------------------
+% Normalize according to how many times the neuron appeared
+%---------------------------------------------
+tmp = total_co_occurrence_3d;
+tmp = tmp - min(min(tmp));
+sz = length(find(to_keep_ind));
+I = logical(eye(sz));
+for i3 = 1:size(tmp,3)
+    for i = 1:sz
+        for i2 = 1:sz
+            if i==i2
+                continue;
+            end
+            tmp(i,i2,i3) = tmp(i,i2,i3) / min([tmp(i,i,i3), tmp(i2,i2,i3)]);
+        end
+    end
+    tmp(:,:, i3) = tmp(:,:, i3) - diag(diag(tmp(:,:, i3))) + I;
+end
+total_co_occurrence_std = std(tmp, 0, 3, 'omitnan');
+tmp(isnan(tmp)) = 0;
+total_co_occurrence = mean(tmp, 3);
+total_co_occurrence = total_co_occurrence./maximum_co_occurrence;
+% total_co_occurrence(I) = maximum_co_occurrence(I);
+
+disp('Finished building TOTAL co-occurrence matrix')
+%% Actually cluster
+rng(4);
+%---------------------------------------------
+% Build the Co-occurrence matrix using K-means
+%---------------------------------------------
+settings.which_metrics_cluster_size = {'silhouette', 'gap'};
+settings.total_m = 10000;
+settings.max_clusters = 16;
+settings.cluster_func = @(X,K)(kmeans(X, K, 'emptyaction','singleton',...
+    'replicate',5));
+
+% E = evalclusters(total_co_occurrence,...
+%     'linkage', 'silhouette', 'KList', 1:settings.max_clusters);
+E = evalclusters(total_co_occurrence,...
+    'linkage', 'gap', 'KList', 1:settings.max_clusters);
+figure;
+plot(E)
+% k = E.OptimalK;
+k = 4;
+
+idx = @(X) cluster(linkage(X,'Ward'), 'maxclust',k);
+[fig, c, all_ind] = cluster_and_imagesc(...
+    total_co_occurrence, idx, total_names, []);
+title(sprintf('Number of clusters: %d', k))
+
+% Silhouette diagram for all clusters
+figure
+[all_scores_table, S] = silhouette_with_names(...
+    total_co_occurrence, c, total_names, [all_ind{:}]);
+
+% Dendrogram
+tree = linkage(total_co_occurrence,'Ward');
+figure()
+cutoff = median([tree(end-k+1,3) tree(end-k+2,3)]);
+[H,T,outperm] = dendrogram(tree, 15, ...
+    'Orientation','left','ColorThreshold',cutoff);
+tree_names = cell(length(outperm),1);
+for i = 1:length(outperm)
+    tree_names{outperm==i} = strjoin(total_names(T==i), ';');
+end
+yticklabels(tree_names)
+title(sprintf('Dendrogram with %d clusters', k))
+
+% Centroids of the clusters
+% all_centroids = zeros(k, length(my_features));
+all_features = all_dat{1}.Properties.VariableNames;
+all_centroids = zeros(k, length(all_features));
+clust_names = cell(k,1);
+for i = 1:k
+    this_names = total_names(all_ind{i});
+    clust_names{i} = sprintf('%s_etc',this_names{1});
+    % Get the data from all tables
+    num_pts = 0;
+    for i2 = 1:length(all_dat)
+        this_ind = all_models{i2}.name2ind(this_names);
+%         tmp = mean(all_dat{i2}{this_ind, my_features},1,'omitnan');
+        tmp = all_dat{i2}{this_ind, :};
+        num_pts = num_pts + length(this_ind) - sum(any(isnan(tmp),2));
+        if i2 == 1
+            this_dat = sum(tmp, 1, 'omitnan');
+        else
+            this_dat = this_dat + sum(tmp, 1, 'omitnan');
+        end
+    end
+    this_dat = this_dat./num_pts;
+    
+    all_centroids(i,:) = this_dat;
+end
+
+centroid_table = array2table(all_centroids);
+% centroid_table.Properties.VariableNames = my_features;
+centroid_table.Properties.VariableNames = all_features;
+% clust_names = strsplit(sprintf('Cluster %d;', 1:k),';');
+% centroid_table.Properties.RowNames = clust_names(1:end-1);
+centroid_table.Properties.RowNames = clust_names;
+disp(centroid_table)
+
+% 3d plot
+figure;
+% y = {'FN','TP'};
+y = {'FN_norm','TP'};
+% plot_colored([centroid_table{:,y{1}},centroid_table{:,y{2}}], [], clust_names);
+plot(centroid_table{:,y{1}},centroid_table{:,y{2}}, 'o');
+textfit(centroid_table{:,y{1}},centroid_table{:,y{2}}, clust_names);
+xlabel(y{1})
+ylabel(y{2})
+
+%==========================================================================
+%% Sanity checks for silhouette scores
+% my_si = zeros(length(total_names),1);
+% all_ind_one_vec = [all_ind{:}];
+% for i = 1:length(total_names)
+%     this_neuron = all_ind_one_vec(i);
+% %     [my_si(this_neuron)] = my_silhouette(total_co_occurrence, c,
+% %     this_neuron); % SAME AS MATLAB VECTOR
+%     [my_si(i)] = my_silhouette(total_co_occurrence, c, this_neuron);
+% end
+% matlab_silhouette_table = table(...
+%     all_scores_table, total_names(all_ind_one_vec), sort(c), my_si);
+% disp(matlab_silhouette_table)
+%% Look at the false detection plot for a single neuron
+which_model = 5;
+my_model_td = all_models{which_model};
+% [fig, c] = cluster_and_imagesc(all_co_occurrence{which_model},...
+%     idx, all_names{which_model}, []);
+% i = my_model_td.name2ind('SMDDL');
+% i = my_model_td.name2ind('AIBL');
+% i = my_model_td.name2ind('AVAL');
+i = my_model_td.name2ind('ASKR');
+my_model_td.set_simple_labels();
+% i = 1;
+if isempty(i)
+    error('Neuron not found in this model')
+end
+
+% f = @(x) my_model_td.flat_filter(x, 5); % original filter
+f = @(x) abs(TVRegDiff(x, 5, 1e-4, [], [], [], [], false, false));
+% f = @(x) my_model_td.flat_filter(x, 10);
+this_dat = my_model_td.dat(i,:) - mean(my_model_td.dat(i,:));
+reconstruct_dat = my_model_td.AdaptiveDmdc_obj.calc_reconstruction_control();
+% this_dat = dat_signal(i,:);
+this_recon = reconstruct_dat(i,:);
+this_recon = real(this_recon - mean(this_recon));
+fig = figure;
+subplot(2,1,1)
+plot(this_dat);
+hold on; 
+plot(this_recon);
+title('Filtered reconstruction and data'); 
+% plot(f(this_dat)); hold on; plot(f(this_recon));
+% Analyze the derivatives
+% this_dat = abs(gradient(f(this_dat)));
+% this_recon = abs(gradient(f(this_recon)));
+this_dat = f(this_dat);
+this_recon = f(this_recon);
+% Get false detections
+% f_detect = @(x) minimize_false_detection(this_dat, ...
+%     this_recon, x, 0.5);
+% all_thresholds = zeros(length(threshold_vec),1);
+% all_vals = all_thresholds;
+% for i2 = 1:length(threshold_vec)
+%     [all_thresholds(i2), all_vals(i2)] = ...
+%         fminsearch(f_detect, threshold_vec(i2));
+% end
+% [~, ind] = min(all_vals);
+% this_threshold = all_thresholds(ind);
+
+% [num_fp, num_fn, num_spikes, ind_fp, ind_fn, true_pos] = ...
+%     calc_false_detection(this_dat, this_recon, this_threshold,...
+%     1, 10, true, true);
+[num_fp, num_fn, num_spikes, ind_fp, ind_fn, true_pos, ~, true_spike_ind] = ...
+    calc_false_detection(this_dat, this_recon, [],...
+    [], [], true, true);
+
+figure(fig)
+subplot(2,1,2)
+plot_colored(true_spike_ind(1:end-1), my_model_td.state_labels_ind, ...
+    my_model_td.state_labels_key, [], [], fig);
+drawnow
+
+fprintf('For model: %d\n', which_model)
+for i = 1:length(my_model_td.state_labels_key)
+    name = my_model_td.state_labels_key{i};
+    this_state_ind = find(my_model_td.state_labels_ind==i);
+    these_spikes = length(find(true_spike_ind(this_state_ind)));
+    fprintf('Percentage of events in state %s: %.5f\n',...
+        name, these_spikes/length(this_state_ind))
+%     fprintf('%.3f ',100*these_spikes/length(this_state_ind))
+end
+fprintf('\n')
+%==========================================================================
+
+
+%% Look at some random "conserved quantities"
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings_ideal = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 0,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 1,...
+    'dmd_mode','tdmd',...
+    'global_signal_subset', {{'DT','VT','REV','FWD','SLOW'}},...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings_ideal.global_signal_mode = 'None';
+% Build model and get data
+my_model_td = CElegansModel(filename, settings_ideal);
+
+% Look at sum of reversal plus turns
+my_summands = {'AVAL', 'SMDDL', 'SMDVL'};
+for i = 1:length(my_summands)
+    this_dat = my_model_td.dat(my_model_td.name2ind(my_summands{i}),:);
+    if i == 1
+        y = this_dat;
+    else
+        y = y + this_dat;
+    end
+end
+plot_colored(y, my_model_td.state_labels_ind, my_model_td.state_labels_key)
+
+
+% Look at sum of fwd plus sleep (RIS)
+my_summands = {'AVBL', 'RIS'};
+for i = 1:length(my_summands)
+    this_dat = my_model_td.dat(my_model_td.name2ind(my_summands{i}),:);
+    if i == 1
+        y = this_dat;
+    else
+        y = y + this_dat;
+    end
+end
+plot_colored(y, my_model_td.state_labels_ind, my_model_td.state_labels_key)
+
+%==========================================================================
+
+
+%% Look at some "conserved quantities" via slow feature analysis
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings_ideal = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 0,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 0,...
+    'dmd_mode','no_dynamics',...
+    'global_signal_subset', {{'DT','VT','REV','FWD','SLOW'}},...
+    'autocorrelation_noise_threshold', 0.7,...
+    'lambda_sparse',0);
+settings_ideal.global_signal_mode = 'None';
+% Build model and get data
+my_model_td = CElegansModel(filename, settings_ideal);
+
+% Preprocess
+% tspan = 1:my_model_td.dat_sz(2);
+% tspan = 1:1550;
+% tspan = 1150:1550;
+% tspan = 1150:1850;
+tspan = 2180:2600; % FWD + SLOW
+dat_raw = my_model_td.dat(:,tspan);
+% [r, ~, ~, U, S, V] = ...
+%     optimal_truncation(smoothdata(my_model_td.dat(:,tspan)));
+% [r, ~, ~, U, S, V] = optimal_truncation(my_model_td.dat(:,tspan));
+% dat_raw = V(:,1:r)';
+% dat_raw = whiten([sin(tspan/10); sin(tspan/10)+sin(tspan/1000)]); % TOY
+% dat_raw = smoothdata(dat_raw,2, 'sgolay','SmoothingFactor',0.25);
+% dat_raw = smoothdata(dat_raw,2, 'sgolay','SmoothingFactor',0.25);
+dat_raw = dat_raw - mean(dat_raw,2);
+dat_raw = dat_raw./sqrt(mean(dat_raw.^2,2));
+disp('Adding nonlinear library terms...')
+order = 1;
+cross_terms = false;
+sz = size(dat_raw);
+new_dat = [];
+if order > 1
+    if cross_terms
+    %     new_dat = zeros(nchoosek(sz(1),order), sz(2));
+        for i = 1:sz(1)
+    %         ind = ((i-1)*sz(1)+1):(i*sz(1));
+            new_dat = [new_dat; dat_raw(i,:).*dat_raw(i:end,:)]; %#ok<AGROW>
+        end
+    else
+        new_dat = zeros((order-1)*sz(1), sz(2));
+        for i = 2:order
+            ind = ((i-2)*sz(1)+1):((i-1)*sz(1));
+            new_dat(ind,:) = dat_raw.^i;
+        end
+    end
+end
+dat_raw = [dat_raw; new_dat];
+dat = real(whiten(dat_raw, 1e-12));
+% dat = [dat; new_dat];
+
+disp('Taking derivatives using splines...')
+sz = size(dat);
+x = 1:sz(2);
+dxdt_raw = zeros(sz);
+for i = 1:sz(1)
+    spl = spline(x, dat(i,:));
+    c = spl.coefs;
+    spl.coefs = [3*c(:,1) 2*c(:,2) c(:,3)];
+    spl.order = 3;
+    dxdt_raw(i,:) = ppval(x, spl);
+end
+
+disp('Doing PCA on the derivatives...')
+% dxdt = smoothdata(dxdt_raw,2, 'sgolay','SmoothingFactor',0.5);
+dxdt = dxdt_raw;
+% dxdt = smoothdata(dxdt,2, 'sgolay');
+% dxdt = whiten(dxdt);
+[V,D] = eig(dxdt*dxdt');
+% [V,D] = eig(dxdt*dxdt'/size(dxdt,2));
+% [V,D] = eig(Z);
+D = diag(D);
+
+figure;
+plot(D, 'o')
+title('Eigenvalue spectrum')
+
+tol = 1e-10;
+non_trivial_mode = find(D>tol,1);
+% plot_colored(V(:,non_trivial_mode)'*dxdt, my_model_td.state_labels_ind(tspan),...
+%     my_model_td.state_labels_key, 'plot')
+% title(sprintf('Slowest non-trivial mode (%d), with eigenvalue %.4f',...
+%     non_trivial_mode, D(non_trivial_mode)))
+
+for i = non_trivial_mode:size(V,2)
+%     x = V(:,i)'*dxdt;
+    x = V(:,i)'*dat;
+    h = lillietest(x, 0.01);
+    if h % if not just noise
+        fig = plot_colored(x, my_model_td.state_labels_ind(tspan),...
+            my_model_td.state_labels_key, 'plot');
+        title(sprintf('First nontrivial mode (%d); eigenvalue %.4f', i, D(i)))
+        drawnow
+        break
+    end
+end
+
+error('For looking at ALL plots')
+for i = non_trivial_mode:size(V,2)
+%     x = V(:,i)'*dxdt;
+    x = V(:,i)'*dat;
+    h = lillietest(x, 0.01);
+    if h % if not just noise
+        fig = plot_colored(x, my_model_td.state_labels_ind(tspan),...
+            my_model_td.state_labels_key, 'plot');
+        title(sprintf('First nontrivial mode (%d); eigenvalue %.4f', i, D(i)))
+        drawnow
+        pause
+    end
+end
+
+% Did I do the last matrix correctly?
+% n = size(dxdt,1);
+% delta_t = size(dxdt,2);
+% Z = zeros(n);
+% for i = 1:n
+%     z1 = dxdt(i,:);
+%     for i2 = 1:n
+%         Z(i,i2) = trapz(z1.*dxdt(i2,:))/delta_t;
+%     end
+% end
+%==========================================================================
+
+
+%% Do SFA more than once with quadratic terms
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings_ideal = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 4,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 0,...
+    'dmd_mode','no_dynamics',...
+    'global_signal_subset', {{'DT','VT','REV','FWD','SLOW'}},...
+    'autocorrelation_noise_threshold', 0.5,...
+    'lambda_sparse',0);
+settings_ideal.global_signal_mode = 'None';
+% Build model and get data
+my_model_td = CElegansModel(filename, settings_ideal);
+
+% Preprocess: real data
+tspan = 1:my_model_td.dat_sz(2);
+% tspan = 1:1550;
+% tspan = 1150:1550;
+% tspan = 1150:1850;
+% tspan = 1150:2550;
+dat_raw = my_model_td.dat(:,tspan);
+
+% Preprocess: toy data
+% dat_raw = [cos(tspan/10);...
+%     sin(tspan/1000)+cos(tspan/10).^4];
+% dat_raw = [sin(tspan/10).^2;...
+%     cos(tspan/10).^2]; % DOES NOT find the constant sum
+% dat_raw = [sin(tspan/10);...
+%     cos(tspan/10)]; % DOES NOT find the constant sum
+% dat_raw = [sin(tspan/10).^2;...
+%     cos(tspan/10).^2 + tspan/1000];
+% dat_raw = [sin(tspan/10).^2;...
+%     cos(tspan/10).^2 + heaviside(tspan/100-5)]; % Works best with low order
+% dat_raw = [heaviside((0.5-sin(tspan/10))).*heaviside(tspan/100-5);...
+%     heaviside((-0.5+sin(tspan/10))).*heaviside(tspan/100-5);...
+%     sin(-tspan/10).*heaviside(-tspan/100+5)]; % Works best with low order
+% dat_raw = dat_raw + 0.01*randn(size(dat_raw));
+% dat_raw = dat_raw + 0.1*randn(size(dat_raw));
+% dat_raw = smoothdata(dat_raw,2, 'sgolay');
+
+depth = 4;
+order = 2;
+cross_terms = false;
+n = min([30, order*size(dat_raw,1)]);
+all_V = cell(depth,1);
+all_D = cell(depth,1);
+for i = 1:depth
+    if i == 1
+        this_dat = dat_raw;
+    else
+        this_dat = features;
+    end
+    [features, dat, all_V{i}, all_D{i}] = slow_feature_analysis(...
+        this_dat, order, cross_terms, n);
+end
+
+D = all_D{end};
+V = all_V{end};
+
+% figure;
+% plot(D, 'o')
+% title('Eigenvalue spectrum')
+
+tol = 1e-10;
+non_trivial_mode = find(D>tol,1);
+
+for i = non_trivial_mode:size(V,2)
+    x = V(:,i)'*dat;
+    h = lillietest(x, 0.01);
+    if h % if not just noise
+        fig = plot_colored(x, my_model_td.state_labels_ind(tspan),...
+            my_model_td.state_labels_key, 'plot');
+        title(sprintf('First nontrivial mode (%d); eigenvalue %.6f', i, D(i)))
+        drawnow
+        break
+    end
+end
+
+% error('For looking at ALL plots')
+for i = non_trivial_mode:size(V,2)
+    x = V(:,i)'*dat;
+    h = lillietest(x, 0.01);
+    if h % if not just noise
+        fig = plot_colored(x, my_model_td.state_labels_ind(tspan),...
+            my_model_td.state_labels_key, 'plot');
+        title(sprintf('First nontrivial mode (%d); eigenvalue %.4f', i, D(i)))
+        drawnow
+        pause
+        close(fig)
+    end
+end
+
+fig = figure;
+i = 1;
+subplot(2,1,1)
+plot(real(V(:,i)))
+xticks(1:my_model_td.dat_sz(1))
+xticklabels(my_model_td.get_names())
+xtickangle(60)
+title(sprintf('Slowest eigenvector (%.6f)', D(i)))
+subplot(2,1,2)
+plot_colored(real(V(:,i)'*dat),...
+my_model_td.state_labels_ind(tspan), my_model_td.state_labels_key,...
+'plot',[],fig);
+title('Time course of this mode')
+
+%==========================================================================
+
+
+%% Do DMDc on subsections and look at the constant modes
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings_ideal = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 0,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 0,...
+    'dmd_mode','tdmd',...
+    ...'dmd_mode','func_DMDc',...
+    'global_signal_subset', {{'DT','VT','REV','FWD','SLOW'}},...
+    'autocorrelation_noise_threshold', 0.3,...
+    'lambda_sparse',0);
+settings_ideal.global_signal_mode = 'ID_binary_transitions';
+% settings_ideal.global_signal_mode = 'None';
+
+% Build model and get data
+dat_struct = importdata(filename);
+% tspan = 1:size(dat_struct.traces,1);
+% tspan = 1:1550;
+% tspan = 1150:1550; % Reversal and turns
+% tspan = 1150:1850;
+tspan = 2180:2600;
+dat_struct.traces = dat_struct.traces(tspan,:);
+dat_struct.SevenStates = dat_struct.SevenStates(tspan);
+my_model_subset = CElegansModel(dat_struct, settings_ideal);
+
+% Plot
+% my_model_subset.plot_eigenvalues_and_frequencies();
+n = my_model_subset.original_sz(1);
+A = my_model_subset.AdaptiveDmdc_obj.A_separate(1:n,1:n);
+[V, D] = eig(A, 'vector');
+
+[sort_D, sort_ind] = sort(abs(D), 'descend');
+% [sort_D, sort_ind] = sort(real(D), 'descend');
+
+fig = figure;
+i = 1;
+subplot(2,1,1)
+plot(real(V(:,sort_ind(i))))
+xticks(1:n)
+xticklabels(my_model_subset.get_names())
+xtickangle(60)
+title(sprintf('Slowest eigenvector (%.6f)', D(sort_ind(i))))
+
+subplot(2,1,2)
+plot_colored(real(V(:,i)'*my_model_subset.dat),...
+    my_model_subset.state_labels_ind, my_model_subset.state_labels_key,...
+    'plot',[],fig);
+title('Time course of this mode')
+
+my_model_subset.plot_eigenvalues_and_frequencies();
+%==========================================================================
+
+
+%% Get a function that sets the proper baseline
+dat = importdata(filename);
+dat = dat.traces';
+
+f = @(x)abs(TVRegDiff(x,5,1e-4,[],[],[],[],false,false));
+% i = 45;
+sz = size(dat);
+baselines = nan(sz(1),1);
+for i = 1:sz(1)
+    if acf(dat(i,:)',1, false) < 0.6
+        continue;
+    end
+    dxdt = f(dat(i,:));
+    flat_ind = find(dxdt(1:end-1) < 2*median(dxdt));
+    % figure;histogram(dat(i, flat_ind))
+%     [clust_idx, centroids] = kmeans(dat(i,flat_ind)',2, 'Replicates',10);
+    gmdist = fitgmdist(dat(i,flat_ind)',2, 'Replicates',10);
+    clust_idx = cluster(gmdist, dat(i,flat_ind)');
+    centroids = gmdist.mu;
+    
+    figure;plot(flat_ind(clust_idx==1),dat(i, flat_ind(clust_idx==1)),'o');
+    hold on;plot(flat_ind(clust_idx==2),dat(i, flat_ind(clust_idx==2)),'o');
+
+    % Two cases: high/low plateaus (i.e. 2 real clusters) OR spikes with a
+    % lot of low, i.e. basically one cluster
+    ind1 = (clust_idx==1);
+    ind2 = (clust_idx==2);
+    if length(find(ind1)) > length(find(ind2))*20
+        ind = ind1;
+%         baselines(i) = centroids(1);
+    elseif length(find(ind2)) > length(find(ind1))*20
+        ind = ind2;
+%         baselines(i) = centroids(2);
+    else
+        [baselines(i), which_clust] = min(centroids);
+        ind = (clust_idx==which_clust);
+    end
+    [all_starts, all_ends] = calc_contiguous_blocks(ind, 30);
+    baseline_ind = [];
+    for i2 = 1:length(all_starts)
+        these_dat_ind = flat_ind(all_starts(i2):all_ends(i2));
+        chg_pt_dat = findchangepts(dat(i,these_dat_ind));
+        chg_pt_flat = find(flat_ind==these_dat_ind(chg_pt_dat));
+        baseline_ind = [baseline_ind; ...
+            flat_ind(chg_pt_flat:all_ends(i2))];
+    end
+    if ~isempty(baseline_ind)
+        baselines(i) = mean(dat(i,baseline_ind));
+    else
+        baselines(i) = mean(dat(i,ind));
+    end
+    fig = figure;plot(dat(i,:))
+    hold on; line([0 size(dat,2)], [baselines(i) baselines(i)], 'Color', 'r')
+    line([0 size(dat,2)], [mean(dat(i,:)) mean(dat(i,:))], 'Color', 'k')
+    legend({'Data', 'Baseline', 'Mean'})
+    drawnow
+    pause
+    close(fig)
+end
+
+%==========================================================================
+
+
+%% Use new baselines
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings_ideal = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_baselines',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 7,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 0,...
+    ...'dmd_mode','tdmd',...
+    'dmd_mode','func_DMDc',...
+    'global_signal_subset', {{'DT','VT','REV','FWD','SLOW'}},...
+    'autocorrelation_noise_threshold', 0.5,...
+    'lambda_sparse',0);
+settings_ideal.global_signal_mode = 'ID_binary_transitions';
+
+my_model_baselines = CElegansModel(filename, settings_ideal);
+
+my_model_baselines.plot_reconstruction_interactive(true, 'AVAL');
+%==========================================================================
+
+
+%% Looking at independent components vs. PCA
+rng(3);
+
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings_ideal = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 0,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 0,...
+    ...'dmd_mode','tdmd',...
+    'dmd_mode','no_dynamics',...
+    'global_signal_subset', {{'DT','VT','REV','FWD','SLOW'}},...
+    'autocorrelation_noise_threshold', 0.5,...
+    'lambda_sparse',0);
+settings_ideal.global_signal_mode = 'ID_binary_transitions';
+% my_model_filter = CElegansModel(filename, settings_ideal);
+
+dat_struct = importdata(filename);
+dat = my_model_filter.dat;
+ind = my_model_filter.state_labels_ind;
+key = my_model_filter.state_labels_key;
+
+% [dat, noise] = RobustPCA(dat, 0.02);
+% dat = whiten(dat);
+
+% First do PCA
+% [u, s, v] = svd(dat - mean(dat,2), 'econ');
+% fig = figure;
+% subplot(3,1,1);
+% fig = plot_colored(v(:,1), ind, key, 'plot', [], fig);
+% title('PCA modes')
+% subplot(3,1,2);
+% fig = plot_colored(v(:,2), ind, key, 'plot', [], fig);
+% subplot(3,1,3);
+% fig = plot_colored(v(:,3), ind, key, 'plot', [], fig);
+
+% Next do Reconstruction ICA
+ica_model = rica((dat-mean(dat,2))', 15);
+x = transform(ica_model, (dat-mean(dat,2))');
+% for i = 1:size(x,2)
+if false
+    fig2 = figure;
+    subplot(2,1,1)
+    fig2 = plot_colored(x(:,i), ind, key, 'plot', [], fig2);
+    title(sprintf('Mode %d', i))
+    subplot(2,1,2)
+    plot(ica_model.TransformWeights(:,i))
+    xticks(1:size(x,1))
+    xticklabels(my_model_filter.get_names())
+    xtickangle(60)
+    drawnow
+%     pause
+%     close(fig2);
+end
+
+cluster_and_imagesc(1-squareform(pdist(x', 'Correlation')));
+% fig2 = figure;
+% subplot(3,1,1);
+% fig2 = plot_colored(x(:,1), ind, key, 'plot', [], fig2);
+% title('ICA modes')
+% subplot(3,1,2);
+% fig2 = plot_colored(x(:,2), ind, key, 'plot', [], fig2);
+% subplot(3,1,3);
+% fig2 = plot_colored(x(:,3), ind, key, 'plot', [], fig2);
+
+%==========================================================================
+
+
+%% Looking at feature learning via sparse filtering
+rng(3);
+
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings_ideal = struct(...
+    'to_subtract_mean',true,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 0,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 0,...
+    ...'dmd_mode','tdmd',...
+    'dmd_mode','no_dynamics',...
+    'global_signal_subset', {{'DT','VT','REV','FWD','SLOW'}},...
+    'autocorrelation_noise_threshold', 0.5,...
+    'lambda_sparse',0);
+settings_ideal.global_signal_mode = 'ID_binary_transitions';
+my_model_filter = CElegansModel(filename, settings_ideal);
+
+dat_struct = importdata(filename);
+dat = my_model_filter.dat;
+ind = my_model_filter.state_labels_ind;
+key = my_model_filter.state_labels_key;
+
+% [dat, noise] = RobustPCA(dat, 0.02);
+% dat = whiten(dat);
+
+% Next do Reconstruction ICA
+sparse_model = sparsefilt((dat-mean(dat,2))', 10);
+x = transform(sparse_model, (dat-mean(dat,2))');
+for i = 1:size(x,2)
+% if false
+    fig2 = figure;
+    subplot(2,1,1)
+    fig2 = plot_colored(x(:,i), ind, key, 'plot', [], fig2);
+    title(sprintf('Mode %d', i))
+    subplot(2,1,2)
+    plot(ica_model.TransformWeights(:,i))
+    xticks(1:size(x,1))
+    xticklabels(my_model_filter.get_names())
+    xtickangle(60)
+    drawnow
+    pause
+    close(fig2);
+end
+
+%==========================================================================
+
+
+%% Looking at using a subset of control signals (i.e. no turns)
+rng(3);
+
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings_ideal = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 0,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 0,...
+    ...'dmd_mode','tdmd',...
+    'dmd_mode','func_DMDc',...
+    ...'global_signal_subset', {{'DT','VT','REVSUS','FWD','SLOW'}},...
+    'global_signal_subset', {{'REV','FWD','SLOW'}},...
+    'autocorrelation_noise_threshold', 0.5,...
+    'lambda_sparse',0);
+settings_ideal.global_signal_mode = 'ID_binary_transitions';
+my_model_subset = CElegansModel(filename, settings_ideal);
+
+my_model_subset.plot_colored_reconstruction();
+my_model_subset.plot_reconstruction_interactive();
+%==========================================================================
+
+
+%% Looking at a mega-reversal control signal only
+rng(3);
+
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+settings_ideal = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 0,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 0,...
+    ...'dmd_mode','tdmd',...
+    'dmd_mode','func_DMDc',...
+    ...'global_signal_subset', {{'DT','VT','REVSUS','FWD','SLOW'}},...
+    'global_signal_subset', {{'REVSUS'}},...
+    ...'global_signal_subset', {{'mega_rev'}},...
+    'global_signal_pos_or_neg', 'pos_and_neg',...
+    'autocorrelation_noise_threshold', 0.5,...
+    'lambda_sparse',0);
+settings_ideal.global_signal_mode = 'ID_binary_transitions';
+
+dat_struct = importdata(filename);
+% dat_struct.traces = dat_struct.traces.^2;
+num_powers_to_add = 1;
+new_struct = dat_struct;
+for j = 1:num_powers_to_add
+    new_struct.traces = [new_struct.traces, dat_struct.traces.^(j+1)];
+    for i = {'ID', 'ID2', 'ID3'}
+        i = i{1};
+        new_struct.(i) = [new_struct.(i) dat_struct.(i)];
+    end
+end
+dat_struct = new_struct;
+
+my_model_subset = CElegansModel(dat_struct, settings_ideal);
+
+% my_model_subset.plot_colored_reconstruction();
+my_model_subset.plot_reconstruction_interactive(true, 'AVAL');
+my_model_subset.plot_reconstruction_interactive(true, 'AVBL');
+%==========================================================================
+
+
+%% Looking at a diagonal-only model
+rng(3);
+
+% First do a model to filter out the noisy neurons
+settings_ideal = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    'augment_data', 0,...
+    ...'filter_window_global', 0,...
+    'filter_window_dat', 0,...
+    'dmd_mode','no_dynamics',...
+    ...'dmd_mode','sparse_fast',...
+    'global_signal_subset', {{'DT','VT','REVSUS','FWD','SLOW'}},...
+    ...'global_signal_subset', {{'mega_rev'}},...
+    ...'global_signal_pos_or_neg', 'pos_and_neg',...
+    'autocorrelation_noise_threshold', 0.7,...
+    'lambda_sparse',0);
+settings_ideal.global_signal_mode = 'ID_binary_transitions';
+
+my_model_filter = CElegansModel(dat_struct, settings_ideal);
+
+% Now do diagonal-only model
+n = my_model_filter.original_sz(1);
+enforce_zero_entries = {};
+for i = 1:n
+    for i2 = 1:n
+        if i==i2
+            continue
+        end
+        enforce_zero_entries = [enforce_zero_entries {{i i2}}];
+    end
+end
+
+% settings_ideal.dmd_mode = 'sparse_fast';
+settings_ideal.dmd_mode = 'sparse';
+settings_ideal.enforce_zero_entries = enforce_zero_entries;
+my_model_filter2 = CElegansModel(dat_struct, settings_ideal);
+
+% my_model_subset.plot_colored_reconstruction();
+% my_model_subset.plot_reconstruction_interactive(true, 'AVAL');
+% my_model_subset.plot_reconstruction_interactive(true, 'AVBL');
+%==========================================================================
+
+
+%% Look at simple segmentation algorithm
+% i.e. PCA modes that show evidence of state transitions via clustering
+
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat_struct = importdata(filename);
+[u, s, v] = svd(dat_struct.traces, 'econ');
+
+% f = @(x)abs(TVRegDiff(x,50,1e-4,[],[],[],[],false,false));
+f = @(x) abs(my_deriv(smoothdata(x, 'sgolay')));
+% for i = 1:5
+for i = 6:11
+    this_deriv = f(u(:,i)');
+    flat_ind = (this_deriv < median(this_deriv));
+    flat_ind = flat_ind(1:end-1);
+    fig = figure;
+    subplot(3,1,1)
+    plot(u(:,i)); hold on
+    plot(find(flat_ind),u(flat_ind, i), 'ro')
+    title(sprintf('Flat portions of mode %d', i))
+    
+    subplot(3,1,2)
+    plot(this_deriv); hold on; 
+    line([0 3000], [median(this_deriv) median(this_deriv)])
+    
+    subplot(3,1,3)
+    histogram(u(flat_ind, i));
+    title(sprintf('Histogram of flat portions of mode %d', i))
+    drawnow
+    pause
+    close(fig)
+end
+
+
+%==========================================================================
+
+
+
