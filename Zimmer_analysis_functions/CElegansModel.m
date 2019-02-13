@@ -390,6 +390,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         filter_aggressiveness
         autocorrelation_noise_threshold
         to_subtract_mean
+        to_subtract_baselines
         to_subtract_mean_sparse
         to_subtract_mean_global
         to_separate_sparse_from_data
@@ -432,7 +433,11 @@ classdef CElegansModel < SettingsImportableFromStruct
         A_old
         dat_old
         
+        % For time-delay embedding
         A_unroll
+        
+        % Preprocessing
+        baselines
         
         % Robust PCA matrices
         L_global
@@ -476,7 +481,6 @@ classdef CElegansModel < SettingsImportableFromStruct
         control_signals_metadata
         
         AdaptiveDmdc_obj
-        
     end
     
     properties (Dependent)
@@ -550,7 +554,8 @@ classdef CElegansModel < SettingsImportableFromStruct
             if self.enforce_diagonal_sparse_B || ...
                     ~isempty(self.enforce_zero_entries)
                 assert(strcmp(self.dmd_mode, 'sparse') || ...
-                    strcmp(self.dmd_mode, 'no_dynamics_sparse'),...
+                    strcmp(self.dmd_mode, 'no_dynamics_sparse') || ...
+                    strcmp(self.dmd_mode, 'sparse_fast'),...
                     'Matrix structure can only be enforced if dmd_mode is sparse')
             else
                 sparsity = logical([]); % i.e. the default
@@ -883,6 +888,20 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             self.reset_user_control();
             self.reset_AdaptiveDmdc_controller();
+        end
+        
+        function mega_rev_binary = calc_mega_rev(self, binary_labels)
+            mega_rev_ind = contains(self.state_labels_key, ...
+                {'REV', 'DT', 'VT'});
+            mega_rev_binary = logical(sum(...
+                binary_labels(mega_rev_ind,:),1));
+            % Can jump over 10 frames of FWD/SLOW behavior
+            [rev_starts, rev_ends] = calc_contiguous_blocks(...
+                mega_rev_binary, 0, 10);
+            for i = 1:length(rev_starts)
+                mega_rev_binary(rev_starts(i):rev_ends(i)) = ...
+                    true;
+            end
         end
         
     end
@@ -1679,6 +1698,9 @@ classdef CElegansModel < SettingsImportableFromStruct
 %                 neuron = neuron(1); % Do not get derivatives
             elseif isnumeric(neuron)
                 neuron_name = self.get_names(neuron);
+                if iscell(neuron_name)
+                    neuron_name = neuron_name{1};
+                end
             end
             
             if length(neuron) > 1
@@ -1689,7 +1711,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             
             fig = plot_colored(self.dat(neuron, :),...
-                self.state_labels_ind, self.state_labels_key);
+                self.state_labels_ind, self.state_labels_key, 'plot');
             title(sprintf('Neuron ID: %s', neuron_name))
         end
         
@@ -1752,9 +1774,8 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             this_dat = self.AdaptiveDmdc_obj.calc_reconstruction_control();
             modes_3d = self.L_sparse_modes(:,1:3);
-%             x = 1:size(modes_3d,1);
             x = self.x_indices;
-            proj_3d = (modes_3d.')*this_dat(x,:);
+            proj_3d = (modes_3d(1:length(x),:).')*this_dat(x,:);
             if use_same_fig
                 plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), 'k*')
             else
@@ -2187,8 +2208,12 @@ classdef CElegansModel < SettingsImportableFromStruct
             if ~exist('tol_eigen','var')
                 tol_eigen = 1e-3;
             end
-            if ischar(neuron)
-                neuron = self.name2ind(neuron);
+            if exist('neuron', 'var')
+                if ischar(neuron)
+                    neuron = self.name2ind(neuron);
+                end
+            else
+                neuron = [];
             end
             
             % Get eigenvectors and eigenvalues of intrinsic dynamics
@@ -2200,7 +2225,11 @@ classdef CElegansModel < SettingsImportableFromStruct
             [V, D] = eig(A, 'vector');
 
 %             neuron_colormap = sum(real(V(neuron,:)).*abs(V(neuron,:)),1);
-            neuron_colormap = abs(V(neuron,:));
+            if ~isempty(neuron)
+                neuron_colormap = abs(V(neuron,:));
+            else
+                neuron_colormap = ones(1, size(V,2));
+            end
 %             neuron_ind = (abs(neuron_colormap)>tol_eigen);
             
             fig = figure;
@@ -2637,7 +2666,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'autocorrelation_noise_threshold', 0,...
                 'AdaptiveDmdc_settings', struct(),...
                 'augment_data', 0,...
-                'to_subtract_mean',false,...
+                'to_subtract_mean', false,...
+                'to_subtract_baselines', false,...
                 'to_subtract_mean_sparse', true,...
                 'to_subtract_mean_global', true,...
                 'to_separate_sparse_from_data', true, ...
@@ -2737,29 +2767,6 @@ classdef CElegansModel < SettingsImportableFromStruct
                     'ID2',{Zimmer_struct.ID2},'ID3',{Zimmer_struct.ID3});
                 self.AdaptiveDmdc_settings.id_struct = id_struct;
             end
-            if ~ismember(fnames,'sort_mode')
-                self.AdaptiveDmdc_settings.sort_mode = 'user_set';
-            end
-            if ~ismember(fnames,'x_indices')
-                if ~self.use_deriv
-                    x_ind = 1:size(self.raw,1);
-                else
-                    x_ind = 1:(2*size(self.raw,1));
-                end
-                self.AdaptiveDmdc_settings.x_indices = x_ind;
-            end
-            if ~ismember(fnames,'dmd_mode')
-                self.AdaptiveDmdc_settings.dmd_mode = self.dmd_mode;
-            end
-            if ~ismember(fnames,'to_plot_nothing')
-                self.AdaptiveDmdc_settings.to_plot_nothing = true;
-            end
-            if ~ismember(fnames,'to_save_raw_data')
-                self.AdaptiveDmdc_settings.to_save_raw_data = false;
-            end
-            if ~ismember(fnames,'data_already_augmented')
-                self.AdaptiveDmdc_settings.data_already_augmented = self.augment_data;
-            end
         end
         
         %Data processing
@@ -2791,6 +2798,16 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.dat_sz = size(self.raw);
             aug = self.augment_data;
             self.original_sz = self.dat_sz;
+            if self.to_subtract_mean
+                for jM=1:self.dat_sz(1)
+                    self.dat(jM,:) = self.raw(jM,:) - mean(self.raw(jM,:));
+                end
+            elseif self.to_subtract_baselines
+                [self.dat, self.baselines] = self.calc_baseline(self.raw);
+            else
+                self.dat = self.raw;
+            end
+            
             if aug>1
                 new_sz = [self.dat_sz(1)*aug, self.dat_sz(2)-aug];
                 new_dat = zeros(new_sz);
@@ -2798,20 +2815,13 @@ classdef CElegansModel < SettingsImportableFromStruct
                     old_cols = j:(new_sz(2)+j-1);
                     new_rows = (1:self.dat_sz(1)) + ...
                         self.dat_sz(1)*(aug-j);
-                    new_dat(new_rows,:) = self.raw(:,old_cols);
+                    new_dat(new_rows,:) = self.dat(:,old_cols);
                 end
                 self.dat_sz = new_sz;
-                self.raw = new_dat;
+                self.dat = new_dat;
                 self.AdaptiveDmdc_settings.x_indices = 1:size(new_dat,1);
             end
             
-            self.dat = self.raw;
-            if self.to_subtract_mean
-                for jM=1:self.dat_sz(1)
-                    self.dat(jM,:) = self.raw(jM,:) - mean(self.raw(jM,:));
-                end
-            end
-
             % Moving average filter
             if self.filter_window_dat > 1
                 self.dat = ...
@@ -2825,6 +2835,33 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.pareto_struct = struct();
             self.state_labels_ind = ...
                 self.state_labels_ind_raw(end-size(self.dat,2)+1:end);
+            
+            % Set up the settings for AdaptiveDMDc object
+            fnames = fieldnames(self.AdaptiveDmdc_settings);
+            if ~ismember(fnames,'sort_mode')
+                self.AdaptiveDmdc_settings.sort_mode = 'user_set';
+            end
+            if ~ismember(fnames,'x_indices')
+                if ~self.use_deriv
+                    x_ind = 1:self.dat_sz(1);
+                else
+                    error('Check this')
+                    x_ind = 1:(2*self.dat_sz(1));
+                end
+                self.AdaptiveDmdc_settings.x_indices = x_ind;
+            end
+            if ~ismember(fnames,'dmd_mode')
+                self.AdaptiveDmdc_settings.dmd_mode = self.dmd_mode;
+            end
+            if ~ismember(fnames,'to_plot_nothing')
+                self.AdaptiveDmdc_settings.to_plot_nothing = true;
+            end
+            if ~ismember(fnames,'to_save_raw_data')
+                self.AdaptiveDmdc_settings.to_save_raw_data = false;
+            end
+            if ~ismember(fnames,'data_already_augmented')
+                self.AdaptiveDmdc_settings.data_already_augmented = self.augment_data;
+            end
         end
         
         function remove_neurons_and_metadata(self, to_remove, field)
@@ -2841,6 +2878,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             % Also remove the corresponding metadata
             z = self.AdaptiveDmdc_settings.id_struct;
+            to_keep_full_sz = to_keep;
             if strcmp(field, 'dat') && max(to_keep) > self.original_sz(1)
                 if self.augment_data==0
                     error('Unknown reason for indices past edge of data')
@@ -2850,9 +2888,12 @@ classdef CElegansModel < SettingsImportableFromStruct
             id_struct = struct('ID',{z.ID(to_keep)},...
                 'ID2',{z.ID2(to_keep)}, 'ID3',{z.ID3(to_keep)});
             self.AdaptiveDmdc_settings.id_struct = id_struct;
-            assert( isequal(self.AdaptiveDmdc_settings.x_indices,...
-                1:n), 'Custom x_indices not supported with neuron removal')
-            self.AdaptiveDmdc_settings.x_indices = 1:length(find(to_keep));
+            if isfield(self.AdaptiveDmdc_settings, 'x_indices')
+                assert( isequal(self.AdaptiveDmdc_settings.x_indices,...
+                    1:n), 'Custom x_indices not supported with neuron removal')
+                self.AdaptiveDmdc_settings.x_indices = ...
+                    1:length(find(to_keep_full_sz));
+            end
             
             warning('Metadata removal only works before AdaptiveDmdc object is defined')
         end
@@ -2930,6 +2971,11 @@ classdef CElegansModel < SettingsImportableFromStruct
                 self.add_custom_control_signal(this_ctr, this_name);
                 
                 all_ind = [all_ind, this_ind]; %#ok<AGROW>
+                if self.augment_data > 0
+                    % Also remove the time-delayed copies
+                    all_ind = [all_ind, ...
+                        this_ind+self.original_sz(1)*(1:self.augment_data-1)]; %#ok<AGROW>
+                end
             end
             if ~isequal(sort(all_ind), unique(all_ind))
                 warning(['Designated control signals have duplicated neurons' ...
@@ -3107,6 +3153,9 @@ classdef CElegansModel < SettingsImportableFromStruct
                     %   REV1/REV2, DT, and VT
                     % Alternate transitions can be specified in:
                     %   self.global_signal_subset
+                    % Note: 'mega_rev' is a special composite signal that
+                    %   only triggers on the first/last reversal of a 
+                    %   burst (positive/negative)
                     binary_labels = self.calc_binary_labels(...
                         self.state_labels_ind, length(self.state_labels_key));
                     % Also filter this so the gradients aren't so sharp
@@ -3117,11 +3166,29 @@ classdef CElegansModel < SettingsImportableFromStruct
                     binary_labels_grad = gradient(binary_labels);
                     binary_labels_grad = binary_labels_grad ./ ...
                         max(max(binary_labels_grad));
+                    if contains(lower(self.global_signal_subset),...
+                            'mega_rev')
+                        mega_rev_binary = self.calc_mega_rev(binary_labels);
+                        if self.filter_window_global>0
+                            mega_rev_binary = self.flat_filter(...
+                                double(mega_rev_binary).',...
+                                self.filter_window_global).';
+                        end
+                        binary_labels_grad = gradient(mega_rev_binary);
+                        binary_labels_grad = binary_labels_grad ./ ...
+                            max(max(binary_labels_grad));
+                    else
+                        ind = contains(self.state_labels_key, ...
+                            self.global_signal_subset);
+                        assert(~isempty(ind),...
+                            ['Attempted to add control signals '...
+                            'but none were found; check global_signal_subset'])
+                        binary_labels_grad = binary_labels_grad(ind,:);
+                    end
                     % Now only keep the positive parts, and only of the
                     % mentioned 3 transitions
-                    ind = contains(self.state_labels_key, ...
-                        self.global_signal_subset);
-                    binary_labels_grad = binary_labels_grad(ind,:);
+                    %   Note: global_signal_pos_or_neg sets whether to keep
+                    %   the negative part also or alone
                     only_pos = binary_labels_grad.*(binary_labels_grad>0);
                     only_neg = binary_labels_grad.*(binary_labels_grad<0);
                     switch self.global_signal_pos_or_neg
@@ -3335,6 +3402,10 @@ classdef CElegansModel < SettingsImportableFromStruct
                 custom_control_signal, custom_control_signal_name)
             if ~exist('custom_control_signal','var')
                 custom_control_signal = self.custom_control_signal;
+                if ~isempty(self.custom_control_signal) && ...
+                        self.filter_window_global ~= 10
+                    warning('Control signal filtering is not applied to custom signals')
+                end
                 self.custom_control_signal = [];
                 custom_control_signal_name = 'user_custom_control_signal';
             end
@@ -3730,6 +3801,52 @@ classdef CElegansModel < SettingsImportableFromStruct
             z2 = max([dat(:,3); z(2)]);
             zlim([z1 z2]);
         end
+        
+        function [dat, baselines] = calc_baseline(dat)
+            % Calculates the baselines using only subsets of the data that
+            % are relatively flat, then taking the portions of those
+            % subsets after a changepoint to deal with refractory periods.
+            % Sensitive to drift in the data; will be similar to the mean
+            % if there is a lot of noise.
+            f = @(x)abs(TVRegDiff(x,5,1e-4,[],[],[],[],false,false));
+            sz = size(dat);
+            baselines = nan(sz(1),1);
+            for i = 1:sz(1)
+                dxdt = f(dat(i,:));
+                flat_ind = find(dxdt(1:end-1) < 2*median(dxdt));
+                gmdist = fitgmdist(dat(i,flat_ind)',2, 'Replicates',10);
+                clust_idx = cluster(gmdist, dat(i,flat_ind)');
+                centroids = gmdist.mu;
+                
+                % Two cases: high/low plateaus (i.e. 2 real clusters) OR spikes with a
+                % lot of low, i.e. basically one cluster
+                ind1 = (clust_idx==1);
+                ind2 = (clust_idx==2);
+                if length(find(ind1)) > length(find(ind2))*20
+                    ind = ind1;
+                elseif length(find(ind2)) > length(find(ind1))*20
+                    ind = ind2;
+                else
+                    [baselines(i), which_clust] = min(centroids);
+                    ind = (clust_idx==which_clust);
+                end
+                [all_starts, all_ends] = calc_contiguous_blocks(ind, 30);
+                baseline_ind = [];
+                for i2 = 1:length(all_starts)
+                    these_dat_ind = flat_ind(all_starts(i2):all_ends(i2));
+                    chg_pt_dat = findchangepts(dat(i,these_dat_ind));
+                    chg_pt_flat = find(flat_ind==these_dat_ind(chg_pt_dat));
+                    baseline_ind = [baseline_ind; ...
+                        flat_ind(chg_pt_flat:all_ends(i2))]; %#ok<AGROW>
+                end
+                if ~isempty(baseline_ind)
+                    baselines(i) = mean(dat(i,baseline_ind));
+                else
+                    baselines(i) = mean(dat(i,ind));
+                end
+            end % for i
+            dat = dat - baselines;
+        end % function
     end
     
 end
