@@ -1653,15 +1653,29 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             % If single neuron and control signal, then do a 2-panel
             % subplot
-            if include_control_signal && neuron_ind>0 &&...
-                    any(contains(self.control_signals_metadata.Row,'sparse'))
-                ax = fig.Children(2);
-                subplot(2,1,1,ax);
-                subplot(2,1,2);
-                plot(self.control_signal(neuron_ind,:),...
-                    'LineWidth',2)
-                title('Sparse control signal')
+            if include_control_signal && neuron_ind>0 
+                    ax1 = fig.Children(2);
+                    subplot(2,1,1,ax1);
+                    subplot(2,1,2);
+                    ax2 = fig.Children(1);
+                if any(contains(self.control_signals_metadata.Row,'sparse'))
+                    % For RPCA-style controllers
+                    plot(self.control_signal(neuron_ind,:),...
+                        'LineWidth',2)
+                    title('Sparse control signal')
+                else
+                    % Show the control signal that has the highest input
+                    % into this neuron
+                    n = self.dat_sz(1);
+                    this_B = self.AdaptiveDmdc_obj.A_separate(...
+                        neuron_ind, n+1:end);
+                    [~, ctr_ind] = max(abs(this_B));
+                    plot(self.control_signal(ctr_ind,:),...
+                        'LineWidth',2)
+                    title(sprintf('Strongest control signal: %d', ctr_ind))
+                end
                 xlim([0,self.original_sz(2)])
+                linkaxes([ax1, ax2], 'x');
             end
             
             % Setup interactivity
