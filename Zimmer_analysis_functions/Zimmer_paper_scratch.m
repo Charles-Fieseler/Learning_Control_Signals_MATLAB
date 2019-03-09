@@ -512,3 +512,22 @@ end
 % imagesc(all_err)
 % colorbar
 %==========================================================================
+
+
+%% Figure 2: rank and sparsity of signals
+
+
+num_clusters = 3;
+[idx, centroids] = kmeans(final_xy(2,:)', num_clusters, 'Replicates', 10);
+[~, tmp] = max(final_xy(2,:));
+real_clust_idx = idx(tmp);
+[~, tmp] = min(final_xy(2,:));
+noise_clust_idx = idx(tmp);
+
+real_clust = final_xy(1, idx==real_clust_idx);
+gray_clust = final_xy(1, logical(...
+    (idx~=real_clust_idx).*(idx~=noise_clust_idx)) );
+noise_clust = final_xy(1, idx==noise_clust_idx);
+%==========================================================================
+
+

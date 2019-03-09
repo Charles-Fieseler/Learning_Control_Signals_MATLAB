@@ -50,7 +50,7 @@ num_neurons = size(dat_ideal.traces,2);
 
 settings_ideal = struct(...
     'to_subtract_mean',false,...
-    'to_subtract_baselines',true,...
+    'to_subtract_baselines',false,...
     'to_subtract_mean_sparse',false,...
     'to_subtract_mean_global',false,...
     'add_constant_signal',false,...
@@ -63,6 +63,27 @@ settings_ideal = struct(...
     ...'autocorrelation_noise_threshold', 0.3,...
     'lambda_sparse',0);
 settings_ideal.global_signal_mode = 'ID_binary_transitions';
+
+%---------------------------------------------
+% Build filename array (different data formats)
+%---------------------------------------------
+n = 15;
+all_filenames = cell(n, 1);
+foldername1 = '../../Zimmer_data/WildType_adult/';
+filename1_template = 'simplewt%d/wbdataset.mat';
+num_type_1 = 5;
+foldername2 = 'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\npr1_1_PreLet\';
+filename2_template = 'wbdataset.mat';
+
+for i = 1:n
+    if i <= num_type_1
+        all_filenames{i} = sprintf([foldername1, filename1_template], i);
+    else
+        subfolder = dir(foldername2);
+        all_filenames{i} = [foldername2, ...
+            subfolder(i-num_type_1+2).name, '\', filename2_template];
+    end
+end
 %==========================================================================
 error('You probably do not want to run the entire file')
 
@@ -169,7 +190,7 @@ end
 %==========================================================================
 
 
-%% Figure 2: Explanation of time-delay embedding
+%% Figure 2??: Explanation of time-delay embedding
 
 % Save figures
 for i = 1:length(all_figs)
@@ -182,6 +203,479 @@ for i = 1:length(all_figs)
     colorbar off;
     fname = sprintf('%sfigure_3_%d', foldername, i);
     saveas(this_fig, fname, 'png');
+end
+%==========================================================================
+
+
+%% Figure 2?: Sparse residual analysis (i.e. controller learning)
+all_figs = cell(6,1);
+
+dat_struct = dat_ideal;
+f_smooth = @(x) smoothdata(x, 'gaussian', 3);
+dat_struct.traces = f_smooth(dat_struct.traces);
+warning('USING PREPROCESSED DATA')
+
+% First get a baseline model as a preprocessor
+settings_base = settings_ideal;
+settings_base.augment_data = 0;
+my_model_base = CElegansModel(dat_struct, settings_base);
+n = my_model_base.dat_sz(1);
+m = my_model_base.dat_sz(2);
+
+% which_sparsity = 60; % Manually choose the sparsity for now
+num_iter = 100;
+max_rank = 25;
+all_U1 = cell(max_rank, 1);
+all_acf = cell(max_rank, 1);
+
+% Build the sparse signals; plot vs. sparsity LATER
+settings = struct('num_iter', num_iter);
+for i = 1:max_rank
+    settings.r_ctr = i;
+    [U, A, B] = sparse_residual_analysis(my_model_base, settings);
+
+    all_U1{i} = zeros(i, m-1);
+    % Choose sparsity based on max acf
+    all_acf{i} = zeros(i, num_iter);
+    which_sparsity = zeros(num_iter, 1);
+    for i2 = 1:i
+        for i3 = 1:num_iter
+            dat = U{i3}(i2,:)';
+            all_acf{i}(i2, i3) = acf(dat, 1, false);
+        end
+        [~, which_sparsity] = max(all_acf{i}(i2, :));
+        all_U1{i}(i2,:) = U{which_sparsity}(i2,:);
+    end
+end
+
+% Build data to plot
+X1 = my_model_base.dat(:,1:end-1);
+X2 = my_model_base.dat(:,2:end);
+
+all_names = cell(max_rank, 1);
+registered_lines = {};
+registered_names = {};
+num_steps_to_plot = 3;
+for i = 1:max_rank
+    all_names{i} = cell(1, i);
+    U = all_U1{i};
+    AB = X2 / [X1; U];
+    A = AB(:, 1:n);
+    An = A^(num_steps_to_plot-2);
+    A_nondiag = A - diag(diag(A));
+    B = AB(:, (n+1):end);
+    for i2 = 1:i
+        x = abs(B(:, i2));
+        [this_maxk, this_ind] = maxk(x, 2);
+        if this_maxk(1)/this_maxk(2) > 2
+            this_ind = this_ind(1);
+        end
+        
+        all_names{i}{:,i2} = my_model_base.get_names(this_ind, true);
+        if ischar(all_names{i}{:,i2})
+            all_names{i}{:,i2} = {all_names{i}{:,i2}};
+        end
+        % Names for registered lines graphing
+        
+        % First feature: max acf
+        signal_name = sort(all_names{i}{:,i2});
+        found_registration = false;
+        [this_y, which_sparsity_in_rank] = max(all_acf{i}(i2, :));
+        
+%         this_dat = [i; this_y; i2];
+        which_rank = i;
+        which_line_in_rank = i2;
+        this_dat = table(which_rank, this_y, which_line_in_rank,...
+            which_sparsity_in_rank);
+        for i4 = 1:length(registered_names)
+            % Attach them to a previous line if it exists
+            if isequal(registered_names{i4}, signal_name)
+                registered_lines{i4} = [registered_lines{i4}; ...
+                    this_dat]; %#ok<SAGROW>
+                found_registration = true;
+                break
+            end
+        end
+        if ~found_registration
+            if isempty(registered_names)
+                registered_names = {signal_name};
+            else
+                registered_names = [registered_names {signal_name}]; %#ok<AGROW>
+            end
+            registered_lines = [registered_lines ...
+                {this_dat} ]; %#ok<AGROW>
+        end
+    end
+end
+
+%---------------------------------------------
+%% Get names and points to cluster for ALL plots
+%---------------------------------------------
+% rank_to_plot = max_rank;
+rank_to_plot = 10;
+cluster_xy = zeros(length(registered_lines), 1);
+final_xy = zeros(rank_to_plot,2);
+final_names = cell(rank_to_plot,1);
+for i = 1:length(registered_lines)
+    xy = registered_lines{i};
+    this_name = strjoin(registered_names{i}, ';');
+    these_ind = xy{:,'which_rank'}==rank_to_plot;
+    if any(these_ind) % Used for the next plot
+        final_xy(xy{these_ind, 'which_line_in_rank'},:) = ...
+            [i; xy{these_ind, 'this_y'}];
+        final_names{xy{these_ind, 'which_line_in_rank'}} = this_name;
+    end
+    cluster_xy(i) = max(xy{:, 'this_y'});
+end
+
+num_clusters = 3;
+[idx, centroids] = kmeans(cluster_xy, num_clusters, 'Replicates', 10);
+[~, tmp] = max(cluster_xy);
+real_clust_idx = idx(tmp);
+[~, tmp] = min(cluster_xy);
+noise_clust_idx = idx(tmp);
+
+real_clust = find(idx==real_clust_idx);
+gray_clust = find((idx~=real_clust_idx).*(idx~=noise_clust_idx));
+noise_clust = find(idx==noise_clust_idx);
+
+%---------------------------------------------
+%% PLOT1: vs. rank
+%---------------------------------------------
+all_figs{1} = figure('DefaultAxesFontSize', 18);
+hold on
+n_lines = length(registered_lines);
+% max_plot_rank = max_rank;
+max_plot_rank = 10;
+text_xy = zeros(n_lines, 2);
+text_names = cell(n_lines, 1);
+acf_threshold = 0.5;
+text_opt = {'FontSize',14};
+for i = 1:length(registered_lines)
+    xy = registered_lines{i};
+    this_name = strjoin(registered_names{i}, ';');
+    % Whether or not it shows up early enough
+    if max_plot_rank < max_rank
+        these_ranks = xy{:,'which_rank'};
+        these_ranks_ind = (these_ranks<=max_plot_rank);
+        if ~any(these_ranks_ind)
+            text_names{i} = '';
+            continue
+        end
+    else
+        these_ranks_ind = true(size(xy{:,'which_rank'}));
+    end
+    % Whether or not to place a name by the line
+    if size(xy,1) > 1 && ~ismember(i, noise_clust)
+        text_xy(i, :) = [xy{1,'which_rank'}, xy{1,'this_y'}];
+        text_names{i} = this_name;
+    else
+        text_xy(i, :) = [xy{1,'which_rank'}, xy{1,'this_y'}];
+        text_names{i} = this_name;
+%         text_names{i} = '';
+    end
+    % Determine the colormap via cluster membership
+    if ismember(i, real_clust)
+        if contains(this_name, 'AVA')
+            line_opt = {'Color', my_cmap_3d(4,:)};
+        elseif contains(this_name, 'SMDD')
+            line_opt = {'Color', my_cmap_3d(2,:)};
+        elseif contains(this_name, 'SMDV')
+            line_opt = {'Color', my_cmap_3d(1,:)};
+        else
+            line_opt = {};
+        end
+    elseif ismember(i, gray_clust)
+        line_opt = {'Color', [0,0,0]+0.5};
+    else
+        line_opt = {'Color', 'k'};
+    end
+    % Actually plot
+    if length(find(these_ranks_ind)) > 1
+        plot(xy{these_ranks_ind,'which_rank'}, xy{these_ranks_ind,'this_y'},...
+            'LineWidth',2, line_opt{:})
+    else
+        plot(xy{these_ranks_ind,'which_rank'}, xy{these_ranks_ind,'this_y'},...
+            'o', line_opt{:})
+    end
+end
+textfit(text_xy(:,1), text_xy(:,2), text_names, text_opt{:})
+ylim([0, 1])
+ylabel('Maximum autocorrelation')
+xlabel('Rank')
+title('Determination of rank truncation')
+
+%---------------------------------------------
+%% PLOT2: vs. sparsity
+%---------------------------------------------
+all_figs{2} = figure('DefaultAxesFontSize', 18);
+[~, sort_ind] = sort(final_xy(:,2), 'descend');
+imagesc(all_acf{rank_to_plot}(sort_ind, :));colorbar
+% imagesc(all_acf{rank_to_plot});colorbar
+yticks(1:rank_to_plot)
+yticklabels(final_names(sort_ind))
+xlabel('Sparsity')
+title('Determination of sparsity')
+
+%---------------------------------------------
+%% PLOT3: Visual connection with experimentalist signals
+%---------------------------------------------
+% Note: replot the "correct" signals
+tspan = 100:1000; % decided by hand, SAME AS ABOVE FIGURE
+ctr = my_model_base.control_signal;
+
+%---------------------------------------------
+% Reversal figure
+%---------------------------------------------
+all_figs{3} = figure('DefaultAxesFontSize', 14);
+opt = {'color', my_cmap_3d(4,:), 'LineWidth', 2};
+
+subplot(2,1,1)
+plot(ctr(5,tspan)+ctr(6,tspan), opt{:})
+title('Reversal')
+
+subplot(2,1,2)
+registration_ind = find(contains(text_names, 'AVA'), 1);
+this_line = registered_lines{registration_ind};
+[~, rank_ind] = max(this_line{:, 'this_y'}); % Max over ranks AND sparsity
+rank_ind = this_line{rank_ind, 'which_rank'};
+line_ind = this_line{rank_ind, 'which_line_in_rank'};
+learned_u_REV = all_U1{rank_ind}(line_ind, :);
+plot(learned_u_REV(tspan), opt{:})
+xlim([0 length(tspan)])
+% title('AVA')
+
+prep_figure_no_box_no_zoom(all_figs{3})
+
+%---------------------------------------------
+% Dorsal turn figure
+%---------------------------------------------
+all_figs{4} = figure('DefaultAxesFontSize', 14);
+opt = {'color', my_cmap_3d(2,:), 'LineWidth', 2};
+
+subplot(2,1,1)
+plot(ctr(3,tspan), opt{:})
+title('Dorsal Turn')
+
+subplot(2,1,2)
+registration_ind = find(contains(text_names, 'SMDD'), 1);
+this_line = registered_lines{registration_ind};
+[~, rank_ind] = max(this_line{:, 'this_y'}); % Max over ranks AND sparsity
+rank_ind = this_line{rank_ind, 'which_rank'};
+line_ind = this_line{rank_ind, 'which_line_in_rank'};
+learned_u_DT = all_U1{rank_ind}(line_ind, :);
+plot(learned_u_DT(tspan), opt{:})
+xlim([0 length(tspan)])
+% title('SMDD')
+
+prep_figure_no_box_no_zoom(all_figs{4})
+
+%---------------------------------------------
+% Ventral turn figure
+%---------------------------------------------
+all_figs{5} = figure('DefaultAxesFontSize', 14);
+opt = {'color', my_cmap_3d(1,:), 'LineWidth', 2};
+
+subplot(2,1,1)
+plot(ctr(4,tspan), opt{:})
+title('Ventral Turn')
+
+subplot(2,1,2)
+registration_ind = find(contains(text_names, 'SMDV'), 1);
+this_line = registered_lines{registration_ind};
+[~, rank_ind] = max(this_line{:, 'this_y'}); % Max over ranks AND sparsity
+rank_ind = this_line{rank_ind, 'which_rank'};
+line_ind = this_line{rank_ind, 'which_line_in_rank'};
+learned_u_VT = all_U1{rank_ind}(line_ind, :);
+plot(learned_u_VT(tspan), opt{:})
+xlim([0 length(tspan)])
+% title('SMDV')
+
+prep_figure_no_box_no_zoom(all_figs{5})
+
+%---------------------------------------------
+%% PLOT4: Boxplot of correlation with experimentalist signals
+%---------------------------------------------
+% First, need to re-run the code for getting all of the signals for other
+% datafiles
+num_files = length(all_filenames);
+all_models = cell(num_files, 1);
+all_U2 = cell(num_files, 1);
+all_acf2 = cell(num_files, 1);
+% For the preprocessor model
+settings_base = settings_ideal;
+settings_base.augment_data = 0;
+settings_base.dmd_mode = 'no_dynamics'; % But we want the controllers
+% For the residual analysis
+settings = struct('num_iter', 100, 'r_ctr', 15);
+
+% Get the control signals and acf
+for i = 1:num_files
+    dat_struct = importdata(all_filenames{i});
+    dat_struct.traces = f_smooth(dat_struct.traces);
+    warning('USING PREPROCESSED DATA')
+    
+    if i > num_type_1 % Differently named states
+        settings_base.global_signal_subset = ...
+            {'Reversal', 'Dorsal turn', 'Ventral turn'};
+    end
+    % First get a baseline model as a preprocessor
+    all_models{i} = CElegansModel(dat_struct, settings_base);
+    n = all_models{i}.dat_sz(1);
+    m = all_models{i}.dat_sz(2);
+    
+    % Build the sparse signals
+    [U, A, B] = sparse_residual_analysis(all_models{i}, settings);
+    all_U2{i} = zeros(i, m-1);
+    % Choose sparsity based on max acf
+    all_acf2{i} = zeros(i, num_iter);
+    which_sparsity = zeros(num_iter, 1);
+    for i2 = 1:settings.r_ctr
+        for i3 = 1:settings.num_iter
+            dat = U{i3}(i2,:)';
+            all_acf{i}(i2, i3) = acf(dat, 1, false);
+        end
+        [~, which_sparsity] = max(all_acf{i}(i2, :));
+        all_U2{i}(i2,:) = U{which_sparsity}(i2,:);
+    end
+end
+%% Get the maximum correlation with the experimentalist signals for each
+% model
+corr_threshold = [0.1, 0.3]; % Signals need an offset; want a threshold after as well
+max_offset = 20;
+correlation_table_raw = table();
+f_dist = @(x) 1 - squareform(pdist(x, 'correlation'));
+for i = 1:num_files
+    tm = all_models{i};
+    learned_ctr = all_U2{i};
+    learned_n = size(learned_ctr, 1);
+    exp_ctr = tm.control_signal(:,1:end-1);
+    exp_n = size(exp_ctr, 1);
+    this_dat = [exp_ctr; learned_ctr];
+    all_corr = f_dist(this_dat);
+    all_corr = all_corr - diag(diag(all_corr));
+    
+    key_ind = contains(tm.state_labels_key, tm.global_signal_subset);
+    key = tm.state_labels_key(key_ind);
+    model_index = i;
+    for i2 = 1:length(key)
+        [max_corr, max_ind] = max(all_corr(i2,:));
+        if (max_corr > corr_threshold(1)) && (max_ind>exp_n)
+            % See if an offset gives a better correlation
+            best_offset = 0;
+            for i3 = 1:max_offset
+                % Positive offset
+                tmp = f_dist([this_dat(i2,1:end-i3);...
+                    this_dat(max_ind,i3+1:end)]);
+                this_corr = tmp(1,2); % off-diagonal term
+                if this_corr > max_corr
+                    max_corr = this_corr;
+                    best_offset = i3;
+                end
+                % Negative offset
+                tmp = f_dist([this_dat(i2,i3+1:end);...
+                    this_dat(max_ind,1:end-i3)]);
+                this_corr = tmp(1,2); % off-diagonal term
+                if this_corr > max_corr
+                    max_corr = this_corr;
+                    best_offset = -i3;
+                end
+            end
+            
+            if max_corr > corr_threshold(2)
+                experimental_signal_index = i2;
+                experimental_signal_name = key(i2);
+                learned_signal_index = max_ind - exp_n;
+                maximum_correlation = max_corr;
+                correlation_table_raw = [correlation_table_raw;
+                    table(model_index, maximum_correlation, best_offset,...
+                    experimental_signal_index, experimental_signal_name,...
+                    learned_signal_index)];
+            end
+        end
+    end
+    
+%     figure;imagesc(all_corr);colorbar
+%     ind = tm.state_labels_ind(1:end-1);
+%     key = tm.state_labels_key;
+%     fig = figure;
+%     subplot(2,1,1)
+%     plot_colored(this_dat(1,:), ind, key, 'plot', [], fig);
+%     subplot(2,1,2)
+%     plot_colored(this_dat(22,:), ind, key, 'plot', [], fig);
+end
+
+% Consolidate differently named states; keep only the max
+correlation_table = correlation_table_raw;
+name_dict = containers.Map(...
+    {'REVSUS','REV1','REV2','Reversal', 'DT', 'Dorsal turn',...
+        'VT', 'Ventral turn'},...
+    {'Reversal', 'Reversal', 'Reversal', 'Reversal', ...
+        'Dorsal Turn', 'Dorsal Turn', ...
+        'Ventral Turn', 'Ventral Turn'});
+for i = 1:size(correlation_table_raw,1)
+    correlation_table{i,'experimental_signal_name'} = ...
+        {name_dict(correlation_table{i,'experimental_signal_name'}{1})};
+end
+for i = 1:num_files
+    while true
+        ind = find(correlation_table{:,'model_index'}==i);
+        these_names = correlation_table{ind, 'experimental_signal_name'};
+        [~, unique_ind] = unique(these_names, 'first');
+        repeat_ind = 1:length(these_names);
+        repeat_ind(unique_ind) = [];
+        if isempty(repeat_ind)
+            break
+        end
+        this_name = correlation_table{...
+            ind(repeat_ind(1)), 'experimental_signal_name'};
+        these_repeated_ind = find(strcmp(...
+            correlation_table{ind, 'experimental_signal_name'}, this_name));
+        [~, sort_ind] = sort(correlation_table{...
+            ind(these_repeated_ind),'maximum_correlation'}, 'descend');
+        to_remove_ind_original_basis = ind(...
+            these_repeated_ind(sort_ind(2:end)));
+        correlation_table(to_remove_ind_original_basis, :) = [];
+    end
+end
+
+% Actually plot (boxplot)
+all_names = unique(name_dict.values);
+all_figs{6} = figure('DefaultAxesFontSize', 14);
+h = boxplot(correlation_table{:,'maximum_correlation'}, ...
+    correlation_table{:, 'experimental_signal_name'})
+% set(h,{'linew'},{2})
+xtickangle(30)
+ylabel('Correlation')
+ylim([0 1])
+title('Signals across 15 individuals')
+%% Save figures
+if to_save
+    for i = 1:length(all_figs)
+        this_fig = all_figs{i};
+        if ~isvalid(this_fig) || isempty(this_fig)
+            continue
+        end
+        if i>=3 && i<6
+            figure(this_fig)
+            yticks([])
+            xticks([])
+            set(gca, 'box', 'off')
+%             sz = {'0.9\columnwidth', '0.025\paperheight'};
+            sz = {'0.9\columnwidth', '0.1\paperheight'};
+        elseif i>=6
+            % Large title
+            sz = {'0.9\columnwidth', '0.07\paperheight'};
+        else
+            sz = {'0.9\columnwidth', '0.1\paperheight'};
+        end
+        fname = sprintf('%sfigure_2_new_%d', foldername, i);
+        matlab2tikz('figurehandle',this_fig,'filename',[fname '_raw.tex'], ...
+            'width', sz{1}, 'height', sz{2});
+    %     zoom(1.2)
+    %     colorbar off;
+        saveas(this_fig, fname, 'png');
+    end
 end
 %==========================================================================
 
@@ -352,7 +846,6 @@ if to_save
     end
 end
 %==========================================================================
-
 %% Figure 3s: CDF
 all_figs = cell(1);
 % Use models from above to get correlation data
@@ -421,7 +914,6 @@ if to_save
     end
 end
 %==========================================================================
-
 %% Figure 3d: time-delay embeddings 
 all_figs = cell(1);
 max_augment = 12;
@@ -490,9 +982,10 @@ for i = 1:size(U2,1)
 end
 
 %---------------------------------------------
-% Plot the unrolled matrix of one control signal
+%% Plot the unrolled matrix of one control signal (Dorsal Turn)
 %---------------------------------------------
-which_ctr = 1;
+% which_ctr = 1;
+which_ctr = 3;
 names = my_model_time_delay.get_names([], true);
 % ind = contains(my_model_time_delay.state_labels_key, {'REV', 'DT', 'VT'});
 % Unroll one of the controllers
@@ -562,7 +1055,6 @@ if to_save
     end
 end
 %==========================================================================
-
 %% Figure 4e: Elimination path (Lasso)
 all_figs = cell(3,1);
 %---------------------------------------------

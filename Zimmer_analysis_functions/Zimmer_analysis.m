@@ -7007,13 +7007,6 @@ else
     end
 end
 
-all_D = zeros(10,1);
-res = real(X2 - (X2/X1)*X1);
-for i = 1:30
-    [W0, U0, all_D(i)] = nnmf(res, i);
-end
-figure;plot(all_D)
-
 sparsity_pattern = false(size(U));
 all_U = cell(num_iter, 1);
 
@@ -7149,7 +7142,6 @@ settings2.dmd_mode = 'func_DMDc';
 my_model_learned = CElegansModel(dat_struct, settings2);
 
 my_model_learned.plot_reconstruction_interactive(false);
-
 %% Some additional error plots
 
 % Look at the cross-validation errors
@@ -7196,8 +7188,835 @@ ylim([0, 1.1*max(max([err_test;err_train]))])
 ylabel('L2 error')
 xlabel('Worm ID number')
 title('Training and Test Data Reconstruction')
+%% Visualize the path control signals with increasing rank
+
+max_rank = 30;
+all_D = zeros(max_rank,1);
+all_W = cell(max_rank, 1);
+all_U = cell(max_rank, 1);
+res = real(X2 - (X2/X1)*X1);
+for i = 1:max_rank
+    [all_W{i}, all_U{i}, all_D(i)] = nnmf(res, i);
+end
+figure;
+plot(all_D)
+title('All rms residuals')
+xlabel('Rank')
+
+all_names = cell(max_rank, 1);
+all_names_vec = {};
+tol = 1e-1;
+x_to_plot = [];
+for i = 1:5
+    all_names{i} = cell(1, i);
+    this_W = all_W{i};
+    for i2 = 1:i
+%         this_ind = find(isoutlier(this_W(:, i2), 'ThresholdFactor',3));
+        x = this_W(:, i2);
+        [~, this_ind] = maxk(x, 4);
+%         this_ind = find( x > 3*median(x(x>tol)) );
+        all_names{i}{:,i2} = my_model_learned.get_names(this_ind, true);
+        all_names_vec = [all_names_vec strjoin(all_names{i}{:,i2}, ';')];
+        
+        % For next plot
+        x_to_plot = [x_to_plot, ...
+            [i; i2-i/2]]; %#ok<AGROW>
+        
+%         figure;
+%         plot(x)
+%         hold on
+%         plot(this_ind, x(this_ind), 'o')
+%         drawnow
+%         pause
+    end
+end
+
+figure;
+plot(x_to_plot(1,:), x_to_plot(2,:), 'o')
+hold on
+textfit(x_to_plot(1,:), x_to_plot(2,:), all_names_vec)
 %==========================================================================
 
+
+%% Visualization of sparsified learned controllers as a function of rank
+filename = '../../Zimmer_data/WildType_adult/simplewt5/wbdataset.mat';
+dat_struct = importdata(filename);
+
+% TEST
+dat_struct.traces = smoothdata(dat_struct.traces, 'gaussian', 3);
+% all_max = max(dat_struct.traces, [], 1);
+% all_max = max(all_max, 1);
+% dat_struct.traces = dat_struct.traces ./ all_max;
+% dat_struct.traces = dat_struct.traces.^2;
+warning('USING SQUARED DATA')
+
+settings_base = struct(...
+    'to_subtract_mean',false,...
+    'to_subtract_mean_sparse',false,...
+    'to_subtract_mean_global',false,...
+    'add_constant_signal',false,...
+    'use_deriv',false,...
+    ...'designated_controller_channels', {{'sensory', 1}},...
+    ...'augment_data', 5,...
+    'filter_window_dat', 1,...
+    'dmd_mode','func_DMDc',...
+    'autocorrelation_noise_threshold', 0.6,...
+    'lambda_sparse',0);
+settings_base.global_signal_mode = 'ID_binary_transitions';
+
+% First get a baseline model as a preprocessor
+my_model_base = CElegansModel(dat_struct, settings_base);
+
+which_sparsity = 60; % Manually choose the sparsity for now
+num_iter = 101;
+max_rank = 20;
+all_U1 = cell(max_rank, 1);
+all_A1 = cell(max_rank, 1);
+all_B1 = cell(max_rank, 1);
+
+% Build the sparse signals
+settings = struct('num_iter', num_iter);
+for i = 1:max_rank
+    settings.r_ctr = i;
+    [U, A, B] = sparse_residual_analysis(my_model_base, settings);
+    all_U1{i} = U{which_sparsity};
+    all_A1{i} = A{which_sparsity};
+    all_B1{i} = B{which_sparsity};
+end
+%% Plot autocorrelation as sparsity increases for a given rank
+if ~iscell(U)
+%     which_rank = max_rank;
+    which_rank = 10;
+    % i.e. if I do things out of order
+    [U, A, B] = sparse_residual_analysis(my_model_base, ...
+        struct('num_iter', num_iter, 'r_ctr', which_rank));
+end
+r_ctr = size(U{1},1);
+
+all_acf = zeros(num_iter, r_ctr);
+all_peaks = zeros(num_iter, r_ctr);
+all_nnz = zeros(num_iter, r_ctr);
+all_blocks = zeros(num_iter, r_ctr);
+% bw = 10;
+% reference_dist = @(x, dat) exp(-x./mean(dat))./mean(dat);
+
+for i = 1:num_iter
+    for i2 = 1:r_ctr
+        dat = U{i}(i2,:)';
+        all_acf(i, i2) = acf(dat, 1, false);
+%         all_peaks(i, i2) = length(findpeaks(dat, ...
+%             'MinPeakProminence', median(dat(dat>0))));
+%         all_peaks(i, i2) = length(findpeaks(dat));
+%         [all_starts, all_ends] = calc_contiguous_blocks(logical(dat));
+%         all_gaps = all_starts(2:end) - all_ends(1:end-1);
+% 
+%         [b_counts, b_edges] = histcounts(all_gaps, 'BinWidth', bw);
+%         x = smoothdata(b_edges, 'movmean',[0 1]);
+%         x = x(1:end-1); % Bin mid-points
+%         tmp = reference_dist(x, all_gaps);
+%         all_peaks(i, i2) = KLDiv(b_counts, tmp);
+%         all_peaks(i, i2) = -sum(dat(dat>0).*log2(dat(dat>0))); % Shannon
+
+%         this_dat = dat - min(dat(dat>0)); % Shifted exponential
+%         this_dat = this_dat(this_dat>0);
+%         [all_starts, all_ends] = calc_contiguous_blocks(logical(dat));
+%         this_dat = all_ends - all_starts + 1;
+%         
+%         pd = fitdist(this_dat', 'exponential');
+%         all_peaks(i, i2) = pd.negloglik;
+        all_peaks(i, i2) = SampEn(dat, 3, 1e-3);
+%         all_peaks(i, i2) = PermEn(dat', 5);
+%         all_acf(i, i2) = mean(acf(dat, 2, false));
+        all_nnz(i, i2) = nnz(dat);
+        all_blocks(i, i2) = length(this_dat);
+    end
+end
+fig = figure;
+% waterfall(all_acf')
+imagesc(all_acf')
+% plot(all_acf)
+i = 1;
+findchangepts(all_peaks(:,i), 'Statistic', 'linear')
+
+figure;
+% this_dat = (log(all_nnz').*all_blocks'+2*all_peaks')./all_nnz'; % BIC version
+this_dat = (all_peaks')./all_blocks'; % nll version
+imagesc(this_dat);colorbar
+title('Log likelihood or BIC version')
+
+i = 1;
+figure;
+plot(all_acf(:,i))
+hold on;
+y = all_nnz(:,i)./all_peaks(:,i);
+plot(y ./ max(y))
+legend({'Autocorrelation', 'nnz/peaks'})
+title(sprintf('Conrol signal %d', i))
+
+i = 4;
+x = (1:num_iter)';
+figure;plot(all_peaks(:,i) - all_peaks(1,i)*0.95.^(x-1)); hold on;plot(x,0*x)
+[~, max_ind] = max(all_acf(:,i));
+title(sprintf('Difference between actual and modeled peaks; acf max is at %d',...
+    max_ind));
+
+i = 10;
+figure;plot(U{50}(i,:));hold on;plot(U{80}(i,:));plot(U{90}(i,:))
+
+% i = 19;
+U_best = [];
+acf_threshold = 0.7;
+to_plot = false;
+U_best_ind = zeros(r_ctr, 1);
+for i = 1:r_ctr
+    [max_acf, i2] = max(all_acf(:,i));
+    if max_acf > acf_threshold
+        U_best_ind(i) = i2;
+        U_best = [U_best; U{i2}(i,:)]; %#ok<AGROW>
+        [~, this_neuron] = max(abs(B{i2}(:,i)));
+        fprintf('Adding signal %d with input onto %s (sparsity: %d)\n', ...
+            i, my_model_base.get_names(this_neuron, true), i2)
+    end
+    if to_plot
+        plot_colored(U{i2}(i,:), color_ind, key, 'plot');
+        [~, this_neuron] = max(abs(B{i2}(:,i)));
+        title(sprintf('Max acf (%.3f) for signal %d (%s) at sparsity %d',...
+            max_acf, i, my_model_base.get_names(this_neuron, true), i2))
+        drawnow
+        pause
+    end
+end
+
+% Make a model with these signals
+settings2 = settings_base;
+% settings2.filter_window_dat = 0;
+settings2.global_signal_mode = 'None';
+% settings2.augment_data = 5;
+% settings2.dmd_mode = 'func_dmdc';
+settings2.dmd_mode = 'sparse_fast';
+settings2.designated_controller_channels = {'sensory', 1};
+% this_ctr = [smoothdata(U_best,2,'gaussian',2), zeros(size(U_best,1),1)];
+% this_ctr = [zeros(size(U_best,1),1), smoothdata(U_best,2,'movmean',2)];
+this_ctr = [zeros(size(U_best,1),1), U_best];
+settings2.custom_control_signal = this_ctr ./ max(this_ctr, [], 2);
+
+best_model = CElegansModel(dat_struct, settings2);
+best_model.plot_reconstruction_interactive(false);
+
+color_ind = best_model.state_labels_ind(1:end-1);
+%% Do a probability distribution comparison
+% First, amplitude (vs. exponential)
+bw = 1e-2;
+reference_dist = @(x, dat) exp(-x./mean(dat));
+
+[b_counts, b_edges] = histcounts(dat(dat>0), 'BinWidth', bw);
+figure;histogram('BinEdges', b_edges, 'BinCounts', b_counts,...
+    'Normalization','probability')
+hold on;
+x = smoothdata(b_edges, 'movmean',[0 1]);
+x = x(1:end-1); % Bin mid-points
+tmp = reference_dist(x, dat(dat>0));
+% [b_counts2, b_edges2] = histcounts(tmp, 'BinWidth', bw);
+% ind = (b_edges2+bw)>min(b_edges);
+histogram('BinEdges', b_edges, 'BinCounts', tmp,...
+    'Normalization','probability')
+
+% Second, inter-event interval (also vs. exponential)
+bw = 10;
+
+[all_starts, all_ends] = calc_contiguous_blocks(logical(dat));
+all_gaps = all_starts(2:end) - all_ends(1:end-1);
+
+[b_counts, b_edges] = histcounts(all_gaps, 'BinWidth', bw);
+figure;histogram('BinEdges', b_edges, 'BinCounts', b_counts,...
+    'Normalization','probability')
+hold on;
+x = smoothdata(b_edges, 'movmean',[0 1]);
+x = x(1:end-1); % Bin mid-points
+tmp = reference_dist(x, all_gaps);
+histogram('BinEdges', b_edges, 'BinCounts', tmp,...
+    'Normalization','probability')
+
+kl = KLDiv(b_counts, tmp);
+title(sprintf('KL-divergence: %.2f', kl))
+
+% Third: negloglik; back to amplitudes
+reference_dist = 'exponential';
+this_dat = dat - min(dat(dat>0));
+this_dat = this_dat(this_dat>0);
+pd = fitdist(this_dat, reference_dist);
+
+figure;
+histogram(pd.random([100,1]), 'Normalization', 'probability', 'BinWidth',5e-2);hold on
+histogram(this_dat, 'Normalization', 'probability', 'BinWidth',5e-2);
+%% Plotting (cleaned up)
+all_names = cell(max_rank, 1);
+registered_lines = {};
+registered_names = {};
+num_steps_to_plot = 10;
+for i = 1:max_rank
+    all_names{i} = cell(1, i);
+    A = all_A1{i};
+    An = A^(num_steps_to_plot-3);
+    B = all_B1{i};
+    U = all_U1{i};
+    for i2 = 1:i
+        x = abs(B(:, i2));
+%         [~, this_ind] = maxk(x, 4);
+%         thresh = max(x)/2;
+        [this_maxk, this_ind] = maxk(x, 2);
+        if this_maxk(1)/this_maxk(2) > 2
+            this_ind = this_ind(1);
+        end
+%         to_keep_ind = (x(this_ind) > thresh);
+%         this_ind = this_ind(to_keep_ind);
+        
+        all_names{i}{:,i2} = my_model_base.get_names(this_ind, true);
+        if ischar(all_names{i}{:,i2})
+            all_names{i}{:,i2} = {all_names{i}{:,i2}};
+        end
+        % Names for registered lines graphing
+        other_ind = true(size(x));
+        other_ind(this_ind) = false;
+        signal_name = sort(all_names{i}{:,i2});
+        found_registration = false;
+        this_x = i;
+        Bi2Ui2 = B(this_ind,i2)*U(i2,:);
+        this_y = norm(A(other_ind, :)*An*A(:, this_ind)*Bi2Ui2, 'fro');
+        this_z = norm(A*An*A(:, this_ind)*Bi2Ui2, 'fro');
+        this_y2 = this_y/norm(Bi2Ui2, 'fro');
+%         BU = B(:,i2)*U(i2,:);
+%         ABU = A*BU(:, 1:end-1);
+%         BU = BU(:, 2:end);
+%         tmp1 = ABU.*(ABU>0) - BU.*(BU>0);
+%         tmp2 = ABU.*(ABU<0) - BU.*(BU<0);
+%         this_y2 = norm(tmp1.*(tmp1>0) + tmp2.*(tmp2>0), 'fro') / norm(BU, 'fro');
+%         this_y2 = norm(A(other_ind, :)*B(:,i2)*U(i2,:), 'fro') / ...
+%             norm(B(:,i2)*U(i2,:), 'fro');
+%         this_y2 = norm(A(other_ind, this_ind)*Bi2Ui2, 'fro') / ...
+%             norm(Bi2Ui2, 'fro');
+%         this_y2 = norm(A*B(:,i2)*U(i2,:), 'fro') / ...
+%             norm(B(:,i2)*U(i2,:), 'fro');
+%         [all_starts, all_ends] = calc_contiguous_blocks(...
+%             logical(U(i2,:)), 1, 12);
+%         [all_starts, all_ends] = calc_contiguous_blocks(...
+%             logical(U(i2,:)), 1, 3);
+%         this_y2 = mean(all_ends-all_starts);
+%         this_y2 = mean(all_starts(2:end) - all_ends(1:end-1));
+%         other_ind = true(size(x));
+%         other_ind(this_ind) = false;
+%         Bi2Ui2 = B(this_ind,i2)*U(i2,:);
+%         this_y2 = norm(A(other_ind, :)*An*A(:, this_ind)*Bi2Ui2, 'fro');
+%         this_y2 = this_y2/norm(Bi2Ui2, 'fro');
+%         figure;histogram(A_nondiag*B(:,i2));
+%         title(signal_name)
+%         pause
+        % Second feature: percent activity on rest of network
+%         ABi = abs(A_nondiag*B(:,i2));
+%         this_y2 = median(ABi(ABi>median(ABi)));
+%         this_y2 = quantile(ABi, 0.99);
+        
+        this_dat = [this_x; this_y; this_z; i2; this_y2];
+        for i4 = 1:length(registered_names)
+            % Attach them to a previous line if it exists
+            if isequal(registered_names{i4}, signal_name)
+                registered_lines{i4} = [registered_lines{i4} ...
+                    this_dat]; %#ok<SAGROW>
+                found_registration = true;
+                break
+            end
+        end
+        if ~found_registration
+            if isempty(registered_names)
+                registered_names = {signal_name};
+            else
+                registered_names = [registered_names {signal_name}]; %#ok<AGROW>
+            end
+            registered_lines = [registered_lines {this_dat} ]; %#ok<AGROW>
+        end
+    end
+end
+
+% Plot
+opt = {'FontSize',14};
+
+% figure('DefaultAxesFontSize', 16);hold on
+% n = length(registered_lines);
+% which_y = 2;
+% text_xy = zeros(n, 2);
+% text_names = cell(n, 1);
+% for i = 1:n
+%     xy = registered_lines{i};
+%     if size(xy,2) > 1
+%         plot(xy(1,:), xy(which_y,:), 'LineWidth',2)
+%     else
+%         plot(xy(1,:), xy(which_y,:), 'o')
+%     end
+%     text_xy(i, :) = [xy(1,1), xy(which_y,1)+0.02];
+%     text_names{i} = strjoin(registered_names{i}, ';');
+% end
+% [clust_ind, centroids] = kmeans(text_xy(:,2), 3);
+% [~, noise_ind] = min(centroids);
+% text_names(clust_ind==noise_ind) = {''};
+% textfit(text_xy(:,1), text_xy(:,2), text_names, opt{:})
+% title(sprintf('Control signals weighted by %d step importance (not including self)',...
+%     num_steps_to_plot))
+% title('Control signals weighted by importance (not including self)')
+% ylabel(sprintf('norm(activity) after %d steps',...
+%     num_steps_to_plot))
+% xlabel('Rank')
+
+figure('DefaultAxesFontSize', 16);hold on
+n = length(registered_lines);
+text_xy = zeros(n, 2);
+text_names = cell(n, 1);
+for i = 1:length(registered_lines)
+    xy = registered_lines{i};
+    if any(xy(1,:)==max_rank) % Used for U_best acf cutoff
+        if U_best_ind(xy(4, xy(1,:)==max_rank)) == 0
+            continue
+        end
+    else
+        continue
+    end
+    if size(xy,2) > 1
+        plot(xy(1,:), xy(5,:), 'LineWidth',2)
+    else
+        plot(xy(1,:), xy(5,:), 'o')
+    end
+    text_xy(i, :) = [xy(1,1), xy(5,1)+0.02];
+    text_names{i} = strjoin(registered_names{i}, ';');
+end
+textfit(text_xy(:,1), text_xy(:,2), text_names, opt{:})
+title(sprintf('Relative importance of %d step importance (INCLUDING self)',...
+    num_steps_to_plot))
+xlabel('Rank')
+
+% figure('DefaultAxesFontSize', 16);hold on
+% for i = 1:length(registered_lines)
+%     xy = registered_lines{i};
+%     if size(xy,2) > 1
+%         plot(xy(1,:), xy(3,:), 'LineWidth',2)
+%     else
+%         plot(xy(1,:), xy(3,:), 'o')
+%     end
+%     text_xy(i, :) = [xy(1,1), xy(3,1)+0.02];
+%     text_names{i} = strjoin(registered_names{i}, ';');
+% end
+% textfit(text_xy(:,1), text_xy(:,2), text_names, opt{:})
+% title(sprintf('Control signals weighted by %d step importance (INCLUDING self)',...
+%     num_steps_to_plot))
+% xlabel('Rank')
+
+% Make a model using the "good" signals
+settings2 = settings_base;
+settings2.augment_data = 0;
+r_ctr = 15;
+U = all_U1{r_ctr};
+% which_signals = {...
+%     {'SMDVL'; 'SMDVR'}, {'AVAR'; 'AVAL'}, {'AVFL'; 'AVFR'},...
+%     {'RIBL'; 'RIBR'}, {'SMDDL'; 'SMDDR'}};
+which_signals = {...
+    {'SMDVL'; 'SMDVR'}, {'AVAR'; 'AVAL'}, {'SMDDL'; 'SMDDR'}};
+this_r_ctr = length(which_signals);
+U_ind = zeros(this_r_ctr,1);
+this_ctr = zeros(this_r_ctr,size(U,2));
+for i = 1:length(which_signals)
+    name_ind = cellfun(@(x) isequal(sort(which_signals{i}),x), registered_names);
+    this_line = registered_lines{name_ind};
+    U_ind = this_line(4, this_line(1,:)==r_ctr); % The original U space
+    this_ctr(i,:) = U(U_ind,:);
+end
+% this_ctr = [smoothdata(5*this_ctr,2,'movmean',2), zeros(this_r_ctr,2)];
+this_ctr = [smoothdata(5*this_ctr,2,'gaussian',2), zeros(this_r_ctr,2)];
+settings2.custom_control_signal = this_ctr(:, 1:end-settings2.augment_data);
+settings2.global_signal_mode = 'None';
+% settings2.augment_data = 5;
+% settings2.dmd_mode = 'naive';
+settings2.dmd_mode = 'func_DMDc';
+% settings2.dmd_mode = 'sparse_fast';
+% settings2.filter_window_dat = 3;
+my_model_subset = CElegansModel(dat_struct, settings2);
+% my_model_subset.plot_colored_reconstruction();
+% my_model_subset.plot_reconstruction_interactive(false);
+%% Plotting (using reconsruction goodness, not just magnitude of signals)
+all_names = cell(max_rank, 1);
+registered_lines = {};
+registered_names = {};
+num_steps_to_plot = 50;
+num_reconstructions = 10;
+
+% Model settings
+settings2 = settings_base;
+settings2.augment_data = 0;
+settings2.global_signal_mode = 'None';
+settings2.dmd_mode = 'func_DMDc';
+settings_naive = settings2;
+
+% First get a baseline model as a preprocessor
+my_model_naive = CElegansModel(dat_struct, settings_naive);
+recon_func_no_ctr = @(x,t)...
+    my_model_naive.AdaptiveDmdc_obj.calc_reconstruction_original(x,t);
+num_neurons = my_model_naive.original_sz(1);
+% corr_f = @(x,y) diag(1 - squareform(pdist([x; y], 'correlation')), num_neurons);
+corr_f = @(x,y,i) diag(squareform(pdist([x(i,:); y(i,:)], 'correlation')), length(i));
+
+for i = 1:15
+    all_names{i} = cell(1, i);
+    U = all_U1{i};
+    u = size(U,1);
+    % Build a model for this U
+    this_ctr = [smoothdata(2*U,2,'gaussian',2), zeros(i,2)];
+    settings2.custom_control_signal = this_ctr(:, 1:end);
+    this_model = CElegansModel(dat_struct, settings2);
+    recon_func = @(x,t,w)...
+        this_model.AdaptiveDmdc_obj.calc_reconstruction_control(x,t,w);
+    clear this_recon
+    B = this_model.AdaptiveDmdc_obj.A_original(:, end-u+1:end);
+    for i2 = 1:i
+        % Names for registered lines graphing
+        x = abs(B(:, i2));
+        [~, this_ind] = maxk(x, 2);
+        all_names{i}{:,i2} = this_model.get_names(this_ind, true);
+        if ischar(all_names{i}{:,i2})
+            all_names{i}{:,i2} = {all_names{i}{:,i2}};
+        end
+        signal_name = sort(all_names{i}{:,i2});
+        found_registration = false;
+        % Get the reconstruction (plot-able) variables
+        this_x = i;
+        all_starts = calc_contiguous_blocks(...
+            logical(this_ctr(i2,:)), 4, 1);
+        n = this_model.dat_sz(2);
+        all_starts = all_starts(all_starts < (n-num_steps_to_plot));
+        
+        this_order = randperm(length(all_starts));
+        all_y = zeros(num_reconstructions,1);
+        all_z = zeros(num_reconstructions,1);
+        all_y2 = zeros(num_reconstructions,1);
+        for i3 = 1:min([num_reconstructions, length(all_starts)])
+            this_start = all_starts(this_order(i3));
+            tspan = this_start:(this_start+num_steps_to_plot-1);
+            x = this_model.dat(:, tspan);
+            this_recon = recon_func(x(:,1), tspan, i2);
+            this_recon_no_ctr = recon_func_no_ctr(x(:,1), tspan);
+            % features: L2 error and correlation
+%             all_y(i3) = norm(x-this_recon,'fro') / norm(x,'fro');
+            all_y(i3) = mean(corr_f(x, this_recon_no_ctr, this_ind)) / ...
+                mean(corr_f(x, this_recon, this_ind));
+            all_z(i3) = norm(x-this_recon_no_ctr,'fro') / norm(x,'fro');
+            all_y2(i3) = norm(x(this_ind,:)-this_recon(this_ind,:),'fro')...
+                .../ norm(x(this_ind,:),'fro');
+                / norm(x(this_ind,:)-this_recon_no_ctr(this_ind,:),'fro');
+%             j = this_ind(1);
+%             figure;plot(x(j,:));hold on;
+%             plot(this_recon(j,:)); plot(this_recon_no_ctr(j,:))
+%             legend({'Data', 'Reconstruction with control', 'Naive reconstruction'})
+        end
+        
+        this_y = mean(all_y);
+        this_z = mean(all_z);
+        this_y2 = mean(all_y2);
+        
+%         dat_to_add = [this_x; this_y; this_z; i2];
+        dat_to_add = [this_x; this_y; this_z; i2; this_y2];
+        % Attach them to a previous line if it exists
+        for i4 = 1:length(registered_names)
+            if isequal(registered_names{i4}, signal_name)
+                registered_lines{i4} = [registered_lines{i4} ...
+                    dat_to_add]; %#ok<SAGROW>
+                found_registration = true;
+                break
+            end
+        end
+        if ~found_registration
+            if isempty(registered_names)
+                registered_names = {signal_name};
+            else
+                registered_names = [registered_names {signal_name}]; %#ok<AGROW>
+            end
+            registered_lines = [registered_lines ...
+                {dat_to_add} ]; %#ok<AGROW>
+        end
+    end
+end
+
+% Plot
+opt = {'FontSize',14};
+
+figure('DefaultAxesFontSize', 16);hold on
+n = length(registered_lines);
+which_y = 2;
+text_xy = zeros(n, 2);
+text_names = cell(n, 1);
+for i = 1:n
+    xy = registered_lines{i};
+    if size(xy,2) > 1
+        plot(xy(1,:), xy(which_y,:), 'LineWidth',2)
+    else
+        plot(xy(1,:), xy(which_y,:), 'o')
+    end
+    text_xy(i, :) = [xy(1,1), xy(which_y,1)+0.001];
+    text_names{i} = strjoin(registered_names{i}, ';');
+end
+[clust_ind, centroids] = kmeans(text_xy(:,2), 3);
+[~, noise_ind] = min(centroids);
+text_names(clust_ind==noise_ind) = {''};
+textfit(text_xy(:,1), text_xy(:,2), text_names, opt{:})
+title(sprintf('Control signals weighted by %d step importance (not including self)',...
+    num_steps_to_plot))
+% title('Control signals weighted by importance (not including self)')
+% ylabel(sprintf('norm(activity) after %d steps',...
+%     num_steps_to_plot))
+title('Magnitude of reconstruction L2 error')
+xlabel('Rank')
+
+figure('DefaultAxesFontSize', 16);hold on
+n = length(registered_lines);
+text_xy = zeros(n, 2);
+text_names = cell(n, 1);
+for i = 1:length(registered_lines)
+    xy = registered_lines{i};
+    if size(xy,2) > 1
+        plot(xy(1,:), xy(5,:), 'LineWidth',2)
+    else
+        plot(xy(1,:), xy(5,:), 'o')
+    end
+    text_xy(i, :) = [xy(1,1), xy(5,1)+0.02];
+    text_names{i} = strjoin(registered_names{i}, ';');
+end
+textfit(text_xy(:,1), text_xy(:,2), text_names, opt{:})
+% title(sprintf('Relative importance of %d step importance (INCLUDING self)',...
+%     num_steps_to_plot))
+title('Ratio of reconstruction error to naive error')
+% xlabel('Rank')
+
+figure('DefaultAxesFontSize', 16);hold on
+for i = 1:length(registered_lines)
+    xy = registered_lines{i};
+    if size(xy,2) > 1
+        plot(xy(1,:), xy(3,:), 'LineWidth',2)
+    else
+        plot(xy(1,:), xy(3,:), 'o')
+    end
+    text_xy(i, :) = [xy(1,1), xy(3,1)+0.02];
+    text_names{i} = strjoin(registered_names{i}, ';');
+end
+textfit(text_xy(:,1), text_xy(:,2), text_names, opt{:})
+title('STD of reconstruction L2 error')
+xlabel('Rank')
+%% Make a model using the "good" signals
+settings2 = settings_base;
+settings2.augment_data = 0;
+r_ctr = 15;
+U = all_U1{r_ctr};
+% which_signals = {...
+%     {'SMDVL'; 'SMDVR'}, {'AVAR'; 'AVAL'}, {'AVFL'; 'AVFR'},...
+%     {'RIBL'; 'RIBR'}, {'SMDDL'; 'SMDDR'}};
+which_signals = {...
+    {'SMDVL'; 'SMDVR'}, {'AVAR'; 'AVAL'}, {'SMDDL'; 'SMDDR'}};
+this_r_ctr = length(which_signals);
+U_ind = zeros(this_r_ctr,1);
+this_ctr = zeros(this_r_ctr,size(U,2));
+for i = 1:length(which_signals)
+    name_ind = cellfun(@(x) isequal(sort(which_signals{i}),x), registered_names);
+    this_line = registered_lines{name_ind};
+    U_ind = this_line(4, this_line(1,:)==r_ctr); % The original U space
+    this_ctr(i,:) = U(U_ind,:);
+end
+% this_ctr = [smoothdata(5*this_ctr,2,'movmean',2), zeros(this_r_ctr,2)];
+this_ctr = [smoothdata(5*this_ctr,2,'gaussian',2), zeros(this_r_ctr,2)];
+settings2.custom_control_signal = this_ctr(:, 1:end-settings2.augment_data);
+settings2.global_signal_mode = 'None';
+% settings2.augment_data = 5;
+% settings2.dmd_mode = 'naive';
+settings2.dmd_mode = 'func_DMDc';
+% settings2.dmd_mode = 'sparse_fast';
+% settings2.filter_window_dat = 3;
+my_model_subset = CElegansModel(dat_struct, settings2);
+my_model_subset.plot_colored_reconstruction();
+% my_model_subset.plot_reconstruction_interactive(false);
+%% Cross-validation plots for adding signals
+
+% both model settings
+settings2 = settings_base;
+ad_settings = struct(...
+    'hold_out_fraction',0.5,...
+    'cross_val_window_size_percent', 0.6);
+settings2.AdaptiveDmdc_settings = ad_settings;
+settings2.global_signal_mode = 'None';
+settings2.dmd_mode = 'func_DMDc';
+r_ctr = 15;
+U = all_U1{r_ctr};
+
+% Set up list of control signals
+all_signals = {...
+    { {'AVAR'; 'AVAL'} },...
+    ...
+    { {'AVAR'; 'AVAL'}, {'SMDDL'; 'SMDDR'} },...
+    ...
+    { {'SMDVL'; 'SMDVR'}, {'AVAR'; 'AVAL'}, {'SMDDL'; 'SMDDR'} },...
+    ...
+    { {'SMDVL'; 'SMDVR'}, {'AVAR'; 'AVAL'}, {'SMDDL'; 'SMDDR'},...
+    {'RIBL'; 'RIBR'} } ...
+    };
+
+% Box plots
+num_iter = length(all_signals);
+all_models = cell(num_iter, 1);
+err_train = zeros(200, num_iter);
+err_test = zeros(200, num_iter);
+ad_settings = struct(...
+    'hold_out_fraction',0.2,...
+    'cross_val_window_size_percent', 0.8);
+settings2.AdaptiveDmdc_settings = ad_settings;
+for i = 1:num_iter
+    fprintf('Iteration %d/%d\n', i, num_iter)
+    % Get the signals
+    which_signals = all_signals{i};
+    this_r_ctr = length(which_signals);
+    this_ctr = zeros(this_r_ctr,size(U,2));
+    for i2 = 1:length(which_signals)
+        name_ind = cellfun(@(x) isequal(sort(which_signals{i2}),x), registered_names);
+        this_line = registered_lines{name_ind};
+        U_ind = this_line(4, this_line(1,:)==r_ctr); % The original U space
+        this_ctr(i2,:) = U(U_ind,:);
+    end
+    this_ctr = [smoothdata(5*this_ctr,2,'gaussian',2), zeros(this_r_ctr,2)];
+    settings2.custom_control_signal = this_ctr(:, 1:end);
+    all_models{i} = CElegansModel(dat_struct, settings2);
+    
+    % Use crossvalidation functions
+    err_train(:,i) = all_models{i}.AdaptiveDmdc_obj.calc_baseline_error();
+    err_test(:,i) = all_models{i}.AdaptiveDmdc_obj.calc_test_error();
+end
+all_figs{1} = figure('DefaultAxesFontSize',14);
+boxplot(err_test,'colors',[1 0 0])
+hold on
+boxplot(err_train)
+ylim([0, 1.1*max(max([err_test;err_train]))])
+ylabel('L2 error')
+xlabel('Number of control signals')
+title('Training and Test Data Reconstruction')
+%% Correlation between learned signals and "real" ones
+dat = [my_model_base.control_signal;...
+    my_model_subset.control_signal];
+
+all_dist = squareform(pdist(dat, 'jaccard'));
+
+figure;
+imagesc(all_dist)
+colorbar
+%% Plotting (scratch)
+
+all_names = cell(max_rank, 1);
+all_names_vec = {};
+registered_lines = {};
+registered_names = {};
+tol = 1e-1;
+x_to_plot = [];
+num_steps_to_plot = 15;
+for i = 1:20
+    all_names{i} = cell(1, i);
+    A = all_A1{i};
+    An = A^(num_steps_to_plot-3);
+    B = all_B1{i};
+    U = all_U1{i};
+    for i2 = 1:i
+%         this_ind = find(isoutlier(this_W(:, i2), 'ThresholdFactor',3));
+        x = abs(B(:, i2));
+%         [~, this_ind] = maxk(x, 4);
+%         thresh = max(x)/2;
+        [~, this_ind] = maxk(x, 2);
+%         to_keep_ind = (x(this_ind) > thresh);
+%         this_ind = this_ind(to_keep_ind);
+        
+        all_names{i}{:,i2} = my_model_base.get_names(this_ind, true);
+        if ischar(all_names{i}{:,i2})
+            all_names{i}{:,i2} = {all_names{i}{:,i2}};
+        end
+        % Names for point graphing
+%         all_names_vec = [all_names_vec strjoin(all_names{i}{:,i2}, ';')]; %#ok<AGROW>
+        % Names for registered lines graphing
+        other_ind = true(size(x));
+        other_ind(this_ind) = false;
+        signal_name = sort(all_names{i}{:,i2});
+        found_registration = false;
+        this_x = i;
+        this_y = norm(A(other_ind, :)*An*A(:, this_ind)*B(this_ind,i2)*U(i2,:));
+        for i4 = 1:length(registered_names)
+            % Attach them to a previous line if it exists
+%             this_overlap = intersect(registered_names{i4}, signal_name);
+%             if ~isempty(this_overlap)
+            if isequal(registered_names{i4}, signal_name)
+                registered_lines{i4} = [registered_lines{i4} ...
+                    [this_x; this_y]]; %#ok<SAGROW>
+                found_registration = true;
+                break
+            end
+        end
+        if ~found_registration
+            if isempty(registered_names)
+                registered_names = {signal_name};
+            else
+                registered_names = [registered_names {signal_name}]; %#ok<AGROW>
+            end
+            registered_lines = [registered_lines ...
+                {[this_x; this_y]} ]; %#ok<AGROW>
+        end
+        
+        % Next plot: weight by "downstream effect"
+%         x_to_plot = [x_to_plot, ...
+%             [i; i2-i/2]]; %#ok<AGROW>
+%         ABU1 = A(:, this_ind)*B(this_ind,i2)*U(i2,:);
+%         other_ind = true(size(x));
+%         other_ind(this_ind) = false;
+%         ABU2 = A(other_ind, this_ind)*B(this_ind,i2)*U(i2,:);
+%         ABU3 = A(other_ind, :)*(A^7)*A(:, this_ind)*B(this_ind,i2)*U(i2,:);
+%         x_to_plot = [x_to_plot, ...
+%             [i; norm(ABU1); norm(ABU2); norm(ABU3)]]; %#ok<AGROW>
+    end
+end
+
+% figure;
+% plot(x_to_plot(1,:), x_to_plot(2,:), '.')
+% hold on
+% textfit(x_to_plot(1,:), x_to_plot(2,:), all_names_vec)
+% title('Signals weighted by total effect')
+% 
+% figure;
+% plot(x_to_plot(1,:), x_to_plot(3,:), '.')
+% hold on
+% textfit(x_to_plot(1,:), x_to_plot(3,:), all_names_vec)
+% title('Signals weighted by other-neuron effect')
+% 
+% figure;
+% plot(x_to_plot(1,:), x_to_plot(4,:), '.')
+% hold on
+% textfit(x_to_plot(1,:), x_to_plot(4,:), all_names_vec)
+% title('Signals weighted by other-neuron effect 5 steps away')
+
+figure;hold on
+n = length(registered_lines);
+text_xy = zeros(n, 2);
+text_names = cell(n, 1);
+for i = 1:length(registered_lines)
+    xy = registered_lines{i};
+    plot(xy(1,:), xy(2,:), 'LineWidth',2)
+    text_xy(i, :) = [xy(1,1), xy(2,1)];
+    text_names{i} = strjoin(registered_names{i}, ';');
+end
+textfit(text_xy(:,1), text_xy(:,2), text_names)
+    
+% 
+% ind = my_model_base.state_labels_ind;
+% key = my_model_base.state_labels_key;
+% i = 3;
+% i2 = 2;
+% plot_colored(all_U1{i}(i2,:), ind(1:end-1), key, 'plot');
+% title(sprintf('Control signal %d for rank-%d model', i2, i))
+
+%==========================================================================
 
 %% Scratch for above
 
