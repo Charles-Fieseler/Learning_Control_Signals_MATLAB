@@ -970,20 +970,33 @@ color_order = [4 3 2 1];
 cmap = my_cmap_3d(color_order, :);
 opt = {'Color', 'k', 'LineStyle', '--', 'HandleVisibility','off'};
 
-all_figs{1} = boxplot_on_table(final_dat(1:3,1:end-1), [], cmap, 'rows');
-title('Correlation with Data')
+% all_figs{1} = boxplot_on_table(final_dat(1:3,1:end-1), [], cmap, 'rows');
+% title('Correlation with Data')
+% ylim([-1 1])
+% line([-0.5 15], [0 0], opt{:});
+% legend off
+% 
+% all_figs{2} = boxplot_on_table(final_dat(4:end,1:end-1), [], cmap, 'rows');
+% title('Improvement via additional signals')
+% ylim([-1 1])
+% yticklabels('')
+% line([-0.5 15], [0 0], opt{:});
+% legend off
+
+% New simpler version
+all_figs{1} = boxplot_on_table(final_dat(1:2,1:end-1), [], cmap, 'rows');
+title('Baselines')
 ylim([-1 1])
 line([-0.5 15], [0 0], opt{:});
 legend off
+ylabel('Correlation')
 
-all_figs{2} = boxplot_on_table(final_dat(4:end,1:end-1), [], cmap, 'rows');
+all_figs{2} = boxplot_on_table(final_dat(4:6,1:end-1), [], cmap, 'rows');
 title('Improvement via additional signals')
-% title({'Improvement in Correlation', 'Via addition'})
 ylim([-1 1])
 yticklabels('')
 line([-0.5 15], [0 0], opt{:});
 legend off
-
 %% Save data and figures
 if to_save
     save([dat_foldername 'control_signals_learned_boxplot'], ...
@@ -1155,15 +1168,31 @@ color_order = [4 3 2 1];
 cmap = my_cmap_3d(color_order, :);
 opt = {'Color', 'k', 'LineStyle', '--', 'HandleVisibility','off'};
 
-all_figs{1} = boxplot_on_table(final_dat(1:3,1:end-1), [], cmap, 'rows');
-title('Correlation with Data')
+% all_figs{1} = boxplot_on_table(final_dat(1:3,1:end-1), [], cmap, 'rows');
+% title('Correlation with Data')
+% ylim([-1 1])
+% line([-0.5 15], [0 0], opt{:});
+% legend off
+% 
+
+% New: Only plot the comparison between these full models
+learned_dat_name = [dat_foldername 'control_signals_learned_boxplot.mat'];
+assert(logical(exist(learned_dat_name, 'file')),...
+    'Must have collected data from the unsupervised models and saved the data');
+learned_dat = importdata(learned_dat_name);
+learned_dat.Properties.RowNames{3} = 'Learned';
+comparison_table = [final_dat(3, 1:end-1); learned_dat(3, 1:end-1)];
+comparison_table.Properties.RowNames{1} = 'Expert';
+
+all_figs{1} = boxplot_on_table(comparison_table, [], cmap, 'rows');
+title('Full models')
 ylim([-1 1])
+yticklabels('')
 line([-0.5 15], [0 0], opt{:});
 legend off
 
 all_figs{2} = boxplot_on_table(final_dat(4:end,1:end-1), [], cmap, 'rows');
 title('Improvement via additional signals')
-% title({'Improvement in Correlation', 'Via addition'})
 ylim([-1 1])
 yticklabels('')
 line([-0.5 15], [0 0], opt{:});
@@ -1175,7 +1204,7 @@ if to_save
 %         'final_dat', 'all_models_table', 'all_ind_table', ...
 %         'baseline_dat_table');
     save([dat_foldername 'control_signals_expert_boxplot'], ...
-        'final_dat');
+        'final_dat', 'comparison_table');
     
     for i = 1:length(all_figs)
         this_fig = all_figs{i};
