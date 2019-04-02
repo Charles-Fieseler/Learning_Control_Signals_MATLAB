@@ -7315,7 +7315,7 @@ for i = 1:num_iter
 %         x = x(1:end-1); % Bin mid-points
 %         tmp = reference_dist(x, all_gaps);
 %         all_peaks(i, i2) = KLDiv(b_counts, tmp);
-%         all_peaks(i, i2) = -sum(dat(dat>0).*log2(dat(dat>0))); % Shannon
+        all_peaks(i, i2) = -sum(dat(dat>0).*log2(dat(dat>0))); % Shannon
 
 %         this_dat = dat - min(dat(dat>0)); % Shifted exponential
 %         this_dat = this_dat(this_dat>0);
@@ -7324,7 +7324,7 @@ for i = 1:num_iter
 %         
 %         pd = fitdist(this_dat', 'exponential');
 %         all_peaks(i, i2) = pd.negloglik;
-        all_peaks(i, i2) = SampEn(dat, 3, 1e-3);
+%         all_peaks(i, i2) = SampEn(dat, 3, 1e-3);
 %         all_peaks(i, i2) = PermEn(dat', 5);
 %         all_acf(i, i2) = mean(acf(dat, 2, false));
         all_nnz(i, i2) = nnz(dat);
@@ -7449,7 +7449,7 @@ pd = fitdist(this_dat, reference_dist);
 figure;
 histogram(pd.random([100,1]), 'Normalization', 'probability', 'BinWidth',5e-2);hold on
 histogram(this_dat, 'Normalization', 'probability', 'BinWidth',5e-2);
-%% Plotting (cleaned up)
+%% Register the lines for later plotting across ranks
 all_names = cell(max_rank, 1);
 registered_lines = {};
 registered_names = {};
@@ -7536,7 +7536,7 @@ for i = 1:max_rank
         end
     end
 end
-
+%% Plot Metrics to distinguish the signals (cleaned up)
 % Plot
 opt = {'FontSize',14};
 
@@ -7616,8 +7616,10 @@ U = all_U1{r_ctr};
 % which_signals = {...
 %     {'SMDVL'; 'SMDVR'}, {'AVAR'; 'AVAL'}, {'AVFL'; 'AVFR'},...
 %     {'RIBL'; 'RIBR'}, {'SMDDL'; 'SMDDR'}};
+% which_signals = {...
+%     {'SMDVL'; 'SMDVR'}, {'AVAR'; 'AVAL'}, {'SMDDL'; 'SMDDR'}};
 which_signals = {...
-    {'SMDVL'; 'SMDVR'}, {'AVAR'; 'AVAL'}, {'SMDDL'; 'SMDDR'}};
+    {'SMDVR'}, {'AVAR'; 'AVAL'}, {'SMDDL'}};
 this_r_ctr = length(which_signals);
 U_ind = zeros(this_r_ctr,1);
 this_ctr = zeros(this_r_ctr,size(U,2));
@@ -7846,30 +7848,48 @@ ad_settings = struct(...
 settings2.AdaptiveDmdc_settings = ad_settings;
 settings2.global_signal_mode = 'None';
 settings2.dmd_mode = 'func_DMDc';
-r_ctr = 15;
+r_ctr = 14;
 U = all_U1{r_ctr};
 
 % Set up list of control signals
+rev_ctr = {'AVAR'; 'AVAL'};
+% dt_ctr = {'SMDDL'; 'SMDDR'};
+dt_ctr = {'SMDDL'}; % Not sure why both names aren't picked up...
+% vt_ctr = {'SMDVL'; 'SMDVR'};
+vt_ctr = {'SMDVR'};
+fwd_ctr = {'RIBL'; 'RIBR'};
+% all_signals = {...
+%     {},...
+%     { rev_ctr },...
+%     { rev_ctr, dt_ctr },...
+%     { vt_ctr, rev_ctr, dt_ctr },...
+%     { vt_ctr, rev_ctr, dt_ctr, fwd_ctr } };
 all_signals = {...
-    { {'AVAR'; 'AVAL'} },...
-    ...
-    { {'AVAR'; 'AVAL'}, {'SMDDL'; 'SMDDR'} },...
-    ...
-    { {'SMDVL'; 'SMDVR'}, {'AVAR'; 'AVAL'}, {'SMDDL'; 'SMDDR'} },...
-    ...
-    { {'SMDVL'; 'SMDVR'}, {'AVAR'; 'AVAL'}, {'SMDDL'; 'SMDDR'},...
-    {'RIBL'; 'RIBR'} } ...
-    };
+    {},...
+    { rev_ctr },...
+    { vt_ctr, rev_ctr, dt_ctr }, ... 
+    { vt_ctr, rev_ctr, dt_ctr, fwd_ctr } };
 
 % Box plots
 num_iter = length(all_signals);
 all_models = cell(num_iter, 1);
-err_train = zeros(200, num_iter);
-err_test = zeros(200, num_iter);
+to_return_matrix = true;
+test_length = 400;
+if ~to_return_matrix
+    err_train = zeros(200, num_iter);
+    err_test = zeros(200, num_iter);
+else
+    err_train = zeros(num_neurons, num_iter);
+    err_test = zeros(num_neurons, num_iter);
+    err_total = zeros(num_neurons, num_iter);
+end
 ad_settings = struct(...
     'hold_out_fraction',0.2,...
     'cross_val_window_size_percent', 0.8);
 settings2.AdaptiveDmdc_settings = ad_settings;
+leg_str = cell(num_iter, 1);
+leg_str(:) = {''};
+error_func = @(x,y) corr(x', y');
 for i = 1:num_iter
     fprintf('Iteration %d/%d\n', i, num_iter)
     % Get the signals
@@ -7881,14 +7901,34 @@ for i = 1:num_iter
         this_line = registered_lines{name_ind};
         U_ind = this_line(4, this_line(1,:)==r_ctr); % The original U space
         this_ctr(i2,:) = U(U_ind,:);
+        
+        this_name = strjoin(registered_names{name_ind}, ';');
+        if isempty(leg_str{i})
+            leg_str{i} = this_name;
+        else
+            leg_str{i} = [leg_str{i} '+' this_name];
+        end
     end
     this_ctr = [smoothdata(5*this_ctr,2,'gaussian',2), zeros(this_r_ctr,2)];
     settings2.custom_control_signal = this_ctr(:, 1:end);
     all_models{i} = CElegansModel(dat_struct, settings2);
     
     % Use crossvalidation functions
-    err_train(:,i) = all_models{i}.AdaptiveDmdc_obj.calc_baseline_error();
-    err_test(:,i) = all_models{i}.AdaptiveDmdc_obj.calc_test_error();
+    fprintf('Calculating error terms...\n')
+    tmp_train = all_models{i}.AdaptiveDmdc_obj.calc_baseline_error(...
+        [], test_length, to_return_matrix, error_func);
+    tmp_test = all_models{i}.AdaptiveDmdc_obj.calc_test_error(...
+        [], to_return_matrix, error_func);
+    if to_return_matrix
+%         err_train(:,i) = mean(tmp_train, 1);
+%         err_test(:,i) = mean(tmp_test, 1);
+        err_train(:,i) = mean(tmp_train, 2);
+        err_test(:,i) = mean(tmp_test, 2);
+        err_total(:,i) = all_models{i}.calc_correlation_matrix();
+    else
+        err_train(:,i) = tmp_train;
+        err_test(:,i) = tmp_test;
+    end
 end
 all_figs{1} = figure('DefaultAxesFontSize',14);
 boxplot(err_test,'colors',[1 0 0])
@@ -7897,7 +7937,17 @@ boxplot(err_train)
 ylim([0, 1.1*max(max([err_test;err_train]))])
 ylabel('L2 error')
 xlabel('Number of control signals')
+xticklabels(leg_str)
+xtickangle(60)
 title('Training and Test Data Reconstruction')
+
+figure;
+[improvement, sort_ind] = sort(err_total(:,4)-err_total(:,3));
+these_names = all_models{2}.get_names(sort_ind, true);
+plot(improvement, 'o')
+xticks(1:length(sort_ind))
+xticklabels(these_names)
+xtickangle(60)
 %% Correlation between learned signals and "real" ones
 dat = [my_model_base.control_signal;...
     my_model_subset.control_signal];
@@ -8019,6 +8069,68 @@ textfit(text_xy(:,1), text_xy(:,2), text_names)
 %==========================================================================
 
 %% Scratch for above
+
+% Build data to plot
+% X1 = my_model_base.dat(:,1:end-1);
+% X2 = my_model_base.dat(:,2:end);
+% 
+% all_names = cell(max_rank, 1);
+% registered_lines = {};
+% registered_names = {};
+% num_steps_to_plot = 3;
+% for i = 1:max_rank
+%     all_names{i} = cell(1, i);
+%     U = all_U1{i};
+%     AB = X2 / [X1; U];
+%     A = AB(:, 1:n);
+%     An = A^(num_steps_to_plot-2);
+%     A_nondiag = A - diag(diag(A));
+%     B = AB(:, (n+1):end);
+%     for i2 = 1:i
+%         x = abs(B(:, i2));
+%         [this_maxk, this_ind] = maxk(x, 2);
+%         if this_maxk(1)/this_maxk(2) > 2
+%             this_ind = this_ind(1);
+%         end
+%         
+%         % Names for registered lines graphing
+%         all_names{i}{:,i2} = my_model_base.get_names(this_ind, true);
+%         if ischar(all_names{i}{:,i2})
+%             all_names{i}{:,i2} = {all_names{i}{:,i2}};
+%         end
+%         
+%         % First feature: max acf
+%         signal_name = sort(all_names{i}{:,i2});
+%         found_registration = false;
+%         [this_y, which_sparsity_in_rank] = max(all_acf{i}(i2, :));
+%         
+% %         this_dat = [i; this_y; i2];
+%         which_rank = i;
+%         which_line_in_rank = i2;
+%         this_dat = table(which_rank, this_y, which_line_in_rank,...
+%             which_sparsity_in_rank);
+%         for i4 = 1:length(registered_names)
+%             % Attach them to a previous line if it exists
+%             if isequal(registered_names{i4}, signal_name)
+%                 registered_lines{i4} = [registered_lines{i4}; ...
+%                     this_dat]; %#ok<SAGROW>
+%                 found_registration = true;
+%                 break
+%             end
+%         end
+%         if ~found_registration
+%             if isempty(registered_names)
+%                 registered_names = {signal_name};
+%             else
+%                 registered_names = [registered_names {signal_name}]; %#ok<AGROW>
+%             end
+%             registered_lines = [registered_lines ...
+%                 {this_dat} ]; %#ok<AGROW>
+%         end
+%     end
+% end
+
+
 
 % Raw Error plots
 % figure
@@ -8148,6 +8260,364 @@ title(this_neuron)
 %     all_errs_model(i) = ...
 %         this_model.AdaptiveDmdc_obj.calc_reconstruction_error();
 %==========================================================================
+
+
+%% Plot elimination path for all datasets
+
+%---------------------------------------------
+% Build filename array (different data formats)
+%---------------------------------------------
+n = 15;
+all_filenames = cell(n, 1);
+foldername1 = '../../Zimmer_data/WildType_adult/';
+filename1_template = 'simplewt%d/wbdataset.mat';
+num_type_1 = 5;
+foldername2 = 'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\npr1_1_PreLet\';
+filename2_template = 'wbdataset.mat';
+
+for i = 1:n
+    if i <= num_type_1
+        all_filenames{i} = sprintf([foldername1, filename1_template], i);
+    else
+        subfolder = dir(foldername2);
+        all_filenames{i} = [foldername2, ...
+            subfolder(i-num_type_1+2).name, '\', filename2_template];
+    end
+end
+
+%---------------------------------------------
+% Get elimination paths
+%---------------------------------------------
+for i = 1:n
+    fprintf('Processing file %d\n', i)
+    
+    dat_struct = importdata(all_filenames{i});
+    dat_struct.traces = dat_struct.traces ...
+        ./ vecnorm(dat_struct.traces, 2, 1);
+    warning('Test for normalized data')
+    
+    settings_base = struct(...
+        'to_subtract_mean',false,...
+        'to_subtract_mean_sparse',false,...
+        'to_subtract_mean_global',false,...
+        'add_constant_signal',false,...
+        'use_deriv',false,...
+        'augment_data', 7,...
+        'filter_window_dat', 1,...
+        'dmd_mode','no_dynamics',...
+        'to_add_stimulus_signal', false,...
+        'autocorrelation_noise_threshold', 0.6,...
+        ...'global_signal_subset', {{'DT'  'VT'  'REV'  'FWD'  'SLOW'}},...
+        'lambda_sparse',0);
+    settings_base.global_signal_mode = 'ID_binary_transitions';
+    if i > num_type_1 % Differently named states
+        settings_base.global_signal_subset = ...
+            {'Reversal', 'Dorsal turn', 'Ventral turn'};
+    end
+    my_model_time_delay = CElegansModel(dat_struct, settings_base);
+    
+    s = struct('to_calculate_false_detection', false, ...
+        'to_calculate_error', false, 'max_iter', 20);
+    [B_prime_lasso_td_3d, all_intercepts_td, elimination_neurons, ...
+        eliminated_names, which_ctr] = ...
+        sparse_encoding_analysis(my_model_time_delay, s);
+    
+    sz = size(B_prime_lasso_td_3d);
+    B_prime_lasso_td_3d = {reshape(...
+        B_prime_lasso_td_3d(which_ctr,:,:), sz(2:3))};
+    all_intercepts_td = all_intercepts_td(which_ctr,:);
+    elimination_neurons = elimination_neurons(which_ctr,:);
+    eliminated_names = eliminated_names(which_ctr,:);
+    tmp_table = table(eliminated_names, elimination_neurons,...
+            all_intercepts_td, B_prime_lasso_td_3d, which_ctr);
+    if i == 1
+        elimination_table = tmp_table;
+    else
+        elimination_table = [elimination_table; tmp_table]; %#ok<AGROW>
+    end
+end
+
+%---------------------------------------------
+%% Get histogram data for each neuron
+%---------------------------------------------
+all_names = elimination_table{:, 'eliminated_names'};
+max_name_length = 5;
+to_combine_LR = true;
+unique_names = unique(all_names);
+unique_names = unique_names( cellfun(@isempty, ...
+    regexp(unique_names, '^\d{1,3}')) ); % Get rid of numbers
+for i = 1:length(unique_names) % Only keep first 5 letters
+    this_name = unique_names{i};
+    if length(this_name) > max_name_length
+        unique_names{i} = unique_names{i}(1:max_name_length);
+    end
+    if to_combine_LR && length(this_name) > 3 ...
+            && endsWith(this_name, {'L', 'R'})
+        unique_names{i} = unique_names{i}(1:end-1);
+    end
+end
+unique_names = unique(unique_names);
+
+neuron_counts = zeros(length(unique_names), s.max_iter);
+registered_dat = table(neuron_counts, 'RowNames', unique_names); 
+
+for i = 1:length(unique_names)
+    this_name = unique_names{i};
+    for i2 = 1:s.max_iter-1
+        this_iter_names = all_names(:,i2);
+        f = @(x) startsWith(x, this_name); % Because we shortened names
+        these_counts = sum( cellfun(f, this_iter_names) );
+        
+        registered_dat{this_name,1}(i2) = these_counts;
+    end
+end
+all_counts = sum(registered_dat{:,1}, 2);
+x = 10;
+all_counts_early_enough = sum(registered_dat{:,1}(:,1:10), 2);
+registered_dat = [registered_dat ...
+    table(all_counts) table(all_counts_early_enough)];
+
+%---------------------------------------------
+%% Actually plot histogram data for each neuron
+%---------------------------------------------
+all_figs = cell(1,1);
+
+max_rank_to_plot = 15;
+
+all_figs{1} = figure('DefaultAxesFontSize', 16);
+threshold_dat = registered_dat{:, 'all_counts'};
+% [~, to_plot_ind] = maxk(threshold_dat, 4);
+% to_plot_ind = threshold_dat > quantile(threshold_dat, 0.75);
+sorted_thresholds = sort(unique(threshold_dat), 'descend');
+to_plot_ind = threshold_dat > sorted_thresholds(5);
+bar(registered_dat{to_plot_ind, 'neuron_counts'}', 'stacked')
+legend(unique_names(to_plot_ind))
+xlabel('Encoding rank')
+ylabel('Occurences across individuals')
+%% Save
+if to_save    
+    fname = sprintf('%sfigure_5e2_%d_test', foldername, 4);
+    this_fig = all_figs{1};
+    sz = {'0.9\columnwidth', '0.12\paperheight'};
+    matlab2tikz('figurehandle',this_fig,'filename',...
+        [fname '_raw.tex'], ...
+        'width', sz{1}, 'height', sz{2});
+    saveas(this_fig, fname, 'png');
+end
+%==========================================================================
+
+
+%% Plot improvement of neurons for controller subsets across individuals
+%% First build models
+all_filenames = get_Zimmer_filenames();
+settings_ideal = struct(...
+    'add_constant_signal',false,...
+    'augment_data', 0,...
+    'filter_window_dat', 1,...
+    ...'autocorrelation_noise_threshold', 0.3,...
+    'dmd_mode','func_DMDc',...
+    'global_signal_mode', 'ID_binary_transitions',...
+    'to_add_stimulus_signal', false);
+
+num_type1 = 5;
+settings_vec = cell(length(all_filenames), 1);
+all_settings_loop = { {{}, {}},...
+    {{'REV'}, {'Reversal'}},...
+    {{'FWD', 'SLOW'}, {'Forward'}},...
+    {{'REV', 'DT', 'VT'}, ...
+        {'Reversal', 'Dorsal turn', 'Ventral turn'}},...
+    {{'FWD', 'SLOW', 'DT', 'VT'}, ...
+        {'Forward', 'Dorsal turn', 'Ventral turn'}},...
+    {{'REV', 'DT', 'VT', 'FWD', 'SLOW'}, ...
+        {'Reversal', 'Dorsal turn', 'Ventral turn', 'Forward'}} };
+all_settings_loop_names = {'No_control', 'Forward', 'Reversal',...
+    'Rev_and_turns', 'Fwd_and_turns', 'All'};
+
+all_models_table = [];
+for iInput = 1:length(all_settings_loop)
+    fprintf('Analyzing models with control type: %s\n',...
+        all_settings_loop_names{iInput});
+    % Set up the vector of settings structs for each filename type
+    these_settings = all_settings_loop{iInput};
+    settings_type1 = these_settings{1};
+    settings_type2 = these_settings{2};
+    for i = 1:length(all_filenames)
+        settings_vec{i} = settings_ideal;
+        if i <= num_type1
+            settings_vec{i}.global_signal_subset = settings_type1;
+        else
+            settings_vec{i}.global_signal_subset = settings_type2;
+        end
+    end
+    
+    % Then get the actual models
+    [obj_vec] = initialize_multiple_models(...
+        all_filenames, @CElegansModel, settings_vec);
+    
+    if isempty(all_models_table)
+        all_models_table = cell2table(obj_vec);
+        all_models_table.Properties.VariableNames = all_settings_loop_names(1);
+    else
+        all_models_table = [all_models_table cell2table(obj_vec)]; %#ok<AGROW>
+        all_models_table.Properties.VariableNames(end) = ...
+            all_settings_loop_names(iInput);
+    end
+end
+%% Calculate the correlations for each model and the clusters
+sz = size(all_models_table);
+all_dat_table = cell(sz);
+baseline_dat_table = cell(sz(1),1);
+dat_func = @calc_correlation_matrix;
+baseline_func = @calc_linear_correlation;
+for i = 1:sz(1)
+    fprintf('Analyzing filename: %d\n', i);
+    for i2 = 1:sz(2)
+        all_dat_table{i,i2} = dat_func(all_models_table{i,i2});
+    end
+    baseline_dat_table{i} = baseline_func(all_models_table{i,1});
+end
+all_dat_table = cell2table([baseline_dat_table all_dat_table]);
+all_dat_table.Properties.VariableNames = ...
+    ['Linear_correlation' all_settings_loop_names];
+
+% Build comparable clusters
+%   Note: Each row of the model table has the same neurons and dataset
+interpretable_clusters = { ...
+    {'AVA', 'RIM', 'AIB', 'RME', 'VA', 'DA',},...
+    {'AVB', 'RIB', 'RME'},...
+    {'SMDD'},...
+    {'SMDV', 'RIV'} ,...
+    {'ASK', 'OLQ', 'URY', 'AVF', 'RIS', 'IL'}};
+interpretable_clusters_names = {...
+    'Reversal', 'Forward', 'Dorsal_turn', 'Ventral_turn', 'Other'};
+num_clusters = length(interpretable_clusters);
+all_ind_table = cell(sz(1),num_clusters);
+for i = 1:sz(1)
+    this_model = all_models_table{i,1};
+    for i2 = 1:num_clusters
+        all_ind_table{i, i2} = ...
+            this_model.name2ind(interpretable_clusters{i2});
+    end
+end
+all_ind_table = cell2table(all_ind_table);
+all_ind_table.Properties.VariableNames = interpretable_clusters_names;
+%% Now calculate the data differences by cluster (scratch)
+% all_differences = {...
+%     'Linear_correlation',...
+%     'No_control',...
+%     'Rev_and_turns',...
+%     {'No_control', 'Linear_correlation'},...
+%     {'Reversal', 'No_control'},...
+%     {'Forward', 'No_control'},...
+%     {'Rev_and_turns', 'No_control'},...
+%     {'All', 'Rev_and_turns'} };
+% all_differences_names = {...
+%     'Linear_correlation', 'Only_NC', 'Only_rev_and_turns',...
+%     'NC_vs_linear', 'Reversal_vs_NC', 'Forward_vs_NC', ...
+%     'Rev_and_turns_vs_NC', 'Fwd_vs_Rev_and_turns'};
+% all_differences = {...
+%     'Linear_correlation',...
+%     'No_control',...
+%     'Rev_and_turns',...
+%     'All',...
+%     {'No_control', 'Linear_correlation'},...
+%     {'Reversal', 'Linear_correlation'},...
+%     {'Forward', 'Linear_correlation'},...
+%     {'Rev_and_turns', 'Linear_correlation'},...
+%     {'Fwd_and_turns', 'Linear_correlation'},...
+%     {'All', 'Rev_and_turns'},...
+%     {'All', 'Fwd_and_turns'} };
+% all_differences_names = {...
+%     'Linear_correlation', 'Only_NC', 'Only_rev_and_turns', 'All',...
+%     'NC_vs_linear', 'Reversal_vs_linear', 'Forward_vs_linear', ...
+%     'Rev_and_turns_vs_linear', 'Fwd_and_turns_vs_linear',...
+%     'All_vs_Rev_and_turns', 'All_vs_Fwd_and_turns'};
+%% Now calculate the data differences by cluster
+all_differences = {...
+    'Linear_correlation',...
+    'No_control',...
+    'Rev_and_turns',...
+    {'Reversal', 'Linear_correlation'},...
+    {'Rev_and_turns', 'Reversal'},...
+    {'All', 'Rev_and_turns'} };
+all_differences_names = {...
+    'Line', 'No_Control', 'Full',...
+    'Reversal', 'Turn', 'Forward'};
+num_differences = length(all_differences);
+clust_dat_cell = cell(num_differences, 1);
+sz = size(all_ind_table);
+for iDiff = 1:num_differences
+    this_dat = cell(sz);
+    if iscell(all_differences{iDiff})
+        n1 = all_differences{iDiff}{1};
+        n2 = all_differences{iDiff}{2};
+    else
+        n1 = all_differences{iDiff};
+        n2 = [];
+    end
+    for iFile = 1:sz(1)
+        dat1 = all_dat_table{iFile, n1}{1};
+        if isempty(n2)
+            dat2 = zeros(size(dat1));
+        else
+            dat2 = all_dat_table{iFile, n2}{1};
+        end
+        for iClust = 1:sz(2)
+            ind = all_ind_table{iFile, iClust}{1};
+            this_dat{iFile, iClust} = dat1(ind) - dat2(ind);
+        end
+    end
+    this_dat = cell2table(this_dat);
+    this_dat.Properties.VariableNames = interpretable_clusters_names;
+    clust_dat_cell{iDiff} = this_dat;
+end
+
+% Then combine across individuals
+final_dat_cell = cell(num_differences, num_clusters);
+for i = 1:num_differences
+    for i2 = 1:num_clusters
+        final_dat_cell{i, i2} = real(vertcat(clust_dat_cell{i}{:,i2}{:}));
+    end
+end
+final_dat = cell2table(final_dat_cell);
+final_dat.Properties.VariableNames = interpretable_clusters_names;
+final_dat.Properties.RowNames = all_differences_names;
+%% Finally, plot each difference by cluster
+% for i = 1:length(all_differences_names)
+%     boxplot_on_table(final_dat, all_differences_names{i});
+%     ylabel('Improvement in correlation')
+%     title(all_differences_names{i}, 'Interpreter', 'none')
+% end
+
+% boxplot_on_table(final_dat, []);
+% ylabel('Improvement in correlation')
+% title('All differences', 'Interpreter', 'none')
+
+% boxplot_on_table(final_dat(1:4,:), [], my_cmap_3d, 'rows');
+% title('Absolute correlation')
+% boxplot_on_table(final_dat(5:end-2,:), [], my_cmap_3d, 'rows');
+% title('Marginal correlation improvement vs linear baseline')
+% boxplot_on_table(final_dat(end-1:end,:), [], my_cmap_3d, 'rows');
+% title('Marginal correlation improvement vs almost complete model')
+
+% Do not include the "other" group of neurons
+clear all_figs
+color_order = [4 3 2 1];
+cmap = my_cmap_3d(color_order, :);
+opt = {'Color', 'k', 'LineStyle', '--', 'HandleVisibility','off'};
+
+all_figs{1} = boxplot_on_table(final_dat(1:3,1:end-1), [], cmap, 'rows');
+title('Absolute correlation')
+ylim([-1 1])
+line([-0.5 15], [0 0], opt{:});
+
+all_figs{2} = boxplot_on_table(final_dat(4:end,1:end-1), [], cmap, 'rows');
+title('Marginal correlation improvement')
+ylim([-1 1])
+line([-0.5 15], [0 0], opt{:});
+%==========================================================================
+
+
 
 
 
