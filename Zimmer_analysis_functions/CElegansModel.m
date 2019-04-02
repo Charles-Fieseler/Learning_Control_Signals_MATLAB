@@ -712,6 +712,15 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.user_neuron_ablation = [];
         end
         
+        function remove_all_control(self)
+            % Removes ALL control signals and metadata, including what was
+            % calculated in initialization
+            self.control_signal = [];
+            self.control_signals_metadata = [];
+            self.L_global_modes = [];
+            self.L_sparse_modes = [];
+        end
+        
         function add_manual_control_signal(self, ...
                 neuron_ind, neuron_amps, ...
                 signal_ind, signal_amps)
@@ -1343,7 +1352,10 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             dat_reconstruction = ...
                 self.AdaptiveDmdc_obj.calc_reconstruction_control();
-            corr_mat = corrcoef([self.dat' dat_reconstruction']);
+            % If using cross-validation, dat_reconstruction is smaller
+            this_dat = self.dat(:, 1:size(dat_reconstruction,2));
+            
+            corr_mat = corrcoef([this_dat' dat_reconstruction']);
             
             n = self.dat_sz(1);
             if self.use_deriv && ~return_derivatives
@@ -1362,14 +1374,20 @@ classdef CElegansModel < SettingsImportableFromStruct
             elseif strcmp(normalize_mode, 'linear')
                 % Look at the difference of correlation explained via
                 % reconstruction and via a straight line fit
-                linear_X = (1:self.dat_sz(2))';
-                linear_X = [ones(size(linear_X)), linear_X];
-                linear_reconstruction = linear_X*(linear_X\(self.dat'));
-                linear_corr = corrcoef([self.dat' linear_reconstruction]);
-                linear_corr_diag = diag( linear_corr((n+1):end,1:n) );
-                assert(~self.use_deriv, ('Does not work with derivatives'))
-                corr_diag = corr_diag - linear_corr_diag;
+                corr_diag = corr_diag - self.calc_linear_correlation();
             end
+        end
+        
+        function linear_corr = calc_linear_correlation(self)
+            % Calculates the correlation between the data (per neuron) and
+            % a linear fit, to be used as a baseline
+            assert(~self.use_deriv, ('Does not work with derivatives'))
+            n = self.dat_sz(1);
+            linear_X = (1:self.dat_sz(2))';
+            linear_X = [ones(size(linear_X)), linear_X];
+            linear_reconstruction = linear_X*(linear_X\(self.dat'));
+            linear_corr = corrcoef([self.dat' linear_reconstruction]);
+            linear_corr = diag( linear_corr((n+1):end,1:n) );
         end
         
         function names = get_names(self, neuron_ind, keep_nums)
@@ -1705,7 +1723,13 @@ classdef CElegansModel < SettingsImportableFromStruct
             title('Dynamics of the low-rank component (data)')
         end
         
-        function fig = plot_colored_neuron(self, neuron)
+        function fig = plot_colored_neuron(self, neuron, cmap, fig)
+            if ~exist('cmap', 'var')
+                cmap = [];
+            end
+            if ~exist('fig', 'var')
+                fig = figure('DefaultAxesFontSize',12);
+            end
             if ischar(neuron)
                 neuron_name = neuron;
                 neuron = self.name2ind(neuron);
@@ -1719,13 +1743,14 @@ classdef CElegansModel < SettingsImportableFromStruct
             
             if length(neuron) > 1
                 for i = 1:length(neuron)
-                    fig = self.plot_colored_neuron(neuron(i));
+                    fig = self.plot_colored_neuron(neuron(i), cmap);
                 end
                 return
             end
             
             fig = plot_colored(self.dat(neuron, :),...
-                self.state_labels_ind, self.state_labels_key, 'plot');
+                self.state_labels_ind, self.state_labels_key, 'plot', ...
+                cmap, fig);
             title(sprintf('Neuron ID: %s', neuron_name))
         end
         
@@ -2666,7 +2691,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'to_add_stimulus_signal', true,...
                 'lambda_global', 0.0065,...
                 'max_rank_global', 4,...
-                'lambda_sparse', 0.043,...
+                'lambda_sparse', 0,...0.043,...
                 'enforce_diagonal_sparse_B', false,...
                 'global_signal_mode', 'RPCA',...
                 'global_signal_subset', {{'REV1', 'REV2', 'DT', 'VT'}},...
@@ -2682,8 +2707,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'augment_data', 0,...
                 'to_subtract_mean', false,...
                 'to_subtract_baselines', false,...
-                'to_subtract_mean_sparse', true,...
-                'to_subtract_mean_global', true,...
+                'to_subtract_mean_sparse', false,...
+                'to_subtract_mean_global', false,...
                 'to_separate_sparse_from_data', true, ...
                 'offset_control_signal', false,...
                 'dmd_mode', 'naive',...
@@ -3191,12 +3216,12 @@ classdef CElegansModel < SettingsImportableFromStruct
                         binary_labels_grad = gradient(mega_rev_binary);
                         binary_labels_grad = binary_labels_grad ./ ...
                             max(max(binary_labels_grad));
-                    else
+                    elseif ~strcmp(self.global_signal_subset, 'all')
                         ind = contains(self.state_labels_key, ...
                             self.global_signal_subset);
-                        assert(~isempty(ind),...
-                            ['Attempted to add control signals '...
-                            'but none were found; check global_signal_subset'])
+%                         assert(~isempty(ind),...
+%                             ['Attempted to add control signals '...
+%                             'but none were found; check global_signal_subset'])
                         binary_labels_grad = binary_labels_grad(ind,:);
                     end
                     % Now only keep the positive parts, and only of the
@@ -3786,6 +3811,10 @@ classdef CElegansModel < SettingsImportableFromStruct
                 % Assume that the minimum value is present; others may be
                 % missing
                 state0 = min(these_states);
+                if state0==0 % Kato format
+                    these_states = these_states + 1;
+                    state0 = 1;
+                end
                 all_states = state0:(state0 + to_add_zeros);
                 sz = [to_add_zeros, 1];
             else
