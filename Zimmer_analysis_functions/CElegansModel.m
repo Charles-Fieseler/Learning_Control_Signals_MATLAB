@@ -528,10 +528,8 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.preprocess();
             %==========================================================================
 
-            %% Robust PCA (get control signal) and DMD with that signal
-            self.calc_all_control_signals();
-            self.calc_AdaptiveDmdc();
-            self.postprocess();
+            %% Robust PCA (get control signal) and DMDc with that signal
+            self.build_model();
             %==========================================================================
 
             %% Initialize user control structure
@@ -701,6 +699,13 @@ classdef CElegansModel < SettingsImportableFromStruct
             f = @(x) label_dict(x);
             self.state_labels_ind = arrayfun(f, self.state_labels_ind);
             self.state_labels_key = new_labels_key;
+        end
+        
+        function build_model(self)
+            % Builds the control signals and then solves the DMDc problem
+            self.calc_all_control_signals();
+            self.calc_AdaptiveDmdc();
+            self.postprocess();
         end
     end
     
@@ -1748,7 +1753,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 return
             end
             
-            fig = plot_colored(self.dat(neuron, :),...
+            fig = plot_colored(self.dat_with_control(neuron, :),...
                 self.state_labels_ind, self.state_labels_key, 'plot', ...
                 cmap, fig);
             title(sprintf('Neuron ID: %s', neuron_name))
@@ -2693,8 +2698,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'max_rank_global', 4,...
                 'lambda_sparse', 0,...0.043,...
                 'enforce_diagonal_sparse_B', false,...
-                'global_signal_mode', 'RPCA',...
-                'global_signal_subset', {{'REV1', 'REV2', 'DT', 'VT'}},...
+                'global_signal_mode', 'ID_binary_transitions',...
+                'global_signal_subset', {{'all'}},...{{'REV1', 'REV2', 'DT', 'VT'}},...
                 'global_signal_pos_or_neg', 'only_pos',...
                 'enforce_zero_entries', {{}},...
                 'custom_control_signal',[],...
@@ -2711,7 +2716,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'to_subtract_mean_global', false,...
                 'to_separate_sparse_from_data', true, ...
                 'offset_control_signal', false,...
-                'dmd_mode', 'naive',...
+                'dmd_mode', 'func_DMDc',...'naive',...
                 ...% Data importing
                 'use_deriv', false,...
                 'use_only_deriv', false,...
@@ -2872,11 +2877,17 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             
             self.pareto_struct = struct();
-            self.state_labels_ind = ...
-                self.state_labels_ind_raw(end-size(self.dat,2)+1:end);
+            if ~isempty(self.state_labels_ind_raw)
+                self.state_labels_ind = ...
+                    self.state_labels_ind_raw(end-size(self.dat,2)+1:end);
+            end
             
             % Set up the settings for AdaptiveDMDc object
             fnames = fieldnames(self.AdaptiveDmdc_settings);
+            if isempty(fnames)
+                fnames = {''};
+            end
+                
             if ~ismember(fnames,'sort_mode')
                 self.AdaptiveDmdc_settings.sort_mode = 'user_set';
             end
@@ -3573,8 +3584,10 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function postprocess(self)
             self.total_sz = size(self.dat_with_control);
-            self.state_labels_ind = ...
-                self.state_labels_ind_raw(end-self.total_sz(2)+1:end);
+%             if ~isempty(self.state_labels_ind_raw)
+%                 self.state_labels_ind = ...
+%                     self.state_labels_ind_raw(end-self.total_sz(2)+1:end);
+%             end
             
             if ~self.to_save_raw_data
                 for f=fieldnames(struct(self))'
