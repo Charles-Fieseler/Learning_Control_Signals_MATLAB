@@ -7328,12 +7328,14 @@ for i = 1:num_iter
 %         all_peaks(i, i2) = PermEn(dat', 5);
 %         all_acf(i, i2) = mean(acf(dat, 2, false));
         all_nnz(i, i2) = nnz(dat);
-        all_blocks(i, i2) = length(this_dat);
+%         all_blocks(i, i2) = length(this_dat);
+        all_blocks(i, i2) = length(dat);
     end
 end
 fig = figure;
 % waterfall(all_acf')
 imagesc(all_acf')
+title('Autocorrelation')
 % plot(all_acf)
 i = 1;
 findchangepts(all_peaks(:,i), 'Statistic', 'linear')
@@ -8616,6 +8618,7 @@ title('Marginal correlation improvement')
 ylim([-1 1])
 line([-0.5 15], [0 0], opt{:});
 %==========================================================================
+
 
 
 

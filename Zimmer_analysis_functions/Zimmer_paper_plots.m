@@ -1,6 +1,4 @@
 
-
-
 %% Define folder to save in
 to_save = false;
 
@@ -8,7 +6,6 @@ foldername = 'C:\Users\charl\Documents\Current_work\Zimmer_draft_paper\figures\'
 
 my_viewpoint = [0, 90];
 %==========================================================================
-
 %% Define colormaps
 %---------------------------------------------
 % Set up colormap for RPCA visualizations
@@ -27,7 +24,10 @@ set(0, 'DefaultFigureColormap', my_cmap_RPCA)
 num_possible_roles = 4;
 my_cmap_3d = colormap(parula(num_possible_roles));
 my_cmap_3d = [my_cmap_3d; zeros(1,3)];
-my_cmap_3d(4,:) = [249, 222, 12]./256; % Make yellow more visible
+% my_cmap_3d(4,:) = [249, 222, 12]./256; % Make yellow more visible
+my_cmap_3d(4,:) = [217, 162, 17]./256; % Instead, orange-ish
+% my_cmap_3d(4,:) = [255, 130, 4]./256; % Instead, purple
+% my_cmap_3d(4,:) = [201, 63, 146]./256; % Instead, darker purple
 
 % Dict for switching between simple label plots and bar-graph-matching
 % colors
@@ -40,7 +40,6 @@ my_cmap_dict_sort = containers.Map(... % For if they are sorted
 
 close all
 %==========================================================================
-
 %% Define 'ideal' settings
 %---------------------------------------------
 % Build filename array (different data formats)
@@ -216,17 +215,18 @@ end
 %==========================================================================
 
 
-%% Figure 2?: Sparse residual analysis (i.e. controller learning)
+%% Figure 2: Sparse residual analysis (i.e. controller learning)
 all_figs = cell(7,1);
 
 dat_struct = dat_ideal;
-f_smooth = @(x) smoothdata(x, 'gaussian', 3);
-dat_struct.traces = f_smooth(dat_struct.traces);
-warning('USING PREPROCESSED DATA')
+% f_smooth = @(x) smoothdata(x, 'gaussian', 3);
+% dat_struct.traces = f_smooth(dat_struct.traces);
+% warning('USING PREPROCESSED DATA')
 
 % First get a baseline model as a preprocessor
 settings_base = settings_ideal;
 settings_base.augment_data = 0;
+settings_base.autocorrelation_noise_threshold = 0.5;
 my_model_base = CElegansModel(dat_struct, settings_base);
 n = my_model_base.dat_sz(1);
 m = my_model_base.dat_sz(2);
@@ -235,8 +235,12 @@ m = my_model_base.dat_sz(2);
 num_iter = 100;
 max_rank = 10;
 % max_rank = 25; % For the supplement
+% [all_U1, all_acf, all_nnz] = ...
+%     sparse_residual_analysis_max_over_iter(my_model_base, num_iter, 1:max_rank);
+% Try aic instead
 [all_U1, all_acf, all_nnz] = ...
-    sparse_residual_analysis_max_acf(my_model_base, num_iter, 1:max_rank);
+    sparse_residual_analysis_max_over_iter(my_model_base,...
+    num_iter, 1:max_rank, 'aic');
 % Register the lines across rank
 [registered_lines, registered_names] = ...
     sparse_residual_line_registration(all_U1, all_acf, my_model_base);
@@ -338,23 +342,141 @@ ylabel('Maximum autocorrelation')
 xlabel('Rank')
 title('Determination of rank truncation')
 
+%% New: plot the aic for each rank
+figure;
+hold on
+for i = 1:length(all_acf)
+    plot(50:length(all_acf{1}), all_acf{i}(1,50:end));
+%     plot(all_acf{i}(1,:));
+end
+legend()
+title('AIC values for each rank')
 %---------------------------------------------
 %% PLOT2: vs. sparsity
 %---------------------------------------------
+% all_figs{2} = figure('DefaultAxesFontSize', 16);
+% [~, sort_ind] = sort(final_xy(:,2), 'descend');
+% imagesc(all_acf{rank_to_plot}(sort_ind, :)); colorbar
+% 
+% this_sparsity = all_nnz{rank_to_plot} ./ numel(all_U1{rank_to_plot});
+% tick_ind = round(linspace(1, 0.8*length(this_sparsity), 5));
+% xticks(tick_ind)
+% xticklabels(round(this_sparsity(tick_ind),2))
+% % imagesc(all_acf{rank_to_plot});colorbar
+% yticks(1:rank_to_plot)
+% yticklabels(final_names(sort_ind))
+% xlabel('Fraction of nonzero entries')
+% title('Determination of sparsity')
+
+%---------------------------------------------
+
+%% For new plot 2: get full path of signals
+disp('Getting full path of for a single rank...')
+rank_to_plot = 10;
+settings = struct('r_ctr', rank_to_plot, 'num_iter', num_iter);    
+
+[all_U_path, all_A, all_B, ~] = ...
+    sparse_residual_analysis(my_model_base, settings);
+%% Calculate AIC and plot
+disp('Calculating AIC for a single rank...')
+all_aic = zeros(1, length(all_U_path));
+all_crossval = zeros(size(all_aic));
+all_nnz_path = zeros(size(all_aic));
+num_steps = 10;
+do_aicc = false;
+X = my_model_base.dat;
+for i = 1:length(all_U_path)-1
+    U = all_U_path{i};
+    A = all_A{i};
+    B = all_B{i};
+    all_aic(i) = -aic_2step_dmdc(X, U, A, B, num_steps, do_aicc);
+    all_crossval(i) = dmdc_cross_val(X, U, 8, num_steps);
+    all_nnz_path(i) = nnz(all_U_path{i});
+end
+all_aic(end) = all_aic(end-1); % TODO
+all_crossval(end) = all_crossval(end-1); % TODO
+
+figure;
+ind = 20:length(all_aic);
+subplot(2,1,1)
+plot(ind, all_aic(ind))
+title(sprintf('AIC values (error at %d steps)', num_steps))
+subplot(2,1,2)
+plot(ind, all_crossval(ind));
+title('Cross-validation errors')
+
+% MAX OF NEGATIVE 
+[~, aic_min_ind] = max(all_aic);
+fprintf('Minimum for aic: %d\n', aic_min_ind)
+
+%% New plot 2: path of REV
+%---------------------------------------------
+% rank_to_plot = 4;
+tspan = 100:1000; % decided by hand, SAME AS ABOVE FIGURE
 all_figs{2} = figure('DefaultAxesFontSize', 16);
-[~, sort_ind] = sort(final_xy(:,2), 'descend');
-imagesc(all_acf{rank_to_plot}(sort_ind, :)); colorbar
 
-this_sparsity = all_nnz{rank_to_plot} ./ numel(all_U1{rank_to_plot});
-tick_ind = round(linspace(1, 0.8*length(this_sparsity), 5));
-xticks(tick_ind)
-xticklabels(round(this_sparsity(tick_ind),2))
-% imagesc(all_acf{rank_to_plot});colorbar
-yticks(1:rank_to_plot)
-yticklabels(final_names(sort_ind))
-xlabel('Fraction of nonzero entries')
-title('Determination of sparsity')
+% Plot 5 example traces, with acf titles
+% registration_ind = find(contains(text_names, 'AVA'), 1);
+registration_ind = find(contains(text_names, 'RIM'), 1);
+this_line = registered_lines{registration_ind};
+rank_to_plot_table = find(this_line{:, 'which_rank'} == rank_to_plot);
+if isempty(rank_to_plot_table)
+    error('Signal not found in path matrix; rerun sparse_residual_analysis')
+end
+rev_ind = this_line{rank_to_plot_table, 'which_line_in_rank'};
+% rev_ind = 10;
 
+rev_aic = all_acf{rank_to_plot}(rev_ind, :);
+rev_sparsity = all_nnz{rank_to_plot} ./ numel(all_U1{rank_to_plot});
+
+opt = {'color', my_cmap_3d(4,:), 'LineWidth', 2}; % Match paper colors
+
+% Plot 1: initialization
+this_iter = 1;
+subplot(1,5,1)
+plot(all_U_path{this_iter}(rev_ind, tspan), opt{:})
+title(sprintf('%d; acf=%.2f',...
+    this_iter, rev_aic(this_iter)))
+xlim([0 length(tspan)])
+
+% Plot 2: Some sparsity
+this_iter = 25;
+subplot(1,5,2)
+plot(all_U_path{this_iter}(rev_ind, tspan), opt{:})
+title(sprintf('%d; acf=%.2f',...
+    this_iter, rev_aic(this_iter)))
+xlim([0 length(tspan)])
+
+% Plot 3: Some more sparsity
+this_iter = 50;
+subplot(1,5,3)
+plot(all_U_path{this_iter}(rev_ind, tspan), opt{:})
+title(sprintf('%d; acf=%.2f',...
+    this_iter, rev_aic(this_iter)))
+xlim([0 length(tspan)])
+
+% Plot 4: Even more sparsity (max acf?)
+this_iter = aic_min_ind;
+% this_iter = 75;
+subplot(1,5,4)
+plot(all_U_path{this_iter}(rev_ind, tspan), opt{:})
+title(sprintf('%d; acf=%.2f=maximum',...
+    this_iter, rev_aic(this_iter)))
+xlim([0 length(tspan)])
+
+% Plot 5: Too much sparsity (lower acf)
+this_iter = 100;
+subplot(1,5,5)
+plot(all_U_path{this_iter}(rev_ind, tspan), opt{:})
+title(sprintf('%d; acf=%.2f',...
+    this_iter, rev_aic(this_iter)))
+xlim([0 length(tspan)])
+
+% Note: use rank_to_plot instead of rank_ind for now
+% learned_u_REV = all_U1{rank_to_plot}(rev_ind, :);
+% plot(learned_u_REV(tspan), opt{:})
+% xlim([0 length(tspan)])
+% 
 %---------------------------------------------
 %% PLOT3: Visual connection with expert signals
 %---------------------------------------------
@@ -461,7 +583,7 @@ xlim([0 length(tspan)])
 prep_figure_no_box_no_zoom(all_figs{6})
 
 %---------------------------------------------
-%% PLOT4: LONG RUNTIME; produce data for boxplots
+%% PLOT4: Long-ish runtime; produce data for boxplots
 % Boxplot of correlation with expert signals
 %---------------------------------------------
 % First, need to re-run the code for getting all of the signals for other
@@ -507,10 +629,10 @@ for i = 1:num_files
 %         [~, which_sparsity] = max(all_acf2{i}(i2, :));
 %         all_U2{i}(i2,:) = U{which_sparsity}(i2,:);
 %     end
-    [all_U, all_acf] = sparse_residual_analysis_max_acf(all_models{i}, ...
+    [all_U, all_acf_tmp] = sparse_residual_analysis_max_over_iter(all_models{i}, ...
         settings.num_iter, settings.r_ctr);
     all_U2{i} = all_U{1};
-    all_acf2{i} = all_acf{1};
+    all_acf2{i} = all_acf_tmp{1};
 end
 %% Actually plot
 % Get the maximum correlation with the experimentalist signals for each
@@ -875,7 +997,7 @@ for i = 1:num_files
     end
     % First get a baseline model as a preprocessor
     all_models{i} = CElegansModel(dat_struct, settings_base);
-    [all_U, all_acf] = sparse_residual_analysis_max_acf(all_models{i}, ...
+    [all_U, all_acf] = sparse_residual_analysis_max_over_iter(all_models{i}, ...
         settings.num_iter, settings.r_ctr);
     all_U2{i} = all_U{1};
     all_acf2{i} = all_acf{1};
@@ -961,7 +1083,7 @@ for iInput = 1:length(all_settings_loop)
     end
 end
 
-[final_dat] = calculate_correlations_and_differences(all_models_table,...
+[final_dat_learned] = calculate_correlations_and_differences(all_models_table,...
     all_settings_loop_names);
 %% Finally plot
 all_figs = cell(2,1);
@@ -970,37 +1092,34 @@ color_order = [4 3 2 1];
 cmap = my_cmap_3d(color_order, :);
 opt = {'Color', 'k', 'LineStyle', '--', 'HandleVisibility','off'};
 
-% all_figs{1} = boxplot_on_table(final_dat(1:3,1:end-1), [], cmap, 'rows');
+% all_figs{1} = boxplot_on_table(final_dat_learned(1:3,1:end-1), [], cmap, 'rows');
 % title('Correlation with Data')
 % ylim([-1 1])
 % line([-0.5 15], [0 0], opt{:});
 % legend off
 % 
-% all_figs{2} = boxplot_on_table(final_dat(4:end,1:end-1), [], cmap, 'rows');
+% all_figs{2} = boxplot_on_table(final_dat_learned(4:end,1:end-1), [], cmap, 'rows');
 % title('Improvement via additional signals')
 % ylim([-1 1])
 % yticklabels('')
 % line([-0.5 15], [0 0], opt{:});
 % legend off
 
-% New simpler version
-all_figs{1} = boxplot_on_table(final_dat(1:2,1:end-1), [], cmap, 'rows');
-title('Baselines')
+% New simpler version: use data later
+if ~exist('final_dat_learned', 'var')
+    final_dat_learned = importdata([dat_foldername...
+        'control_signals_learned_boxplot.mat']);
+end
+all_figs{1} = boxplot_on_table(final_dat_learned(1:2,1:end-1), [], cmap, 'rows');
+title('Null Models')
 ylim([-1 1])
 line([-0.5 15], [0 0], opt{:});
-legend off
+% legend off
 ylabel('Correlation')
-
-all_figs{2} = boxplot_on_table(final_dat(4:6,1:end-1), [], cmap, 'rows');
-title('Improvement via additional signals')
-ylim([-1 1])
-yticklabels('')
-line([-0.5 15], [0 0], opt{:});
-legend off
 %% Save data and figures
 if to_save
     save([dat_foldername 'control_signals_learned_boxplot'], ...
-        'final_dat');
+        'final_dat_learned');
     
     for i = 1:length(all_figs)
         this_fig = all_figs{i};
@@ -1008,7 +1127,7 @@ if to_save
             continue
         end
         figure(this_fig)
-        sz = {'0.9\columnwidth', '0.1\paperheight'};
+        sz = {'0.9\columnwidth', '0.2\paperheight'};
             
         fname = sprintf('%sfigure_3a_new_%d', foldername, i);
         matlab2tikz('figurehandle',this_fig,'filename',[fname '_raw.tex'], ...
@@ -1158,9 +1277,9 @@ for i = 1:num_differences
         final_dat_cell{i, i2} = real(vertcat(clust_dat_cell{i}{:,i2}{:}));
     end
 end
-final_dat = cell2table(final_dat_cell);
-final_dat.Properties.VariableNames = interpretable_clusters_names;
-final_dat.Properties.RowNames = all_differences_names;
+final_dat_expert = cell2table(final_dat_cell);
+final_dat_expert.Properties.VariableNames = interpretable_clusters_names;
+final_dat_expert.Properties.RowNames = all_differences_names;
 %% Finally, plot each difference by cluster
 all_figs = cell(2,1);
 % Do not include the "other" group of neurons
@@ -1168,20 +1287,24 @@ color_order = [4 3 2 1];
 cmap = my_cmap_3d(color_order, :);
 opt = {'Color', 'k', 'LineStyle', '--', 'HandleVisibility','off'};
 
-% all_figs{1} = boxplot_on_table(final_dat(1:3,1:end-1), [], cmap, 'rows');
+% all_figs{1} = boxplot_on_table(final_dat_expert(1:3,1:end-1), [], cmap, 'rows');
 % title('Correlation with Data')
 % ylim([-1 1])
 % line([-0.5 15], [0 0], opt{:});
 % legend off
-% 
 
 % New: Only plot the comparison between these full models
+if ~exist('final_dat_expert', 'var')
+    t = importdata([dat_foldername...
+        'control_signals_expert_boxplot.mat']);
+    final_dat_expert = t.final_dat_expert;
+end
 learned_dat_name = [dat_foldername 'control_signals_learned_boxplot.mat'];
 assert(logical(exist(learned_dat_name, 'file')),...
     'Must have collected data from the unsupervised models and saved the data');
 learned_dat = importdata(learned_dat_name);
 learned_dat.Properties.RowNames{3} = 'Learned';
-comparison_table = [final_dat(3, 1:end-1); learned_dat(3, 1:end-1)];
+comparison_table = [final_dat_expert(3, 1:end-1); learned_dat(3, 1:end-1)];
 comparison_table.Properties.RowNames{1} = 'Expert';
 
 all_figs{1} = boxplot_on_table(comparison_table, [], cmap, 'rows');
@@ -1191,20 +1314,19 @@ yticklabels('')
 line([-0.5 15], [0 0], opt{:});
 legend off
 
-all_figs{2} = boxplot_on_table(final_dat(4:end,1:end-1), [], cmap, 'rows');
+all_figs{2} = boxplot_on_table(final_dat_expert(4:end,1:end-1), [], cmap, 'rows');
 title('Improvement via additional signals')
 ylim([-1 1])
 yticklabels('')
 line([-0.5 15], [0 0], opt{:});
 legend off
-
 %% Save data and plots
 if to_save
 %     save([dat_foldername 'control_signals_expert_boxplot'], ...
 %         'final_dat', 'all_models_table', 'all_ind_table', ...
 %         'baseline_dat_table');
     save([dat_foldername 'control_signals_expert_boxplot'], ...
-        'final_dat', 'comparison_table');
+        'final_dat_expert', 'comparison_table');
     
     for i = 1:length(all_figs)
         this_fig = all_figs{i};
@@ -1212,7 +1334,7 @@ if to_save
             continue
         end
         figure(this_fig)
-        sz = {'0.9\columnwidth', '0.1\paperheight'};
+        sz = {'0.9\columnwidth', '0.2\paperheight'};
             
         fname = sprintf('%sfigure_3_new_%d', foldername, i);
         matlab2tikz('figurehandle',this_fig,'filename',[fname '_raw.tex'], ...
@@ -1259,7 +1381,7 @@ for i = 1:max_iter
         [~, top_ind] = max(abs(B_prime_lasso_td_3d(:, :, i-1)), [], 2);
         % We'll get a single time slice of a neuron, but want to remove all
         % copies (cumulatively)
-        top_ind = mod(top_ind,n) + n*(0:settings.augment_data-1);
+        top_ind = mod(top_ind,n) + n*(0:my_model_time_delay.augment_data-1);
         elimination_neurons(:,i) = top_ind(:,1);
         elimination_pattern(:,:,i) = elimination_pattern(:,:,i-1);
         for i4 = 1:size(top_ind,1)
@@ -1374,7 +1496,7 @@ which_iter = which_examples(1);
 names = my_model_time_delay.get_names([], true);
 % ind = contains(my_model_time_delay.state_labels_key, {'REV', 'DT', 'VT'});
 % Unroll one of the controllers
-unroll_sz = [my_model_time_delay.original_sz(1), settings.augment_data];
+unroll_sz = [my_model_time_delay.original_sz(1), my_model_time_delay.augment_data];
 dat_unroll1 = reshape(B_prime_lasso_td_3d(which_ctr,:,which_iter), unroll_sz);
 fig4_normalization = max(max(abs(dat_unroll1))); % To use later as well
 
@@ -1423,7 +1545,7 @@ which_iter = which_examples(2);
 names = my_model_time_delay.get_names([], true);
 % ind = contains(my_model_time_delay.state_labels_key, {'REV', 'DT', 'VT'});
 % Unroll one of the controllers
-unroll_sz = [my_model_time_delay.original_sz(1), settings.augment_data];
+unroll_sz = [my_model_time_delay.original_sz(1), my_model_time_delay.augment_data];
 dat_unroll1 = reshape(B_prime_lasso_td_3d(which_ctr,:,which_iter), unroll_sz);
 
 all_figs{4} = figure(opt{:});
@@ -1471,7 +1593,8 @@ xlim(tspan)
 if to_save
     save([dat_foldername 'elimination_path'], ...
         'all_intercepts_td', 'all_err', 'all_fp', 'all_fn', ...
-        'all_thresholds_3d', 'elimination_neurons', 'num_spikes');
+        'all_thresholds_3d', 'elimination_neurons', 'num_spikes', ...
+        'B_prime_lasso_td_3d');
     
     for i = 1:length(all_figs)
         if isempty(all_figs{i}) || ~isvalid(all_figs{i})
