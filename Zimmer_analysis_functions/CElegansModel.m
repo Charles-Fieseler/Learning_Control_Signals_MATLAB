@@ -407,6 +407,9 @@ classdef CElegansModel < SettingsImportableFromStruct
         % Additional rows
         dependent_signals
         add_constant_signal
+        
+        % Plotting
+        cmap
     end
     
     properties (Access=private, Transient=true)
@@ -1712,7 +1715,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         
         function fig = plot_colored_data(self, plot_pca, plot_opt, cmap)
             if ~exist('cmap', 'var')
-                cmap = [];
+                cmap = self.cmap;
             end
             if ~exist('plot_pca','var')
                 plot_pca = false;
@@ -1798,7 +1801,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             %       the original data; if so, the reconstruction is in
             %       black stars ('k*')
             if ~exist('cmap', 'var')
-                cmap = [];
+                cmap = self.cmap;
             end
             if ~exist('use_same_fig','var')
                 use_same_fig = false;
@@ -2072,17 +2075,26 @@ classdef CElegansModel < SettingsImportableFromStruct
             end
             global_ind = num_neurons + ...
                 self.control_signals_metadata{ctr_name,:}{:};
-            sparse_ctr_id = ...
-                contains(self.control_signals_metadata.Row,'sparse');
-            if any(sparse_ctr_id)
+%             global_ind = self.control_signals_metadata{ctr_name,:}{:};
+%             sparse_ctr_id = ...
+%                 contains(self.control_signals_metadata.Row,'sparse');
+%             if any(sparse_ctr_id)
+%                 use_sparse = true;
+%                 sparse_ind = ...
+%                     self.control_signals_metadata{sparse_ctr_id,:}{:};
+%             else
+%                 use_sparse = false;
+%             end
+            % Different type, for onset signals
+            if contains(ctr_name, 'transitions')
+                sparse_ind = global_ind - num_neurons;
                 use_sparse = true;
-                sparse_ind = ...
-                    self.control_signals_metadata{sparse_ctr_id,:}{:};
-            else
-                use_sparse = false;
+                global_ind = [];
             end
-            this_dat = self.dat_without_control - ...
-                mean(self.dat_without_control,2);
+            this_dat = self.dat_without_control;
+%             if self.to_subtract_mean
+                this_dat = this_dat - mean(self.dat_without_control,2);
+%             end
             % Get the control signals associated with the types of
             % controllers
             if ~use_generated_data
@@ -2103,7 +2115,7 @@ classdef CElegansModel < SettingsImportableFromStruct
                 if ~use_generated_data
                     this_reconstruction = ...
                         self.AdaptiveDmdc_obj.calc_reconstruction_control(...
-                        [], [], true);
+                        [], [], [], true);
                 else
                     % Trace the original data
                     this_reconstruction = ...
@@ -2117,8 +2129,8 @@ classdef CElegansModel < SettingsImportableFromStruct
                 % largest
                 control_direction = ...
                     self.calc_control_direction(neuron_ind, true);
-                modes_3d = self.L_sparse_modes(:,1:3);
-                proj_3d = (modes_3d.')*control_direction;
+%                 modes_3d = self.L_sparse_modes(:,1:3);
+                proj_3d = modes_3d * control_direction;
                 arrow_length_intrinsic = (this_reconstruction*arrow_factor).';
                 
                 proj_3d = arrow_length_intrinsic*(proj_3d)';
@@ -2148,8 +2160,11 @@ classdef CElegansModel < SettingsImportableFromStruct
                 % Sparse controller
                 if use_sparse
                     arrow_length_sparse = (this_ctr_sparse(:,i)*arrow_factor).';
+%                     self.plot_colored_control_arrow(...
+%                         neuron_ind, arrow_base, 20*arrow_length_sparse, fig,...
+%                         false, 'mean', 'r');
                     self.plot_colored_control_arrow(...
-                        neuron_ind, arrow_base, 20*arrow_length_sparse, fig,...
+                        sparse_ind, arrow_base, 20*arrow_length_sparse, fig,...
                         false, 'mean', 'r');
                 end
                 % Global controller
@@ -2162,11 +2177,15 @@ classdef CElegansModel < SettingsImportableFromStruct
                     end
                     label_str = self.state_labels_key{label_ind};
                     self.plot_colored_fixed_point(label_str, true, fig);
-                else
+                elseif ~isempty(this_ctr_global)
                     arrow_length_global = (this_ctr_global(:,i)*arrow_factor).';
                     self.plot_colored_control_arrow(...
-                        global_ind, arrow_base, arrow_length_global, fig,...
-                        false, true, 'k');
+                        global_ind-num_neurons, arrow_base, ...
+                        arrow_length_global, fig,...
+                        false, intrinsic_arrow_mode, 'k');
+                else
+                    % Plot a dummy point to make the deletion later work
+                    plot3(0,0,0, 'wo')
                 end
                 % Current point
                 plot3(arrow_base(1), arrow_base(2), arrow_base(3),...
@@ -2724,7 +2743,9 @@ classdef CElegansModel < SettingsImportableFromStruct
                 'to_save_raw_data', true,...
                 ...% Additional (nonlinear) rows
                 'dependent_signals', table(),...
-                'add_constant_signal', true);
+                'add_constant_signal', true,...
+                ...% Plotting
+                'cmap', []);
             for key = fieldnames(defaults).'
                 k = key{1};
                 self.(k) = defaults.(k);
