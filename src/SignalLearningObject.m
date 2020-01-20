@@ -366,7 +366,6 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         lambda_sparse
         enforce_diagonal_sparse_B
         enforce_zero_entries
-        custom_control_signal
         
         % Data processing
         filter_window_dat
@@ -447,11 +446,6 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         stimulus_struct
         
         % Generative model
-        cecoc_model
-        dat_generated
-        control_signal_generated
-        normalize_cumsum_x_times_state
-        normalize_cumtrapz_x_times_state
         normalize_length_count
         
         % Changing the control signals and/or matrix
@@ -460,7 +454,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         user_neuron_ablation
         user_control_reconstruction
         
-        pareto_struct
+        custom_control_signal
     end
     
     properties (SetAccess=private)
@@ -591,69 +585,27 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             sparsity = logical([A0, B0]);
         end
         
-        function calc_pareto_front(self, lambda_vec, global_signal_mode,...
-                to_append, max_val)
-            % Calculates the errors as a function of the different lambda
-            % values
-            %   Currently only works with the sparse control signal
-            if ~exist('global_signal_mode','var')
-                global_signal_mode = 'ID';
-            end
-            if ~exist('to_append','var')
-                to_append = false;
-            end
-            if ~exist('max_val','var')
-                max_val = 0; % Do not truncate values
-            end
-            self.global_signal_mode = global_signal_mode;
-            all_errors = zeros(size(lambda_vec));
-            
-            for i=1:length(lambda_vec)
-                self.lambda_sparse = lambda_vec(i);
-                self.calc_all_control_signals();
-                self.calc_AdaptiveDmdc();
-                self.postprocess();
-                all_errors(i) = ...
-                    self.AdaptiveDmdc_obj.calc_reconstruction_error();
-            end
-            
-            if max_val>0
-                all_errors(all_errors>max_val) = NaN;
-            end
-            
-            if to_append && ~isempty(self.pareto_struct.lambda_vec)
-                % Assume lambdas are the same
-                self.pareto_struct.all_errors = ...
-                    [self.pareto_struct.all_errors;...
-                    all_errors];
-                self.pareto_struct.global_signal_modes = ...
-                    [self.pareto_struct.global_signal_modes;
-                    global_signal_mode];
-            else
-                self.pareto_struct.lambda_vec = lambda_vec;
-                persistence_model_error = ...
-                    self.AdaptiveDmdc_obj.calc_reconstruction_error([],true);
-                self.pareto_struct.all_errors = ...
-                    [ones(size(all_errors))*persistence_model_error;...
-                    all_errors];
-                self.pareto_struct.global_signal_modes = ...
-                    {'Persistence'; global_signal_mode};
-            end
-            
-        end
-        
         function set_simple_labels(self, label_dict, new_labels_key)
+            if self.verbose
+                disp('Setting simple labels')
+            end
             if ~exist('label_dict','var')
                 if length(self.state_labels_key) == 8
                     % Classic format
                     label_dict = containers.Map(...
                         {1,2,3,4,5,6,7,8},...
                         {1,1,2,3,4,4,4,5});
+                    if self.verbose
+                        disp('Original format: Classic Zimmer')
+                    end
                 elseif length(self.state_labels_key) == 6
                     % Prelet format
                     label_dict = containers.Map(...
                         {0,1,2,3,4,5},...
                         {1,5,2,3,4,5});
+                    if self.verbose
+                        disp('Original format: Quiescence')
+                    end
                 elseif length(self.state_labels_key) == 5
                     return
                 else
@@ -707,6 +659,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         function remove_all_control(self)
             % Removes ALL control signals and metadata, including what was
             % calculated in initialization
+            self.custom_control_signal = [];
             self.control_signal = [];
             self.control_signals_metadata = [];
             self.L_global_modes = [];
@@ -1498,99 +1451,6 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         end
     end
     
-    methods % Building predictive model
-        function train_classifier(self, optimize_hyperparameters)
-            % Trains a classifier on the experimentalist ID's and the full
-            % brain state
-            % Input:
-            %   optimize_hyperparameters (true) - flag to use MATLAB's
-            %           routines for optimizing the large number of
-            %           hyperparameters. Helps a lot, but takes time
-            if ~exist('optimize_hyperparameters','var')
-                optimize_hyperparameters = true;
-            end
-            
-            rng(1);
-            if optimize_hyperparameters
-                disp('Optimizing hyperparameters, may take >1 hour')
-                self.cecoc_model = fitcecoc(...
-                    self.dat_without_control',...
-                    self.state_labels_ind,...
-                    'OptimizeHyperparameters','auto',...
-                    'HyperparameterOptimizationOptions',...
-                        struct('AcquisitionFunctionName',...
-                        'expected-improvement-plus'));
-            else
-                self.cecoc_model = fitcecoc(...
-                    self.dat_without_control',...
-                    self.state_labels_ind);
-            end
-        end
-        
-        function ctr_signal = calc_next_step_controller(self,...
-                time_slice, t_ind)
-            % Uses the trained classifier to predict the category of the
-            % input brain state
-            % Note: input should be one or more column vectors
-            ctr_signal = self.control_signal(:, t_ind);
-            
-            % The model might have been trained with derivatives
-            if size(self.cecoc_model.X,2) == 2*length(time_slice)
-                time_slice = [time_slice, gradient(time_slice)];
-            end
-            
-            % Only change the single entry that is the ID (any later
-            % entries are constant)
-            ctr_signal(self.original_sz(1)+1) = ...
-                predict(self.cecoc_model, time_slice);
-        end
-        
-        function [x, ctr_signal] = ...
-                generate_time_series(self, num_tsteps, x0)
-            % Generates a time series using the saved AdaptiveDmdc object
-            % This means that user-set ablations and additional control
-            % signals can be incorporated
-            if ~exist('num_tsteps','var')
-                num_tsteps = self.original_sz(2);
-            end
-            if ~exist('x0','var')
-                x0 = self.dat(:,1);
-            end
-            
-            x = zeros(self.original_sz(1), num_tsteps);
-            x(:,1) = x0;
-            % Only some of the control signal will be overwritten
-            %   Set the ones we must calculate to 0
-            ctr_signal = self.control_signal(:,1:num_tsteps);
-            for i2 = 1:size(self.dependent_signals,1)
-                ctr_ind = self.dependent_signals.signal_indices{i2};
-                % Produce the control signal for the PREVIOUS step
-                ctr_signal(ctr_ind,1) = 0;
-            end
-            assert(size(self.dependent_signals,1)<2,...
-                'Currently more than 1 dependent signal may interfere')
-            for i = 2:num_tsteps
-                for i2 = 1:size(self.dependent_signals,1)
-                    ctr_ind = self.dependent_signals.signal_indices{i2};
-                    % Produce the control signal for the PREVIOUS step
-                    ctr_signal(ctr_ind,i-1) = ...
-                        calc_next_step(...
-                            self.dependent_signals.signal_functions{i2},...
-                            x(:,i-1)', ...
-                            ctr_signal(:,i-1),...
-                            self.control_signals_metadata);
-                end
-                x(:,i) = ...
-                    self.AdaptiveDmdc_obj.calc_reconstruction_manual(...
-                        x(:,i-1),...
-                        ctr_signal(:,i-1));
-            end
-            
-            self.dat_generated = x;
-            self.control_signal_generated = ctr_signal;
-        end
-    end
-    
     methods % Plotting
         
         function fig = plot_reconstruction_user_control(self, ...
@@ -2081,31 +1941,19 @@ classdef SignalLearningObject < SettingsImportableFromStruct
 %             end
             % Get the control signals associated with the types of
             % controllers
-            if ~use_generated_data
-                if use_sparse
-                    this_ctr_sparse = self.control_signal(sparse_ind,:);
-                else
-                    this_ctr_sparse = [];
-                end
-                this_ctr_global = self.dat_with_control(global_ind,:);
+            if use_sparse
+                this_ctr_sparse = self.control_signal(sparse_ind,:);
             else
-                this_ctr_sparse = ...
-                    self.control_signal_generated(1:num_neurons,:);
-                this_ctr_global = ...
-                    self.control_signal_generated((num_neurons+1):end,:);
+                this_ctr_sparse = [];
             end
+            this_ctr_global = self.dat_with_control(global_ind,:);
+            
             modes_3d = self.L_sparse_modes(:,1:3).';
             if show_reconstruction
-                if ~use_generated_data
-                    this_reconstruction = ...
-                        self.AdaptiveDmdc_obj.calc_reconstruction_control(...
-                        [], [], [], true);
-                else
-                    % Trace the original data
-                    this_reconstruction = ...
-                        self.dat_generated - ...
-                        mean(self.dat_generated, 2);
-                end
+                this_reconstruction = ...
+                    self.AdaptiveDmdc_obj.calc_reconstruction_control(...
+                    [], [], [], true);
+                
                 this_reconstruction = this_reconstruction(neuron_ind,:);
                 all_arrow_bases = modes_3d * this_reconstruction;
                 all_dat_projected = modes_3d * this_dat;
@@ -2222,23 +2070,6 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             plot_2imagesc_colorbar(...
                 mean_signal, std(signal_mat, [], 3), '1 2',...
                 title_str1, title_str2);
-        end
-        
-        function plot_pareto_front(self)
-            assert(~isempty(self.pareto_struct.lambda_vec),...
-                'No pareto front data saved')
-            
-            figure('DefaultAxesFontSize',14);
-            y_val = self.pareto_struct.all_errors;
-            plot(self.pareto_struct.lambda_vec, y_val,...
-                'LineWidth',2)
-            xlabel('\lambda value for sparse signals')
-            ylabel('L2 error')
-            ylim([0, min(10*y_val(1,1),max(max(y_val)))])
-            title('Pareto front')
-            legend(self.pareto_struct.global_signal_modes,...
-                'Interpreter','None')
-            
         end
         
         function fig = plot_eigenvalues_and_frequencies(self, ...
@@ -2705,7 +2536,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 'global_signal_subset', {{'all'}},...{{'REV1', 'REV2', 'DT', 'VT'}},...
                 'global_signal_pos_or_neg', 'only_pos',...
                 'enforce_zero_entries', {{}},...
-                'custom_control_signal',[],...
+                ...'custom_control_signal',[],...
                 ...% Data processing
                 'filter_window_dat', 0,...
                 'filter_window_global', 10,...
@@ -2881,7 +2712,6 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                     self.filter_aggressiveness).';
             end
             
-            self.pareto_struct = struct();
             if ~isempty(self.state_labels_ind_raw)
                 self.state_labels_ind = ...
                     self.state_labels_ind_raw(end-size(self.dat,2)+1:end);
@@ -3285,19 +3115,19 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                     
                     this_metadata.signal_indices = {1:2}; % Indices should be a single vector
                     
-                case 'length_count' % Not called alone
-                    tmp = self.state_length_count(self.state_labels_ind);
-                    self.normalize_length_count = ...
-                        ( (max(max(self.dat))-min(min(self.dat)))...
-                        ./(max(max(tmp))-min(min(tmp))) );
-                    tmp = tmp * self.normalize_length_count;
-%                     this_metadata.signal_indices = ...
-%                         {size(self.L_global_modes,2) + ...
-%                         (1:size(tmp,1))};
-                    this_metadata.signal_indices = {1:size(tmp,1)};
-                    
-                    self.L_global_modes = [self.L_global_modes,...
-                        tmp'];
+%                 case 'length_count' % Not called alone
+%                     tmp = self.state_length_count(self.state_labels_ind);
+%                     self.normalize_length_count = ...
+%                         ( (max(max(self.dat))-min(min(self.dat)))...
+%                         ./(max(max(tmp))-min(min(tmp))) );
+%                     tmp = tmp * self.normalize_length_count;
+% %                     this_metadata.signal_indices = ...
+% %                         {size(self.L_global_modes,2) + ...
+% %                         (1:size(tmp,1))};
+%                     this_metadata.signal_indices = {1:size(tmp,1)};
+%                     
+%                     self.L_global_modes = [self.L_global_modes,...
+%                         tmp'];
                     
                 case 'x_times_state' % Not called alone
                     binary_labels = self.calc_binary_labels(...
@@ -3307,50 +3137,6 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                     for i=1:size(binary_labels,1)
                         tmp = [tmp; self.dat.*binary_labels(i,ind)]; %#ok<AGROW>
                     end
-                    this_metadata.signal_indices = {1:size(tmp,1)};
-                    self.L_global_modes = [self.L_global_modes, tmp.'];
-                    
-                case 'cumsum_x_times_state' % Not called alone
-                    binary_labels = self.calc_binary_labels(...
-                        self.state_labels_ind, length(self.state_labels_key));
-                    tmp = [];
-                    for i=1:size(binary_labels,1)
-                        tmp = [tmp; self.dat.*binary_labels(i,:)]; %#ok<AGROW>
-                    end
-                    transitions = abs(diff(self.state_labels_ind))>0;
-                    transitions(end) = 1;
-                    transitions = [0 find(transitions)];
-                    for i=1:(length(transitions)-1)
-                        ind = (transitions(i)+1):transitions(i+1);
-                        tmp(:,ind) = cumsum(tmp(:,ind),2); %#ok<AGROW>
-                    end
-                    self.normalize_cumsum_x_times_state = ...
-                        ( (max(max(self.dat))-min(min(self.dat)))...
-                        ./(max(max(tmp))-min(min(tmp))) );
-                    tmp = tmp * self.normalize_cumsum_x_times_state;
-                    
-                    this_metadata.signal_indices = {1:size(tmp,1)};
-                    self.L_global_modes = [self.L_global_modes, tmp.'];
-                    
-                case 'cumtrapz_x_times_state' % Not called alone
-                    binary_labels = self.calc_binary_labels(...
-                        self.state_labels_ind, length(self.state_labels_key));
-                    tmp = [];
-                    for i=1:size(binary_labels,1)
-                        tmp = [tmp; self.dat.*binary_labels(i,:)]; %#ok<AGROW>
-                    end
-                    transitions = abs(diff(self.state_labels_ind))>0;
-                    transitions(end) = 1;
-                    transitions = [0 find(transitions)];
-                    for i=1:(length(transitions)-1)
-                        ind = (transitions(i)+1):transitions(i+1);
-                        tmp(:,ind) = cumtrapz(tmp(:,ind),2); %#ok<AGROW>
-                    end
-                    self.normalize_cumtrapz_x_times_state = ...
-                        ( (max(max(self.dat))-min(min(self.dat)))...
-                        ./(max(max(tmp))-min(min(tmp))) );
-                    tmp = tmp * self.normalize_cumtrapz_x_times_state;
-                    
                     this_metadata.signal_indices = {1:size(tmp,1)};
                     self.L_global_modes = [self.L_global_modes, tmp.'];
                     
@@ -3456,15 +3242,19 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         function add_custom_control_signal(self, ...
                 custom_control_signal, custom_control_signal_name)
             if ~exist('custom_control_signal','var')
-                custom_control_signal = self.custom_control_signal;
-                if ~isempty(self.custom_control_signal) && ...
-                        self.filter_window_global ~= 10
-                    warning('Control signal filtering is not applied to custom signals')
-                end
-                self.custom_control_signal = [];
-                custom_control_signal_name = 'user_custom_control_signal';
+                custom_control_signal = [];
+%                 custom_control_signal = self.custom_control_signal;
+%                 if ~isempty(self.custom_control_signal) && ...
+%                         self.filter_window_global ~= 10
+%                     warning('Control signal filtering is not applied to custom signals')
+%                 end
+%                 self.custom_control_signal = [];
+%                 custom_control_signal_name = 'user_custom_control_signal';
             end
             if isempty(custom_control_signal)
+                if self.verbose
+                    disp('No custom control signal added')
+                end
                 return
             end
             % Calculate the metadata

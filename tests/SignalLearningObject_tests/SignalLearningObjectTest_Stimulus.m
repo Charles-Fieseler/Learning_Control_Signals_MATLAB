@@ -26,7 +26,7 @@ classdef SignalLearningObjectTest_Stimulus < matlab.unittest.TestCase
             % Align control signal naming
             testCase.model.set_simple_labels();
             testCase.model.remove_all_control();
-            testCase.model.calc_all_control_signals();
+            testCase.model.build_model();
         end
     end
     
