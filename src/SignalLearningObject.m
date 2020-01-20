@@ -3508,8 +3508,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             ctr_signal(s_times(1)+1:s_times(2)) = ctr0 + 1;
             ctr_signal(s_times(2)+1:end) = ctr0;
             
-            ctr_signal_binary = self.calc_binary_labels(ctr_signal, ...
-                length(self.state_labels_key));
+            ctr_signal_binary = self.calc_binary_labels(ctr_signal);
             self.add_custom_control_signal(ctr_signal_binary,...
                 sprintf('Stimulus_%s',id_signal));
         end

@@ -23,6 +23,10 @@ classdef SignalLearningObjectTest_Stimulus < matlab.unittest.TestCase
             testCase.settings.global_signal_mode = 'ID_binary';
             testCase.model = ...
                 SignalLearningObject(testCase.filename, testCase.settings);
+            % Align control signal naming
+            testCase.model.set_simple_labels();
+            testCase.model.remove_all_control();
+            testCase.model.calc_all_control_signals();
         end
     end
     

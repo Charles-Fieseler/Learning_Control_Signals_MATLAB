@@ -1,7 +1,7 @@
 
 
 %% Add current directory to path
-what_am_i_setting_up = 'Zimmer_analysis';
+what_am_i_setting_up = 'Learn_control_signals';
 fprintf('Adding %s directory and subfolders to path\n',...
     what_am_i_setting_up)
 folders_to_add = strsplit(genpath(pwd), pathsep);
