@@ -857,7 +857,11 @@ end
 %---------------------------------------------
 settings = settings_ideal;
 settings.augment_data = 0;
+settings.cmap = my_cmap_figure3;
 my_model_fig3_b = CElegansModel(filename_ideal, settings);
+% my_model_fig3_b.set_simple_labels();
+% my_model_fig3_b.remove_all_control();
+% my_model_fig3_b.calc_all_control_signals();
 
 % 3d pca plot
 my_model_fig3_b.set_simple_labels();
