@@ -2878,9 +2878,6 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             if ~exist('global_signal_mode','var')
                 global_signal_mode = self.global_signal_mode;
             end
-            if contains(global_signal_mode,'RPCA')
-                warning('RPCA coloring is off')
-            end
             
             % Note that multiple '_and_xxxx' are supported
             additional_signals = {'length_count', 'x_times_state',...
@@ -2900,78 +2897,6 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             this_metadata = table();
  
             switch global_signal_mode
-                case 'RPCA'
-                    % Gets VERY low-rank signal, checking the lambda value
-                    % first
-                    [self.lambda_global, self.L_global_rank] =...
-                        self.check_rank_with_lambda(...
-                        self.dat, self.lambda_global, self.max_rank_global);
-                    % Get a more accurate decomposition (even if we didn't converge
-                    % to the proper rank)
-                    [self.L_global_raw, self.S_global_raw,...
-                        self.L_global_rank, self.S_global_nnz] = ...
-                        RobustPCA(self.dat, self.lambda_global);
-                    % Smooth the modes out
-                    self.smooth_and_save_global_modes();
-                    
-                    this_metadata.signal_indices = ...
-                        {1:size(self.L_global_modes,2)};
-                    
-                case 'RPCA_reconstruction_residual'
-                    % Same as RPCA above, but use the residual from the
-                    % data reconstruction instead... check the lambda value
-                    % first
-                    set = struct('use_optdmd',false,'verbose',false);
-                    dmd_obj = PlotterDmd(self.dat,set);
-                    this_dat = self.dat - dmd_obj.get_reconstruction();
-                    
-                    % Gets VERY low-rank signal
-                    [self.lambda_global, self.L_global_rank] =...
-                        self.check_rank_with_lambda(...
-                        this_dat, self.lambda_global, self.max_rank_global);
-                    % Get a more accurate decomposition (even if we didn't converge
-                    % to the proper rank)
-                    [self.L_global_raw, self.S_global_raw,...
-                        self.L_global_rank, self.S_global_nnz] = ...
-                        RobustPCA(this_dat, self.lambda_global);
-                    % Smooth the modes out and save them both
-                    self.smooth_and_save_global_modes();
-                    
-                    this_metadata.signal_indices = ...
-                        {1:size(self.L_global_modes,2)};
-                
-                case 'RPCA_one_step_residual'
-                    % Same as RPCA above, but use the residual from the
-                    % one-step fit instead... check the lambda value
-                    % before doing a full fit
-                    X1 = self.dat(:,1:end-1);
-                    X2 = self.dat(:,2:end);
-                    this_dat = X2 - (X2/X1)*X1; %Naive DMD residual 
-                    
-                    % Gets VERY low-rank signal
-                    [self.lambda_global, self.L_global_rank] =...
-                        self.check_rank_with_lambda(...
-                        this_dat, self.lambda_global, self.max_rank_global);
-                    % Get a more accurate decomposition (even if we didn't converge
-                    % to the proper rank)
-                    [self.L_global_raw, self.S_global_raw,...
-                        self.L_global_rank, self.S_global_nnz] = ...
-                        RobustPCA(this_dat, self.lambda_global);
-                    % Smooth the modes out and save them both
-                    self.smooth_and_save_global_modes();
-                    
-                    this_metadata.signal_indices = ...
-                        {1:size(self.L_global_modes,2)};
-                    
-                case 'RPCA_and_grad'
-                    self.calc_global_signal('RPCA_reconstruction_residual');
-                    tmp = gradient(self.L_global_modes(:,1:end-1)')';
-                    this_metadata.signal_indices = ...
-                        {size(self.L_global_modes,2) + ...
-                        (1:size(tmp,2))};
-                    
-                    self.L_global_modes = [self.L_global_modes, tmp];
-                
                 case 'ID'
                     self.L_global_modes = self.state_labels_ind.';
                     this_metadata.signal_indices = ...
