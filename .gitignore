@@ -17,3 +17,5 @@ html/
 
 # Self explanatory
 scratch/
+dat/correlation_table.txt
+*.ps
