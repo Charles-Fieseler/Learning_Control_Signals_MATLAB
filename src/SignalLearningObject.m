@@ -1,21 +1,5 @@
-classdef CElegansModel < SettingsImportableFromStruct
-    %% C elegans (linear) model
-    % Using AdaptiveDmdc and RobustPCA on Calcium imaging data, this class
-    % builds a linear model with control for the brain dynamics
-    %
-    % To get the control signal, does Robust PCA twice
-    %   1st time: low lambda value, with most of the data in the sparse
-    %       component. The extremely low-rank component is interpreted as
-    %       encoding global states
-    %   2nd time: high lambda value, with most of the data in the 'low-rank'
-    %       component (which is actually nearly full-rank). The extremely
-    %       sparse component is interpreted as control signals, and the
-    %       'low-rank' component should be model-able using dmdc
-    %
-    % Then AdaptiveDmdc:
-    %   AdaptiveDmdc: fit a DMDc model to the 2nd 'low-rank' component, using
-    %       the extremely sparse component (2nd robustPCA) and the extremely
-    %       low-rank component (1st robustPCA) as control signals
+classdef SignalLearningObject < SettingsImportableFromStruct
+    %% Separates control signals and intrinsic dynamics
     %
     % INPUTS
     %   INPUT1 -
@@ -442,7 +426,7 @@ classdef CElegansModel < SettingsImportableFromStruct
         % Preprocessing
         baselines
         
-        % Robust PCA matrices
+        % Separation matrices
         L_global
         S_global
         L_global_modes
@@ -493,7 +477,7 @@ classdef CElegansModel < SettingsImportableFromStruct
     end
     
     methods
-        function self = CElegansModel(file_or_dat, settings)
+        function self = SignalLearningObject(file_or_dat, settings)
             
             %% Set defaults and import settings
             if ~exist('settings','var')
@@ -531,7 +515,7 @@ classdef CElegansModel < SettingsImportableFromStruct
             self.preprocess();
             %==========================================================================
 
-            %% Robust PCA (get control signal) and DMDc with that signal
+            %% Get control signal and DMDc model with that signal
             self.build_model();
             %==========================================================================
 
