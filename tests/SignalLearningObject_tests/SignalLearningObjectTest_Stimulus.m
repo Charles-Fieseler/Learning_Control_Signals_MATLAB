@@ -1,6 +1,7 @@
-classdef CElegansModelTest_Stimulus < matlab.unittest.TestCase
+classdef SignalLearningObjectTest_Stimulus < matlab.unittest.TestCase
     % CElegansModelTest tests inputs and basic processing properties for
     % Kato-type structs
+    %   Note: the location of the data is hardcoded
     
     properties
         filename
@@ -21,7 +22,7 @@ classdef CElegansModelTest_Stimulus < matlab.unittest.TestCase
                 'lambda_sparse',0);
             testCase.settings.global_signal_mode = 'ID_binary';
             testCase.model = ...
-                CElegansModel(testCase.filename, testCase.settings);
+                SignalLearningObject(testCase.filename, testCase.settings);
         end
     end
     

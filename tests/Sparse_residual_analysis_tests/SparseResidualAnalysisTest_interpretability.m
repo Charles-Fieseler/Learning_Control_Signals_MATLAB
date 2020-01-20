@@ -1,5 +1,5 @@
 classdef SparseResidualAnalysisTest_interpretability < matlab.unittest.TestCase
-    % CElegansModelTest tests inputs and basic processing properties for
+    % SignalLearningObjectTest tests inputs and basic processing properties for
     % Kato-type structs
     
     properties
@@ -44,7 +44,7 @@ classdef SparseResidualAnalysisTest_interpretability < matlab.unittest.TestCase
                 dat_struct.traces = f_smooth(dat_struct.traces);
                 
                 % First get a baseline model as a preprocessor
-                testCase.all_models{i} = CElegansModel(dat_struct, ...
+                testCase.all_models{i} = SignalLearningObject(dat_struct, ...
                     testCase.settings);
                 
                 [U, acf] = sparse_residual_analysis_max_acf(...

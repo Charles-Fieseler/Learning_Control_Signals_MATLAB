@@ -94,7 +94,8 @@ classdef SparseResidualAnalysisTest_all_models < matlab.unittest.TestCase
         
         function test_interpretable_signals(testCase)
             % Sets up an additional table of correspondance between expert
-            % and learned signals, which should allow for 
+            % and learned signals, which should allow for
+            % TODO
         end
     end
     

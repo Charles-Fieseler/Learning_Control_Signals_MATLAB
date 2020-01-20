@@ -1,5 +1,5 @@
 classdef SparseResidualAnalysisTest_one_model < matlab.unittest.TestCase
-    % CElegansModelTest tests inputs and basic processing properties for
+    % SignalLearningObjectTest tests inputs and basic processing properties for
     % Kato-type structs
     
     properties
@@ -25,7 +25,7 @@ classdef SparseResidualAnalysisTest_one_model < matlab.unittest.TestCase
             % Calculate the model
             testCase.settings = define_ideal_settings();
             testCase.model = ...
-                CElegansModel(testCase.filename, testCase.settings);
+                SignalLearningObject(testCase.filename, testCase.settings);
             % Run the sparse residual analysis function
             testCase.num_iter = 10;
             testCase.rank = 5;

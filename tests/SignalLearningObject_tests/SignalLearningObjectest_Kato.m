@@ -1,4 +1,4 @@
-classdef CElegansModelTest_Kato < matlab.unittest.TestCase
+classdef SignalLearningObjectTest_Kato < matlab.unittest.TestCase
     % CElegansModelTest tests inputs and basic processing properties for
     % Kato-type structs
     
