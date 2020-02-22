@@ -1,9 +1,82 @@
 classdef SignalLearningObject < SettingsImportableFromStruct
     %% Separates control signals and intrinsic dynamics
     %
-    % INPUTS
-    %   INPUT1 -
-    %   INPUT2 -
+    % INPUTS: 
+    %       file_or_dat: struct (recommended) or matrix of data, or
+    %           filename that contains the data. If a struct, should have
+    %           the following fields:
+    %               
+    %       settings: struct of options. Need not be passed. Run
+    %           >> defualts = my_SignalLearningObject.set_defaults()
+    %           to get the default options. These are:
+%         verbose
+%         % Getting the control signal
+%         designated_controller_channels - Designate some of the data
+%               input rows as controllers
+%         to_add_stimulus_signal - Bool; looks for a stimulus struct and
+%               attempts to add a control signal. 
+%               See method: add_stimulus_signal()
+%         global_signal_mode - Mode for how to produce control signals.
+%               Default processes labeled behaviors into an onset signal
+%         global_signal_subset - If labeled behaviors are found, a subset
+%               can be designated as controllers, or 'all' (default)
+%         global_signal_pos_or_neg - 'only_pos', 'only_neg', or
+%               'pos_and_neg'. Postprocessing step on the control signals,
+%               determining whether to keep only the positive portion, the
+%               negative, or both.
+%         enforce_diagonal_sparse_B - whether to enforce a diagonal
+%               patterns on the control signal mapping
+%         enforce_zero_entries - whether to enforce a sparsity pattern on
+%               the dynamics matrix (A) or the control mapping (B), in a
+%               cell array of the format:
+%                    2x1 cell array: {from, to}
+%                    i.e. {neuron ID or number, neuron or ctr_signal}
+%               Note that 'neuron ID' is only possible for C elegans
+%               connectome data.
+%               Note also that this option requires 'dmd_mode' to support
+%               sparsity enforcement. Otherwise, this errors
+%         
+%         % Data processing
+%         filter_window_dat - if >0, applies a moving average filter on the
+%               data
+%         filter_window_global - if >0, applies a moving average filter on
+%               the global signal (recommended)
+%         filter_aggressiveness - if >0, applies a low-pass filer to each
+%               neuron using MATLAB's cheby2 filter method. Attempts to
+%               learn the cutoff frequency
+%               See method: smart_filter()
+%         autocorrelation_noise_threshold - Removes neurons of they have a
+%               lower autocorrelation than this threshold
+%         to_subtract_mean - whether to mean subtract data
+%         to_subtract_baselines - whether to mean subtract a 'baseline'
+%               defined per neuron by finding long stretches of 'flat'
+%               activity.
+%               See method: calc_baseline()
+%         to_subtract_mean_global - whether to mean subtract global signal
+%         offset_control_signal - amount to offset control signal in time
+%         dmd_mode - which method to use for dmdc, i.e. calculating the A
+%               and B matrices. Different methods may have external
+%               dependencies and settings. See AdaptiveDmdc for supported
+%               methods
+%
+%         AdaptiveDmdc_settings - Settings for the external class that
+%               executes the core DMDc algorithm. See: AdaptiveDmdc
+%         % Data importing
+%         augment_data - number of time-delay embeds to use
+%         use_deriv - whether to use a pre-calculated derivative of the
+%               data. Requires a specific field and the struct input method
+%         use_only_deriv - same as above, but use only the derivative
+%         to_normalize_deriv - whether to divide the derivatives by the std
+%               of the ORIGINAL data
+%         to_save_raw_data - whether to keep the raw data; can help with
+%               memory usage to turn off
+%         
+%         % Additional rows
+%         add_constant_signal - whether to add a new row that is just
+%               constant
+%         
+%         % Plotting
+%         cmap - colormap to be used by all plotting functions
     %
     % OUTPUTS -
     %   OUTPUT1 -
@@ -2516,7 +2589,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
     
     methods %(Access=private)
         
-        function set_defaults(self)
+        function defaults = set_defaults(self)
             defaults = struct(...
                 'verbose',true,...
                 ...% Getting the control signal
