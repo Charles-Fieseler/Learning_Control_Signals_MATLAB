@@ -1,82 +1,82 @@
 classdef SignalLearningObject < SettingsImportableFromStruct
     %% Separates control signals and intrinsic dynamics
     %
-    % INPUTS: 
+    % INPUTS:
     %       file_or_dat: struct (recommended) or matrix of data, or
     %           filename that contains the data. If a struct, should have
     %           the following fields:
-    %               
+    %
     %       settings: struct of options. Need not be passed. Run
-    %           >> defualts = my_SignalLearningObject.set_defaults()
+    %           >> defaults = my_SignalLearningObject.set_defaults()
     %           to get the default options. These are:
-%         verbose
-%         % Getting the control signal
-%         designated_controller_channels - Designate some of the data
-%               input rows as controllers
-%         to_add_stimulus_signal - Bool; looks for a stimulus struct and
-%               attempts to add a control signal. 
-%               See method: add_stimulus_signal()
-%         global_signal_mode - Mode for how to produce control signals.
-%               Default processes labeled behaviors into an onset signal
-%         global_signal_subset - If labeled behaviors are found, a subset
-%               can be designated as controllers, or 'all' (default)
-%         global_signal_pos_or_neg - 'only_pos', 'only_neg', or
-%               'pos_and_neg'. Postprocessing step on the control signals,
-%               determining whether to keep only the positive portion, the
-%               negative, or both.
-%         enforce_diagonal_sparse_B - whether to enforce a diagonal
-%               patterns on the control signal mapping
-%         enforce_zero_entries - whether to enforce a sparsity pattern on
-%               the dynamics matrix (A) or the control mapping (B), in a
-%               cell array of the format:
-%                    2x1 cell array: {from, to}
-%                    i.e. {neuron ID or number, neuron or ctr_signal}
-%               Note that 'neuron ID' is only possible for C elegans
-%               connectome data.
-%               Note also that this option requires 'dmd_mode' to support
-%               sparsity enforcement. Otherwise, this errors
-%         
-%         % Data processing
-%         filter_window_dat - if >0, applies a moving average filter on the
-%               data
-%         filter_window_global - if >0, applies a moving average filter on
-%               the global signal (recommended)
-%         filter_aggressiveness - if >0, applies a low-pass filer to each
-%               neuron using MATLAB's cheby2 filter method. Attempts to
-%               learn the cutoff frequency
-%               See method: smart_filter()
-%         autocorrelation_noise_threshold - Removes neurons of they have a
-%               lower autocorrelation than this threshold
-%         to_subtract_mean - whether to mean subtract data
-%         to_subtract_baselines - whether to mean subtract a 'baseline'
-%               defined per neuron by finding long stretches of 'flat'
-%               activity.
-%               See method: calc_baseline()
-%         to_subtract_mean_global - whether to mean subtract global signal
-%         offset_control_signal - amount to offset control signal in time
-%         dmd_mode - which method to use for dmdc, i.e. calculating the A
-%               and B matrices. Different methods may have external
-%               dependencies and settings. See AdaptiveDmdc for supported
-%               methods
-%
-%         AdaptiveDmdc_settings - Settings for the external class that
-%               executes the core DMDc algorithm. See: AdaptiveDmdc
-%         % Data importing
-%         augment_data - number of time-delay embeds to use
-%         use_deriv - whether to use a pre-calculated derivative of the
-%               data. Requires a specific field and the struct input method
-%         use_only_deriv - same as above, but use only the derivative
-%         to_normalize_deriv - whether to divide the derivatives by the std
-%               of the ORIGINAL data
-%         to_save_raw_data - whether to keep the raw data; can help with
-%               memory usage to turn off
-%         
-%         % Additional rows
-%         add_constant_signal - whether to add a new row that is just
-%               constant
-%         
-%         % Plotting
-%         cmap - colormap to be used by all plotting functions
+    %         verbose
+    %         % Getting the control signal
+    %         designated_controller_channels - Designate some of the data
+    %               input rows as controllers
+    %         to_add_stimulus_signal - Bool; looks for a stimulus struct and
+    %               attempts to add a control signal.
+    %               See method: add_stimulus_signal()
+    %         global_signal_mode - Mode for how to produce control signals.
+    %               Default processes labeled behaviors into an onset signal
+    %         global_signal_subset - If labeled behaviors are found, a subset
+    %               can be designated as controllers, or 'all' (default)
+    %         global_signal_pos_or_neg - 'only_pos', 'only_neg', or
+    %               'pos_and_neg'. Postprocessing step on the control signals,
+    %               determining whether to keep only the positive portion, the
+    %               negative, or both.
+    %         enforce_diagonal_sparse_B - whether to enforce a diagonal
+    %               patterns on the control signal mapping
+    %         enforce_zero_entries - whether to enforce a sparsity pattern on
+    %               the dynamics matrix (A) or the control mapping (B), in a
+    %               cell array of the format:
+    %                    2x1 cell array: {from, to}
+    %                    i.e. {neuron ID or number, neuron or ctr_signal}
+    %               Note that 'neuron ID' is only possible for C elegans
+    %               connectome data.
+    %               Note also that this option requires 'dmd_mode' to support
+    %               sparsity enforcement. Otherwise, this errors
+    %
+    %         % Data processing
+    %         filter_window_dat - if >0, applies a moving average filter on the
+    %               data
+    %         filter_window_global - if >0, applies a moving average filter on
+    %               the global signal (recommended)
+    %         filter_aggressiveness - if >0, applies a low-pass filer to each
+    %               neuron using MATLAB's cheby2 filter method. Attempts to
+    %               learn the cutoff frequency
+    %               See method: smart_filter()
+    %         autocorrelation_noise_threshold - Removes neurons of they have a
+    %               lower autocorrelation than this threshold
+    %         to_subtract_mean - whether to mean subtract data
+    %         to_subtract_baselines - whether to mean subtract a 'baseline'
+    %               defined per neuron by finding long stretches of 'flat'
+    %               activity.
+    %               See method: calc_baseline()
+    %         to_subtract_mean_global - whether to mean subtract global signal
+    %         offset_control_signal - amount to offset control signal in time
+    %         dmd_mode - which method to use for dmdc, i.e. calculating the A
+    %               and B matrices. Different methods may have external
+    %               dependencies and settings. See AdaptiveDmdc for supported
+    %               methods
+    %
+    %         AdaptiveDmdc_settings - Settings for the external class that
+    %               executes the core DMDc algorithm. See: AdaptiveDmdc
+    %         % Data importing
+    %         augment_data - number of time-delay embeds to use
+    %         use_deriv - whether to use a pre-calculated derivative of the
+    %               data. Requires a specific field and the struct input method
+    %         use_only_deriv - same as above, but use only the derivative
+    %         to_normalize_deriv - whether to divide the derivatives by the std
+    %               of the ORIGINAL data
+    %         to_save_raw_data - whether to keep the raw data; can help with
+    %               memory usage to turn off
+    %
+    %         % Additional rows
+    %         add_constant_signal - whether to add a new row that is just
+    %               constant
+    %
+    %         % Plotting
+    %         cmap - colormap to be used by all plotting functions
     %
     % OUTPUTS -
     %   OUTPUT1 -
@@ -92,344 +92,35 @@ classdef SignalLearningObject < SettingsImportableFromStruct
     %
     %
     % Dependencies
-%   .m files, .mat files, and MATLAB products required:(updated on 21-Feb-2020)    
-%             MATLAB (version 9.4)
-%             Signal Processing Toolbox (version 8.0)
-%             Symbolic Math Toolbox (version 8.1)
-%             Statistics and Machine Learning Toolbox (version 11.3)
-%             convertKato2Zimmer.m
-%             checkModes.m
-%             func_DMD.m
-%             func_DMDc.m
-%             AdaptiveDmdc.m
-%             sparse_dmd.m
-%             sparse_dmd_fast.m
-%             AbstractDmd.m
-%             SettingsImportableFromStruct.m
-%             top_ind_then_sort.m
-%             optimal_truncation.m
-%             calc_contiguous_blocks.m
-%             calc_snr.m
-%             svd_truncate.m
-%             cmap_white_zero.m
-%             plotSVD.m
-%             plot_2imagesc_colorbar.m
-%             plot_colored.m
-%             plot_gray_lines.m
-%             plot_std_fill.m
-%             brewermap.m
-%             RobustPCA.m
-%             acf.m
-%             optimal_SVHT_coef.m
-%             TVRegDiff.m
-%             abs.m
-%             blkdiag.m
-%             builtins.m
-%             cat.m
-%             conj.m
-%             conv.m
-%             ctranspose.m
-%             cumprod.m
-%             cumsum.m
-%             diag.m
-%             disp.m
-%             end.m
-%             eq.m
-%             exp.m
-%             find.m
-%             full.m
-%             ge.m
-%             gt.m
-%             hankel.m
-%             horzcat.m
-%             imag.m
-%             ipermute.m
-%             isreal.m
-%             kron.m
-%             ldivide.m
-%             le.m
-%             log.m
-%             lt.m
-%             max.m
-%             min.m
-%             minus.m
-%             mldivide.m
-%             mpower.m
-%             mrdivide.m
-%             mtimes.m
-%             ne.m
-%             nnz.m
-%             norm.m
-%             permute.m
-%             plus.m
-%             polyval.m
-%             power.m
-%             prod.m
-%             rdivide.m
-%             real.m
-%             reshape.m
-%             size.m
-%             sparse.m
-%             spy.m
-%             sqrt.m
-%             std.m
-%             subsasgn.m
-%             subsref.m
-%             sum.m
-%             times.m
-%             toeplitz.m
-%             transpose.m
-%             tril.m
-%             triu.m
-%             uminus.m
-%             uplus.m
-%             var.m
-%             vertcat.m
-%             eq.m
-%             ge.m
-%             gt.m
-%             le.m
-%             lt.m
-%             ne.m
-%             commands.m
-%             cvx_begin.m
-%             cvx_end.m
-%             cvx_error.m
-%             cvx_license.p
-%             cvx_version.m
-%             avg_abs_dev.m
-%             avg_abs_dev_med.m
-%             berhu.m
-%             cvx_recip.m
-%             det_inv.m
-%             det_rootn.m
-%             functions.m
-%             geo_mean.m
-%             huber_pos.m
-%             inv_pos.m
-%             lambda_max.m
-%             lambda_sum_largest.m
-%             log_normcdf.m
-%             log_sum_exp.m
-%             matrix_frac.m
-%             norm_nuc.m
-%             norms.m
-%             pow_abs.m
-%             pow_cvx.m
-%             pow_p.m
-%             pow_pos.m
-%             prod_inv.m
-%             quad_form.m
-%             quad_over_lin.m
-%             quad_pos_over_lin.m
-%             rel_entr.m
-%             sigma_max.m
-%             square.m
-%             square_abs.m
-%             square_pos.m
-%             sum_largest.m
-%             sum_log.m
-%             sum_square.m
-%             sum_square_abs.m
-%             sum_square_pos.m
-%             trace_inv.m
-%             trace_sqrtm.m
-%             vec.m
-%             det_inv.m
-%             det_rootn.m
-%             geo_mean.m
-%             inv_pos.m
-%             lambda_max.m
-%             log_sum_exp.m
-%             matrix_frac.m
-%             norms.m
-%             poly_env.m
-%             pow_abs.m
-%             pow_pos.m
-%             prod_inv.m
-%             quad_form.m
-%             quad_over_lin.m
-%             rel_entr.m
-%             sigma_max.m
-%             square.m
-%             square_abs.m
-%             square_pos.m
-%             sum_square.m
-%             sum_square_abs.m
-%             sum_square_pos.m
-%             vec.m
-%             epigraph.m
-%             hypograph.m
-%             maximize.m
-%             minimize.m
-%             subject.m
-%             variable.m
-%             variables.m
-%             cvx_id.m
-%             cvx_setdual.m
-%             cvx_value.m
-%             bcompress.m
-%             buncompress.m
-%             cvx.m
-%             cvx_basis.m
-%             cvx_classify.m
-%             cvx_constant.m
-%             cvx_getdual.m
-%             cvx_isaffine.m
-%             cvx_isconcave.m
-%             cvx_isconstant.m
-%             cvx_isconvex.m
-%             cvx_isnonzero.m
-%             cvx_readlevel.m
-%             cvx_setdual.m
-%             cvx_value.m
-%             cvx_vexity.m
-%             in.m
-%             keywords.m
-%             matlab6.m
-%             sets.m
-%             sparsify.m
-%             svec.m
-%             type.m
-%             value.m
-%             cvxcnst.m
-%             disp.m
-%             display.m
-%             double.m
-%             logical.m
-%             rhs.m
-%             colon.m
-%             cvx_basis.m
-%             cvx_value.m
-%             cvxaff.m
-%             cvxdual.m
-%             disp.m
-%             display.m
-%             dof.m
-%             inuse.m
-%             isreal.m
-%             name.m
-%             problem.m
-%             size.m
-%             subsref.m
-%             type.m
-%             value.m
-%             cvx_id.m
-%             cvxobj.m
-%             disp.m
-%             display.m
-%             isempty.m
-%             isequal.m
-%             length.m
-%             ndims.m
-%             numel.m
-%             subsasgn.m
-%             subsref.m
-%             cvx_value.m
-%             cvxprob.m
-%             disp.m
-%             eliminate.m
-%             eq.m
-%             extract.m
-%             index.m
-%             ne.m
-%             newcnstr.m
-%             newdual.m
-%             newnonl.m
-%             newobj.m
-%             newtemp.m
-%             newvar.m
-%             pop.m
-%             solve.m
-%             spy.m
-%             subsasgn.m
-%             subsref.m
-%             touch.m
-%             apply.m
-%             cvx_collapse.m
-%             cvx_constant.m
-%             cvx_getdual.m
-%             cvx_id.m
-%             cvx_isaffine.m
-%             cvx_isconcave.m
-%             cvx_isconstant.m
-%             cvx_isconvex.m
-%             cvx_setdual.m
-%             cvx_value.m
-%             cvxtuple.m
-%             disp.m
-%             eq.m
-%             ge.m
-%             gt.m
-%             in.m
-%             le.m
-%             lt.m
-%             ne.m
-%             numel.m
-%             subsasgn.m
-%             subsref.m
-%             testall.m
-%             cvx_accept_concave.m
-%             cvx_accept_convex.m
-%             cvx_basis.m
-%             cvx_bcompress.m
-%             cvx_bcompress_mex.mexw64
-%             cvx_c2r.m
-%             cvx_check_dimension.m
-%             cvx_check_dimlist.m
-%             cvx_class.m
-%             cvx_classify.m
-%             cvx_clearpath.m
-%             cvx_clearspath.m
-%             cvx_collapse.m
-%             cvx_constant.m
-%             cvx_default_dimension.m
-%             cvx_eliminate_mex.mexw64
-%             cvx_expand_dim.m
-%             cvx_expert_check.m
-%             cvx_getdual.m
-%             cvx_global.m
-%             cvx_id.m
-%             cvx_ids.m
-%             cvx_isaffine.m
-%             cvx_isconcave.m
-%             cvx_isconstant.m
-%             cvx_isconvex.m
-%             cvx_isnonzero.m
-%             cvx_r2c.m
-%             cvx_readlevel.m
-%             cvx_reduce_size.m
-%             cvx_remap.m
-%             cvx_reshape.m
-%             cvx_setdual.m
-%             cvx_setpath.m
-%             cvx_setspath.m
-%             cvx_size_check.m
-%             cvx_subs2str.m
-%             cvx_subsasgn.m
-%             cvx_subsref.m
-%             cvx_use_sparse.m
-%             cvx_value.m
-%             cvx_vexity.m
-%             cvx_zeros.m
-%             mexsvec.mexw64
-%             svec.m
-%             complex_lorentz.m
-%             exponential.m
-%             geo_mean_cone.m
-%             hermitian_semidefinite.m
-%             lorentz.m
-%             nonnegative.m
-%             rotated_lorentz.m
-%             semidefinite.m
-%             structures.m
-%             cvx_create_structure.m
-%             cvx_invert_structure.m
-%             cvx_orthog_structure.m
-%             cvx_replicate_structure.m
-%             cvx_s_banded.m
-%             cvx_s_symmetric.m
-%
+    %   .m files, .mat files, and MATLAB products required:(updated on 21-Feb-2020)
+    %             MATLAB (version 9.4)
+    %             Signal Processing Toolbox (version 8.0)
+    %             Statistics and Machine Learning Toolbox (version 11.3)
+    %             convertKato2Zimmer.m
+    %             checkModes.m
+    %             func_DMD.m
+    %             func_DMDc.m
+    %             AdaptiveDmdc.m
+    %             sparse_dmd_fast.m
+    %             AbstractDmd.m
+    %             SettingsImportableFromStruct.m
+    %             top_ind_then_sort.m
+    %             optimal_truncation.m
+    %             calc_contiguous_blocks.m
+    %             calc_snr.m
+    %             svd_truncate.m
+    %             cmap_white_zero.m
+    %             plotSVD.m
+    %             plot_2imagesc_colorbar.m
+    %             plot_colored.m
+    %             plot_gray_lines.m
+    %             plot_std_fill.m
+    %             brewermap.m
+    %             RobustPCA.m
+    %             acf.m
+    %             optimal_SVHT_coef.m
+    %             TVRegDiff.m
+    %
     %   See also: AdaptiveDMDc
     %
     % Author: Charles Fieseler
@@ -486,7 +177,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         
         state_labels_ind_raw
     end
-        
+    
     properties (Hidden=true)%, SetAccess=private)
         dat
         original_sz
@@ -588,15 +279,15 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             end
             self.preprocess();
             %==========================================================================
-
+            
             %% Get control signal and DMDc model with that signal
             self.build_model();
             %==========================================================================
-
+            
             %% Initialize user control structure
             self.reset_user_control();
             %==========================================================================
-
+            
         end
         
         function calc_AdaptiveDmdc(self)
@@ -637,7 +328,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                     diag( ones(length(ind), 1) );
             end
             if ~isempty(self.enforce_zero_entries)
-                % Format for each cell: 
+                % Format for each cell:
                 %   2x1 cell array: {from, to}
                 %   i.e. {neuron ID or number, neuron or ctr_signal}
                 % Note: if control signal, will be an entire row
@@ -749,7 +440,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         function add_manual_control_signal(self, ...
                 neuron_ind, neuron_amps, ...
                 signal_ind, signal_amps)
-            % Adds a row to the control matrix (B) going from 
+            % Adds a row to the control matrix (B) going from
             assert(max(neuron_ind)<self.dat_sz(1),...
                 'Control target must be in the original data set')
             if isempty(find(neuron_ind, 1))
@@ -859,8 +550,8 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             dat_new = ...
                 [self.dat_without_control;...
                 new_control_input];
-%             ctrb(self.A_old(1:num_real_neurons,1:num_real_neurons), ...
-%                 new_control_matrix(1:num_real_neurons,:));
+            %             ctrb(self.A_old(1:num_real_neurons,1:num_real_neurons), ...
+            %                 new_control_matrix(1:num_real_neurons,:));
             % Ablate neurons
             A_new(ablated_neurons, ablated_neurons) = 0;
             % Update the object properties
@@ -882,7 +573,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             % function on the object.
             % Input:
             %   func - function that only accepts this object as an
-            %       argument, e.g. a method of this function, or something 
+            %       argument, e.g. a method of this function, or something
             %       that uses a property directly
             %
             % Output:
@@ -906,7 +597,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             % function on the object.
             % Input:
             %   func - function that only accepts this object as an
-            %       argument, e.g. a method of this function, or something 
+            %       argument, e.g. a method of this function, or something
             %       that uses a property directly
             %
             % Output:
@@ -944,7 +635,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         
         function [signals, signal_mat, mean_signal, all_signal_ind] = ...
                 get_control_signal_during_label(self, ...
-                    which_label, num_preceding_frames)
+                which_label, num_preceding_frames)
             if ~exist('num_preceding_frames','var')
                 num_preceding_frames = 0;
             end
@@ -959,10 +650,10 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 find(transition_ind==1) - num_preceding_frames + 1, 1);
             end_ind = find(transition_ind==-1);
             if self.state_labels_ind(end) == which_label_num
-                end_ind = [end_ind length(transition_ind)]; 
+                end_ind = [end_ind length(transition_ind)];
             end
             if self.state_labels_ind(1) == which_label_num
-                start_ind = [1 start_ind]; 
+                start_ind = [1 start_ind];
             end
             assert(length(start_ind)==length(end_ind))
             n = length(start_ind);
@@ -1022,8 +713,8 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             ad_obj = self.AdaptiveDmdc_obj;
             x_dat = 1:ad_obj.x_len;
             x_ctr = (ad_obj.x_len+1):self.total_sz(1);
-%             x_ctr = ad_obj.x_len + ...
-%                 self.control_signals_metadata{which_label,:}{:};
+            %             x_ctr = ad_obj.x_len + ...
+            %                 self.control_signals_metadata{which_label,:}{:};
             A = ad_obj.A_original(x_dat, x_dat);
             B = ad_obj.A_original(x_dat, x_ctr);
             if strcmp(which_label,'all')
@@ -1209,8 +900,8 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                     'Turns not implemented for ID signal (only ID_binary)')
                 ind = self.control_signals_metadata{'ID',:}{:};
                 B_global = self.AdaptiveDmdc_obj.A_original(1:num_neurons,...
-                                ...(2*num_neurons+1):end-2);
-                                self.original_sz(1)+ind);
+                    ...(2*num_neurons+1):end-2);
+                    self.original_sz(1)+ind);
                 % Narrow these down to which neurons are important for which behaviors
                 %   Assume a single control signal (ID); ignore offset
                 group1 = (B_global > class_tol);
@@ -1221,8 +912,8 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 assert(~any(ismember(self.control_signals_metadata.Row,'constant')),...
                     'A constant control will give incorrect results')
                 B_global = self.AdaptiveDmdc_obj.A_original(1:num_neurons,...
-                                ...(2*num_neurons+1):end-2);
-                                num_neurons+ind);
+                    ...(2*num_neurons+1):end-2);
+                    num_neurons+ind);
                 if combine_derivs
                     num_neurons = num_neurons/2;
                     B_global = B_global(1:num_neurons,:) + ...
@@ -1299,12 +990,12 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             %   Error is the reconstruction error normalized by the neuron
             %   activity L2 norm
             if max_err_percent>0
-%                 approx_dat = self.AdaptiveDmdc_obj.calc_reconstruction_control();
-%                 all_err = self.calc_balanced_error(approx_dat);
+                %                 approx_dat = self.AdaptiveDmdc_obj.calc_reconstruction_control();
+                %                 all_err = self.calc_balanced_error(approx_dat);
                 all_err = 1-self.calc_correlation_matrix(true);
-%                 all_err = ...
-%                     sum( (self.dat - approx_dat).^2,2 ) ./...
-%                     sum(self.dat.^2,2);
+                %                 all_err = ...
+                %                     sum( (self.dat - approx_dat).^2,2 ) ./...
+                %                     sum(self.dat.^2,2);
                 group_error = (all_err>max_err_percent);
                 if combine_derivs
                     group_error = (group_error(1:num_neurons) + ...
@@ -1340,9 +1031,9 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             % the error vector of each neuron
             err_mat = real(self.dat - approx_dat);
             
-%             x = 1:size(self.dat,1);
+            %             x = 1:size(self.dat,1);
             TF_err = isoutlier(err_mat, 'movmedian', 500, 2);
-%             TF_dat = isoutlier(self.dat, 'movmedian', 500, 2);
+            %             TF_dat = isoutlier(self.dat, 'movmedian', 500, 2);
             
             err = zeros(size(self.dat,1),1);
             for i = 1:length(err)
@@ -1362,7 +1053,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             %   return_derivatives (false) - if derivatives are included in
             %       the model, whether or not to return them
             %   normalize_mode ('None') - whether to normalize the
-            %       correlations by e.g.: 
+            %       correlations by e.g.:
             %       1) the maximum variance left in that
             %           neuron after optimal svd truncation ('SVD')
             %       2) the additive improvement over a correlation with a
@@ -1437,7 +1128,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 names = neuron_ind;
                 return
             end
-            try 
+            try
                 names = self.AdaptiveDmdc_obj.get_names(neuron_ind,...
                     true, false, false, true);
             catch
@@ -1492,7 +1183,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         function ind = name2ind(self, neuron_names)
             % Finds the indices of a neuron or cell array of neurons
             %
-            % 2 important notes: 
+            % 2 important notes:
             %   If the name is found in more than one neuron, all will be
             %   returned
             %   The order of the indices doesn't correspond to the order of
@@ -1599,15 +1290,15 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             [self.user_control_reconstruction, fig] = ...
                 self.AdaptiveDmdc_obj.plot_reconstruction(true, ...
                 include_control_signal, true, neuron_ind);
-%             title('Data reconstructed with user-defined control signal')
+            %             title('Data reconstructed with user-defined control signal')
             
             % If single neuron and control signal, then do a 2-panel
             % subplot
-            if include_control_signal && neuron_ind>0 
-                    ax1 = fig.Children(2);
-                    subplot(2,1,1,ax1);
-                    subplot(2,1,2);
-                    ax2 = fig.Children(1);
+            if include_control_signal && neuron_ind>0
+                ax1 = fig.Children(2);
+                subplot(2,1,1,ax1);
+                subplot(2,1,2);
+                ax2 = fig.Children(1);
                 if any(contains(self.control_signals_metadata.Row,'sparse'))
                     % For RPCA-style controllers
                     plot(self.control_signal(neuron_ind,:),...
@@ -1665,7 +1356,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             if ischar(neuron)
                 neuron_name = neuron;
                 neuron = self.name2ind(neuron);
-%                 neuron = neuron(1); % Do not get derivatives
+                %                 neuron = neuron(1); % Do not get derivatives
             elseif isnumeric(neuron)
                 neuron_name = self.get_names(neuron);
                 if iscell(neuron_name)
@@ -1786,7 +1477,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), ...
                     'ko', 'LineWidth', 8)
             end
-                
+            
             title(sprintf(...
                 'Fixed points for control structure in %s behavior(s)',...
                 which_label))
@@ -1811,7 +1502,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             % Get the dynamics and control matrices, and the control signal
             ad_obj = self.AdaptiveDmdc_obj;
             x_dat = 1:ad_obj.x_len;
-%             x_ctr = (ad_obj.x_len+1):self.total_sz(1);
+            %             x_ctr = (ad_obj.x_len+1):self.total_sz(1);
             A = ad_obj.A_original(x_dat, x_dat);
             B = self.user_control_matrix;
             u = self.user_control_input;
@@ -1850,7 +1541,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             %               original neuron (intrinsic dynamics, A matrix)
             %               or the controller (B matrix)
             %   arrow_mode ('separate') - plotting mode if multiple arrows.
-            %               Other options: 
+            %               Other options:
             %               'mean' = average the arrows
             %               'mean_and_difference' = average the arrows and
             %               plot the difference between that and the
@@ -1878,7 +1569,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             end
             
             if isscalar(arrow_length)
-                    arrow_length = arrow_length*ones(size(which_ctr_modes));
+                arrow_length = arrow_length*ones(size(which_ctr_modes));
             end
             if length(color)==1
                 tmp = cell(size(which_ctr_modes));
@@ -1888,7 +1579,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 color = tmp;
             end
             
-            % One vector per ctr_mode 
+            % One vector per ctr_mode
             control_direction = ...
                 self.calc_control_direction(which_ctr_modes, use_original);
             
@@ -1905,7 +1596,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 case 'mean_and_difference'
                     proj_3d = sum(arrow_length.*proj_3d,2);
                     proj_3d = proj_3d - arrow_base;
-%                     arrow_length = 20*ones(size(arrow_length));
+                    %                     arrow_length = 20*ones(size(arrow_length));
                     arrow_length = ones(size(arrow_length));
                     
                 otherwise
@@ -1999,16 +1690,16 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             end
             global_ind = num_neurons + ...
                 self.control_signals_metadata{ctr_name,:}{:};
-%             global_ind = self.control_signals_metadata{ctr_name,:}{:};
-%             sparse_ctr_id = ...
-%                 contains(self.control_signals_metadata.Row,'sparse');
-%             if any(sparse_ctr_id)
-%                 use_sparse = true;
-%                 sparse_ind = ...
-%                     self.control_signals_metadata{sparse_ctr_id,:}{:};
-%             else
-%                 use_sparse = false;
-%             end
+            %             global_ind = self.control_signals_metadata{ctr_name,:}{:};
+            %             sparse_ctr_id = ...
+            %                 contains(self.control_signals_metadata.Row,'sparse');
+            %             if any(sparse_ctr_id)
+            %                 use_sparse = true;
+            %                 sparse_ind = ...
+            %                     self.control_signals_metadata{sparse_ctr_id,:}{:};
+            %             else
+            %                 use_sparse = false;
+            %             end
             % Different type, for onset signals
             if contains(ctr_name, 'transitions')
                 sparse_ind = global_ind - num_neurons;
@@ -2016,9 +1707,9 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 global_ind = [];
             end
             this_dat = self.dat_without_control;
-%             if self.to_subtract_mean
-                this_dat = this_dat - mean(self.dat_without_control,2);
-%             end
+            %             if self.to_subtract_mean
+            this_dat = this_dat - mean(self.dat_without_control,2);
+            %             end
             % Get the control signals associated with the types of
             % controllers
             if use_sparse
@@ -2041,7 +1732,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 % largest
                 control_direction = ...
                     self.calc_control_direction(neuron_ind, true);
-%                 modes_3d = self.L_sparse_modes(:,1:3);
+                %                 modes_3d = self.L_sparse_modes(:,1:3);
                 proj_3d = modes_3d * control_direction;
                 arrow_length_intrinsic = (this_reconstruction*arrow_factor).';
                 
@@ -2061,7 +1752,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 arrow_base = all_arrow_bases(:,i);
                 % Intrinsic
                 if show_reconstruction
-                    arrow_length_intrinsic = ...    
+                    arrow_length_intrinsic = ...
                         (this_reconstruction(:,i)*arrow_factor).';
                 else
                     arrow_length_intrinsic = (this_dat(:,i)*arrow_factor).';
@@ -2072,9 +1763,9 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 % Sparse controller
                 if use_sparse
                     arrow_length_sparse = (this_ctr_sparse(:,i)*arrow_factor).';
-%                     self.plot_colored_control_arrow(...
-%                         neuron_ind, arrow_base, 20*arrow_length_sparse, fig,...
-%                         false, 'mean', 'r');
+                    %                     self.plot_colored_control_arrow(...
+                    %                         neuron_ind, arrow_base, 20*arrow_length_sparse, fig,...
+                    %                         false, 'mean', 'r');
                     self.plot_colored_control_arrow(...
                         sparse_ind, arrow_base, 20*arrow_length_sparse, fig,...
                         false, 'mean', 'r');
@@ -2084,7 +1775,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                     if strcmp(self.global_signal_mode, 'ID')
                         label_ind = this_ctr_global(1,i);
                     elseif contains(self.global_signal_mode, 'ID_binary')
-%                         label_ind = find(this_ctr_global(:,i));
+                        %                         label_ind = find(this_ctr_global(:,i));
                         label_ind = self.state_labels_ind(i);
                     end
                     label_str = self.state_labels_key{label_ind};
@@ -2176,44 +1867,44 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             
             % Get eigenvectors and eigenvalues of intrinsic dynamics
             n = self.original_sz(1);
-%             if self.use_deriv
-%                 n = n/2;
-%             end
+            %             if self.use_deriv
+            %                 n = n/2;
+            %             end
             A = self.AdaptiveDmdc_obj.A_separate(1:n,1:n);
             [V, D] = eig(A, 'vector');
-
-%             neuron_colormap = sum(real(V(neuron,:)).*abs(V(neuron,:)),1);
+            
+            %             neuron_colormap = sum(real(V(neuron,:)).*abs(V(neuron,:)),1);
             if ~isempty(neuron)
                 neuron_colormap = abs(V(neuron,:));
             else
                 neuron_colormap = ones(1, size(V,2));
             end
-%             neuron_ind = (abs(neuron_colormap)>tol_eigen);
+            %             neuron_ind = (abs(neuron_colormap)>tol_eigen);
             
             fig = figure;
             subplot(2,1,1)
             polarplot(D, 'o')
-%             scatter(real(D(neuron_ind)),imag(D(neuron_ind)),...
-%                 [],neuron_colormap(neuron_ind),'filled')
-%             title(sprintf('Colored by neuron %d loading',neuron))
-%             colorbar
-%             xlabel('Real part (growth/decay)')
-%             ylabel('Imaginary part (oscillation)')
+            %             scatter(real(D(neuron_ind)),imag(D(neuron_ind)),...
+            %                 [],neuron_colormap(neuron_ind),'filled')
+            %             title(sprintf('Colored by neuron %d loading',neuron))
+            %             colorbar
+            %             xlabel('Real part (growth/decay)')
+            %             ylabel('Imaginary part (oscillation)')
             
             subplot(2,1,2)
-%             all_periods = abs(2*pi./angle(D(neuron_ind)));
+            %             all_periods = abs(2*pi./angle(D(neuron_ind)));
             all_periods = abs(2*pi./angle(D));
             p_max = 2*self.original_sz(2);
             all_periods(all_periods>p_max) = 0;
-%             all_factors = abs(D(neuron_ind));
+            %             all_factors = abs(D(neuron_ind));
             all_factors = abs(D);
             for i = 1:length(all_periods)
                 if all_periods(i)~=0
                     all_factors(i) = all_factors(i)^all_periods(i);
                 end
             end
-%             nonzero_ind = logical( (all_factors>tol_eigen).*...
-%                 abs(all_periods)>tol_eigen );
+            %             nonzero_ind = logical( (all_factors>tol_eigen).*...
+            %                 abs(all_periods)>tol_eigen );
             nonzero_ind = logical(all_factors>tol_eigen);
             scatter(all_periods(nonzero_ind),all_factors(nonzero_ind),...
                 [],neuron_colormap(nonzero_ind),'filled')
@@ -2223,14 +1914,14 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             ylabel('Amplitude after one period')
             
             % Setup interactivity
-%             [~, ~, ~, im2] = fig.Children.Children;
-%             im1.ButtonDownFcn = @(x,y) self.callback_plotter_eigenvector(x,y,V,D);
-%             im2.ButtonDownFcn = @(x,y) self.callback_plotter_eigenvector(x,y,V,D);
-
+            %             [~, ~, ~, im2] = fig.Children.Children;
+            %             im1.ButtonDownFcn = @(x,y) self.callback_plotter_eigenvector(x,y,V,D);
+            %             im2.ButtonDownFcn = @(x,y) self.callback_plotter_eigenvector(x,y,V,D);
+            
         end
         
         function fig = plot_initial_condition(self,...
-            x0, u, tspan)
+                x0, u, tspan)
             % Plots a heatmap of the system evolving from an initial
             % condition
             
@@ -2305,8 +1996,8 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                     these_ind = (c==i);
                     tmp_ind = i_start:(i_start + length(find(these_ind)) - 1);
                     i_start = i_start + length(find(these_ind));
-%                     tmp(tmp_ind, all_ind) = A(these_ind, all_ind);
-%                     tmp(all_ind, tmp_ind) = A(all_ind, tmp_ind);
+                    %                     tmp(tmp_ind, all_ind) = A(these_ind, all_ind);
+                    %                     tmp(all_ind, tmp_ind) = A(all_ind, tmp_ind);
                     tmp(tmp_ind, tmp_ind) = A(these_ind, these_ind);
                     tmp_names(tmp_ind) = names(these_ind);
                 end
@@ -2358,7 +2049,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             
             n = self.original_sz(1);
             if self.use_deriv
-                if strcmp(neuron_mode,'neurons_only') 
+                if strcmp(neuron_mode,'neurons_only')
                     n = n/2;
                     row_ind = 1:n;
                 elseif strcmp(neuron_mode,'derivs_only')
@@ -2490,7 +2181,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 y = ylim();
                 y = round(0.8*y);
                 line([x x], y, 'color', 'k');%, ...
-                    %'LineWidth',2, 'LineStyle','--')
+                %'LineWidth',2, 'LineStyle','--')
                 text(x, y(2), self.get_names(neurons_to_mark(i)),...
                     'FontSize',14, 'Rotation',90);
             end
@@ -2795,7 +2486,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             if isempty(fnames)
                 fnames = {''};
             end
-                
+            
             if ~ismember(fnames,'sort_mode')
                 self.AdaptiveDmdc_settings.sort_mode = 'user_set';
             end
@@ -2865,9 +2556,9 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             
             % Derivative might be one frame short, so throw out the last frame
             if ~self.use_only_deriv
-                try 
+                try
                     new_raw = [self.raw; deriv];
-                catch 
+                catch
                     new_raw = [self.raw(:,1:end-1); deriv];
                 end
             else
@@ -2968,7 +2659,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             end
             
             this_metadata = table();
- 
+            
             switch global_signal_mode
                 case 'ID'
                     self.L_global_modes = self.state_labels_ind.';
@@ -3031,13 +2722,13 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                         {1:size(binary_labels_grad,1)};
                     
                 case 'ID_binary_transitions'
-                    % Only adds 'on' signals for the 3 main transitions by 
+                    % Only adds 'on' signals for the 3 main transitions by
                     %   default:
                     %   REV1/REV2, DT, and VT
                     % Alternate transitions can be specified in:
                     %   self.global_signal_subset
                     % Note: 'mega_rev' is a special composite signal that
-                    %   only triggers on the first/last reversal of a 
+                    %   only triggers on the first/last reversal of a
                     %   burst (positive/negative)
                     binary_labels = self.calc_binary_labels(...
                         self.state_labels_ind, length(self.state_labels_key));
@@ -3063,9 +2754,9 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                     elseif ~strcmp(self.global_signal_subset, 'all')
                         ind = contains(self.state_labels_key, ...
                             self.global_signal_subset);
-%                         assert(~isempty(ind),...
-%                             ['Attempted to add control signals '...
-%                             'but none were found; check global_signal_subset'])
+                        %                         assert(~isempty(ind),...
+                        %                             ['Attempted to add control signals '...
+                        %                             'but none were found; check global_signal_subset'])
                         binary_labels_grad = binary_labels_grad(ind,:);
                     end
                     % Now only keep the positive parts, and only of the
@@ -3080,7 +2771,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                         case 'only_neg'
                             only_pos = [];
                         case 'pos_and_neg'
-%                             
+                            %
                         otherwise
                             error('Unrecognized global_signal_pos_or_neg')
                     end
@@ -3113,19 +2804,19 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                     
                     this_metadata.signal_indices = {1:2}; % Indices should be a single vector
                     
-%                 case 'length_count' % Not called alone
-%                     tmp = self.state_length_count(self.state_labels_ind);
-%                     self.normalize_length_count = ...
-%                         ( (max(max(self.dat))-min(min(self.dat)))...
-%                         ./(max(max(tmp))-min(min(tmp))) );
-%                     tmp = tmp * self.normalize_length_count;
-% %                     this_metadata.signal_indices = ...
-% %                         {size(self.L_global_modes,2) + ...
-% %                         (1:size(tmp,1))};
-%                     this_metadata.signal_indices = {1:size(tmp,1)};
-%                     
-%                     self.L_global_modes = [self.L_global_modes,...
-%                         tmp'];
+                    %                 case 'length_count' % Not called alone
+                    %                     tmp = self.state_length_count(self.state_labels_ind);
+                    %                     self.normalize_length_count = ...
+                    %                         ( (max(max(self.dat))-min(min(self.dat)))...
+                    %                         ./(max(max(tmp))-min(min(tmp))) );
+                    %                     tmp = tmp * self.normalize_length_count;
+                    % %                     this_metadata.signal_indices = ...
+                    % %                         {size(self.L_global_modes,2) + ...
+                    % %                         (1:size(tmp,1))};
+                    %                     this_metadata.signal_indices = {1:size(tmp,1)};
+                    %
+                    %                     self.L_global_modes = [self.L_global_modes,...
+                    %                         tmp'];
                     
                 case 'x_times_state' % Not called alone
                     binary_labels = self.calc_binary_labels(...
@@ -3140,7 +2831,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                     
                 case 'None'
                     % Only way to assign an empty value
-%                     error('Not working')
+                    %                     error('Not working')
                     this_metadata.signal_indices = {[]};
                     
                 otherwise
@@ -3171,7 +2862,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         
         function [this_lambda, this_rank] = check_rank_with_lambda(self,...
                 this_dat, this_lambda, max_rank)
-            %   Loop to check for rank convergence if 
+            %   Loop to check for rank convergence if
             iter_max = 10;
             for i=1:iter_max
                 if max_rank==0
@@ -3214,23 +2905,23 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         end
         
         function calc_sparse_signal(self)
-%             if self.lambda_sparse > 0
-%                 % Calculates very sparse signal
-%                 [self.L_sparse_raw, self.S_sparse_raw,...
-%                     self.L_sparse_rank, self.S_sparse_nnz] = ...
-%                     RobustPCA(self.dat, self.lambda_sparse);
-%                 % Save the metadata for this signal, which is the first
-%                 this_metadata = table();
-%                 this_metadata.signal_indices = {1:size(self.L_sparse_raw,1)};
-%                 this_metadata.Properties.RowNames = {'sparse'};
-%                 self.append_control_metadata(this_metadata);
-%             else
+            %             if self.lambda_sparse > 0
+            %                 % Calculates very sparse signal
+            %                 [self.L_sparse_raw, self.S_sparse_raw,...
+            %                     self.L_sparse_rank, self.S_sparse_nnz] = ...
+            %                     RobustPCA(self.dat, self.lambda_sparse);
+            %                 % Save the metadata for this signal, which is the first
+            %                 this_metadata = table();
+            %                 this_metadata.signal_indices = {1:size(self.L_sparse_raw,1)};
+            %                 this_metadata.Properties.RowNames = {'sparse'};
+            %                 self.append_control_metadata(this_metadata);
+            %             else
             % i.e. just skip this step
             self.L_sparse_raw = self.dat;
             self.S_sparse_raw = [];
             self.L_sparse_rank = 0;
             self.S_sparse_nnz = 0;
-%             end
+            %             end
             % For now, no processing
             self.L_sparse = self.L_sparse_raw;
             self.S_sparse = self.S_sparse_raw;
@@ -3240,13 +2931,13 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 custom_control_signal, custom_control_signal_name)
             if ~exist('custom_control_signal','var')
                 custom_control_signal = [];
-%                 custom_control_signal = self.custom_control_signal;
-%                 if ~isempty(self.custom_control_signal) && ...
-%                         self.filter_window_global ~= 10
-%                     warning('Control signal filtering is not applied to custom signals')
-%                 end
-%                 self.custom_control_signal = [];
-%                 custom_control_signal_name = 'user_custom_control_signal';
+                %                 custom_control_signal = self.custom_control_signal;
+                %                 if ~isempty(self.custom_control_signal) && ...
+                %                         self.filter_window_global ~= 10
+                %                     warning('Control signal filtering is not applied to custom signals')
+                %                 end
+                %                 self.custom_control_signal = [];
+                %                 custom_control_signal_name = 'user_custom_control_signal';
             end
             if isempty(custom_control_signal)
                 if self.verbose
@@ -3307,9 +2998,9 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             % control signals
             this_dat = self.L_sparse;
             sparse_signal = self.S_sparse;
-%             if ~self.to_separate_sparse_from_data && self.lambda_sparse > 0
-%                 this_dat = this_dat + sparse_signal;
-%             end
+            %             if ~self.to_separate_sparse_from_data && self.lambda_sparse > 0
+            %                 this_dat = this_dat + sparse_signal;
+            %             end
             if self.to_subtract_mean_global
                 L_low_rank = self.L_global_modes - mean(self.L_global_modes,1);
             else
@@ -3338,7 +3029,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 self.control_signal = [self.control_signal;
                     self.custom_control_signal(:,1:num_pts)];
             end
-
+            
             % TEST: offset the control signals by one step backwards...
             % this makes sense particularly for the sparse signal
             if self.offset_control_signal
@@ -3368,10 +3059,10 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         
         function postprocess(self)
             self.total_sz = size(self.dat_with_control);
-%             if ~isempty(self.state_labels_ind_raw)
-%                 self.state_labels_ind = ...
-%                     self.state_labels_ind_raw(end-self.total_sz(2)+1:end);
-%             end
+            %             if ~isempty(self.state_labels_ind_raw)
+            %                 self.state_labels_ind = ...
+            %                     self.state_labels_ind_raw(end-self.total_sz(2)+1:end);
+            %             end
             
             if ~self.to_save_raw_data
                 for f=fieldnames(struct(self))'
@@ -3387,33 +3078,33 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             end
             
             % Setup all dependent row objects, if any
-%             used_rows = [];
-%             for i = 1:size(self.dependent_signals,1)
-%                 this_ind = self.dependent_signals.signal_indices{i};
-%                 if ischar(this_ind)
-%                     assert(ismember(this_ind,...
-%                         self.control_signals_metadata.Row),...
-%                         'Dependent signal must refer to a valid training signal')
-%                     this_ind = self.control_signals_metadata{this_ind,:}{:};
-%                     self.dependent_signals.signal_indices{i} = this_ind;
-%                 end
-%                 % Check if the row indices make sense
-%                 used_rows = [used_rows, this_ind]; %#ok<AGROW>
-%                 if length(unique(used_rows)) < length(used_rows)
-%                     % Note: can't check if ind are out of bounds here...
-%                     error('Dependent signals cannot overwrite each other')
-%                 end
-%                 % These should be classes which define a setup() method
-%                 setup_strings = self.dependent_signals.setup_arguments(i);
-%                 setup_args = cell(size(setup_strings));
-%                 for i2 = 1:length(setup_strings)
-%                     if isempty(setup_strings{i2})
-%                         continue;
-%                     end
-%                     setup_args{i2} = self.(setup_strings{i2});
-%                 end
-%                 setup(self.dependent_signals.signal_functions{i}, setup_args);
-%             end
+            %             used_rows = [];
+            %             for i = 1:size(self.dependent_signals,1)
+            %                 this_ind = self.dependent_signals.signal_indices{i};
+            %                 if ischar(this_ind)
+            %                     assert(ismember(this_ind,...
+            %                         self.control_signals_metadata.Row),...
+            %                         'Dependent signal must refer to a valid training signal')
+            %                     this_ind = self.control_signals_metadata{this_ind,:}{:};
+            %                     self.dependent_signals.signal_indices{i} = this_ind;
+            %                 end
+            %                 % Check if the row indices make sense
+            %                 used_rows = [used_rows, this_ind]; %#ok<AGROW>
+            %                 if length(unique(used_rows)) < length(used_rows)
+            %                     % Note: can't check if ind are out of bounds here...
+            %                     error('Dependent signals cannot overwrite each other')
+            %                 end
+            %                 % These should be classes which define a setup() method
+            %                 setup_strings = self.dependent_signals.setup_arguments(i);
+            %                 setup_args = cell(size(setup_strings));
+            %                 for i2 = 1:length(setup_strings)
+            %                     if isempty(setup_strings{i2})
+            %                         continue;
+            %                     end
+            %                     setup_args{i2} = self.(setup_strings{i2});
+            %                 end
+            %                 setup(self.dependent_signals.signal_functions{i}, setup_args);
+            %             end
         end
         
         function callback_plotter_reconstruction(self, ~, evt)
@@ -3423,10 +3114,10 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             %   Prints neuron name
             this_neuron = round(evt.IntersectionPoint(2));
             if evt.Button==1
-%                 self.plot_reconstruction_interactive(false, this_neuron);
+                %                 self.plot_reconstruction_interactive(false, this_neuron);
                 self.AdaptiveDmdc_obj.plot_reconstruction(true, ...
                     true, true, this_neuron, true);
-%                 warning('With a custom control signal the names might be off...')
+                %                 warning('With a custom control signal the names might be off...')
             else
                 self.plot_reconstruction_interactive(true, this_neuron);
             end
@@ -3498,9 +3189,9 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                     break
                 end
                 this_dat = dat(:,i);
-
+                
                 % Get the fft
-                Fs = 1;            % Sampling frequency   
+                Fs = 1;            % Sampling frequency
                 L = sz(1);             % Length of signal
                 Y = fft(this_dat);
                 P2 = abs(Y/L);
@@ -3516,17 +3207,17 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 Fpass = noise_beginning;
                 Fstop = Fpass*1.5;
                 
-                % Design a low-pass filter 
+                % Design a low-pass filter
                 Apass = 0.1;
                 Astop = 20;
                 Fs = 1;
                 design_method = 'cheby2';
-%                 disp(i)
+                %                 disp(i)
                 lpFilt = designfilt('lowpassiir', ...
-                  'PassbandFrequency',Fpass, 'StopbandFrequency',Fstop,...  
-                  'PassbandRipple',Apass,'StopbandAttenuation',Astop,...
-                  'SampleRate',Fs,...
-                  'DesignMethod',design_method);
+                    'PassbandFrequency',Fpass, 'StopbandFrequency',Fstop,...
+                    'PassbandRipple',Apass,'StopbandAttenuation',Astop,...
+                    'SampleRate',Fs,...
+                    'DesignMethod',design_method);
                 
                 % Apply the filter in a zero-phase algorithm
                 dat(:,i) = filtfilt(lpFilt, this_dat);
@@ -3567,14 +3258,14 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         
         function out = state_length_count(states)
             % Counts the length of each state up to that point
-            % e.g. 
+            % e.g.
             % >> state_length_count([1 1 2 2 2 2])
             %   [ [1 2 0 0 0 0]
             %     [0 0 1 2 3 4] ]
             % ... Testing out a start at 0!
             %   [ [0 1 0 0 0 0]
             %     [0 0 0 1 2 3] ]
-            % 
+            %
             % Assumes input is sequentially labeled states
             out = zeros(length(unique(states)), size(states,2));
             this_val = states(1);
