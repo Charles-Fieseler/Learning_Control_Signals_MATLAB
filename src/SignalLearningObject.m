@@ -358,12 +358,9 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         % Getting the control signal
         designated_controller_channels
         to_add_stimulus_signal
-        lambda_global
-        max_rank_global
         global_signal_mode
         global_signal_subset
         global_signal_pos_or_neg
-        lambda_sparse
         enforce_diagonal_sparse_B
         enforce_zero_entries
         
@@ -374,9 +371,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         autocorrelation_noise_threshold
         to_subtract_mean
         to_subtract_baselines
-        to_subtract_mean_sparse
         to_subtract_mean_global
-        to_separate_sparse_from_data
         offset_control_signal
         dmd_mode
         AdaptiveDmdc_settings
@@ -388,7 +383,6 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         to_save_raw_data
         
         % Additional rows
-        dependent_signals
         add_constant_signal
         
         % Plotting
@@ -2528,15 +2522,11 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 ...% Getting the control signal
                 'designated_controller_channels', {{}},...
                 'to_add_stimulus_signal', true,...
-                'lambda_global', 0.0065,...
-                'max_rank_global', 4,...
-                'lambda_sparse', 0,...0.043,...
                 'enforce_diagonal_sparse_B', false,...
                 'global_signal_mode', 'ID_binary_transitions',...
                 'global_signal_subset', {{'all'}},...{{'REV1', 'REV2', 'DT', 'VT'}},...
                 'global_signal_pos_or_neg', 'only_pos',...
                 'enforce_zero_entries', {{}},...
-                ...'custom_control_signal',[],...
                 ...% Data processing
                 'filter_window_dat', 0,...
                 'filter_window_global', 10,...
@@ -2546,18 +2536,15 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 'augment_data', 0,...
                 'to_subtract_mean', false,...
                 'to_subtract_baselines', false,...
-                'to_subtract_mean_sparse', false,...
                 'to_subtract_mean_global', false,...
-                'to_separate_sparse_from_data', true, ...
                 'offset_control_signal', false,...
-                'dmd_mode', 'func_DMDc',...'naive',...
+                'dmd_mode', 'func_DMDc',...
                 ...% Data importing
                 'use_deriv', false,...
                 'use_only_deriv', false,...
                 'to_normalize_deriv', false,...
                 'to_save_raw_data', true,...
-                ...% Additional (nonlinear) rows
-                'dependent_signals', table(),...
+                ...% Additional rows
                 'add_constant_signal', true,...
                 ...% Plotting
                 'cmap', []);
@@ -3099,7 +3086,6 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         function [this_lambda, this_rank] = check_rank_with_lambda(self,...
                 this_dat, this_lambda, max_rank)
             %   Loop to check for rank convergence if 
-            %   self.max_rank_global > 0
             iter_max = 10;
             for i=1:iter_max
                 if max_rank==0
@@ -3142,23 +3128,23 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         end
         
         function calc_sparse_signal(self)
-            if self.lambda_sparse > 0
-                % Calculates very sparse signal
-                [self.L_sparse_raw, self.S_sparse_raw,...
-                    self.L_sparse_rank, self.S_sparse_nnz] = ...
-                    RobustPCA(self.dat, self.lambda_sparse);
-                % Save the metadata for this signal, which is the first
-                this_metadata = table();
-                this_metadata.signal_indices = {1:size(self.L_sparse_raw,1)};
-                this_metadata.Properties.RowNames = {'sparse'};
-                self.append_control_metadata(this_metadata);
-            else
-                % i.e. just skip this step
-                self.L_sparse_raw = self.dat;
-                self.S_sparse_raw = [];
-                self.L_sparse_rank = 0;
-                self.S_sparse_nnz = 0;
-            end
+%             if self.lambda_sparse > 0
+%                 % Calculates very sparse signal
+%                 [self.L_sparse_raw, self.S_sparse_raw,...
+%                     self.L_sparse_rank, self.S_sparse_nnz] = ...
+%                     RobustPCA(self.dat, self.lambda_sparse);
+%                 % Save the metadata for this signal, which is the first
+%                 this_metadata = table();
+%                 this_metadata.signal_indices = {1:size(self.L_sparse_raw,1)};
+%                 this_metadata.Properties.RowNames = {'sparse'};
+%                 self.append_control_metadata(this_metadata);
+%             else
+            % i.e. just skip this step
+            self.L_sparse_raw = self.dat;
+            self.S_sparse_raw = [];
+            self.L_sparse_rank = 0;
+            self.S_sparse_nnz = 0;
+%             end
             % For now, no processing
             self.L_sparse = self.L_sparse_raw;
             self.S_sparse = self.S_sparse_raw;
@@ -3233,18 +3219,11 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             
             % Data to be reconstructed is everything EXCEPT the sparse
             % control signals
-            if self.to_subtract_mean_sparse
-                this_dat = self.L_sparse - mean(self.L_sparse,2);
-                sparse_signal = self.S_sparse - mean(self.S_sparse,2);
-            else
-                this_dat = self.L_sparse;
-                sparse_signal = self.S_sparse;
-            end
-            if ~self.to_separate_sparse_from_data && self.lambda_sparse > 0
-                this_dat = this_dat + sparse_signal;
-            end
-            % Sparse signal with NO thresholding
-            % Use top svd modes for the low-rank component
+            this_dat = self.L_sparse;
+            sparse_signal = self.S_sparse;
+%             if ~self.to_separate_sparse_from_data && self.lambda_sparse > 0
+%                 this_dat = this_dat + sparse_signal;
+%             end
             if self.to_subtract_mean_global
                 L_low_rank = self.L_global_modes - mean(self.L_global_modes,1);
             else
@@ -3322,33 +3301,33 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             end
             
             % Setup all dependent row objects, if any
-            used_rows = [];
-            for i = 1:size(self.dependent_signals,1)
-                this_ind = self.dependent_signals.signal_indices{i};
-                if ischar(this_ind)
-                    assert(ismember(this_ind,...
-                        self.control_signals_metadata.Row),...
-                        'Dependent signal must refer to a valid training signal')
-                    this_ind = self.control_signals_metadata{this_ind,:}{:};
-                    self.dependent_signals.signal_indices{i} = this_ind;
-                end
-                % Check if the row indices make sense
-                used_rows = [used_rows, this_ind]; %#ok<AGROW>
-                if length(unique(used_rows)) < length(used_rows)
-                    % Note: can't check if ind are out of bounds here...
-                    error('Dependent signals cannot overwrite each other')
-                end
-                % These should be classes which define a setup() method
-                setup_strings = self.dependent_signals.setup_arguments(i);
-                setup_args = cell(size(setup_strings));
-                for i2 = 1:length(setup_strings)
-                    if isempty(setup_strings{i2})
-                        continue;
-                    end
-                    setup_args{i2} = self.(setup_strings{i2});
-                end
-                setup(self.dependent_signals.signal_functions{i}, setup_args);
-            end
+%             used_rows = [];
+%             for i = 1:size(self.dependent_signals,1)
+%                 this_ind = self.dependent_signals.signal_indices{i};
+%                 if ischar(this_ind)
+%                     assert(ismember(this_ind,...
+%                         self.control_signals_metadata.Row),...
+%                         'Dependent signal must refer to a valid training signal')
+%                     this_ind = self.control_signals_metadata{this_ind,:}{:};
+%                     self.dependent_signals.signal_indices{i} = this_ind;
+%                 end
+%                 % Check if the row indices make sense
+%                 used_rows = [used_rows, this_ind]; %#ok<AGROW>
+%                 if length(unique(used_rows)) < length(used_rows)
+%                     % Note: can't check if ind are out of bounds here...
+%                     error('Dependent signals cannot overwrite each other')
+%                 end
+%                 % These should be classes which define a setup() method
+%                 setup_strings = self.dependent_signals.setup_arguments(i);
+%                 setup_args = cell(size(setup_strings));
+%                 for i2 = 1:length(setup_strings)
+%                     if isempty(setup_strings{i2})
+%                         continue;
+%                     end
+%                     setup_args{i2} = self.(setup_strings{i2});
+%                 end
+%                 setup(self.dependent_signals.signal_functions{i}, setup_args);
+%             end
         end
         
         function callback_plotter_reconstruction(self, ~, evt)
