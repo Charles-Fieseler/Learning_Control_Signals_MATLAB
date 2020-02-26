@@ -1379,6 +1379,11 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         
         function fig = plot_colored_user_control(self, fig, use_same_fig)
             % Plots user control data on top of colored original dataset
+            %   fig (see text) - Figure handle if plotting on top of one
+            %       that exists; otherwise, makes new figure with data
+            %   use_same_fig (false) - To plot the reconstruction on top of
+            %       the original data; if so, the reconstruction is in
+            %       black stars ('k*')
             assert(~isempty(self.user_control_reconstruction),...
                 'No reconstructed data stored')
             if ~exist('use_same_fig','var')
@@ -1406,10 +1411,12 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             end
         end
         
-        function fig = plot_colored_reconstruction(self, cmap, fig, use_same_fig)
+        function fig = plot_colored_reconstruction(self, cmap, fig, ...
+                use_same_fig)
             % Plots 3d colored reconstruction on top of colored original dataset
             % Input:
-            %   cmap ([]) - Custom colormap
+            %   cmap ([]) - Custom colormap; defaults to the current
+            %       object's stored colormap
             %   fig (see text) - Figure handle if plotting on top of one
             %       that exists; otherwise, makes new figure with data
             %   use_same_fig (false) - To plot the reconstruction on top of
@@ -1446,86 +1453,6 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                     self.state_labels_key, 'plot', cmap);
                 title('Dynamics of the low-rank component (reconstruction)')
             end
-        end
-        
-        function fig = plot_colored_fixed_point(self,...
-                which_label, use_centroid, fig, use_only_global)
-            % Plots the fixed point on top of colored original dataset
-            if ~exist('fig','var') || isempty(fig)
-                fig = self.plot_colored_data(false, 'plot');
-            end
-            if ~exist('use_centroid','var') || isempty(use_centroid)
-                use_centroid = false;
-            end
-            if ~exist('which_label','var') || isempty('which_label')
-                which_label = 'all';
-            end
-            if ~exist('use_only_global','var')
-                use_only_global = false;
-            end
-            
-            attractor_reconstruction = self.calc_attractor(...
-                which_label, use_only_global);
-            
-            modes_3d = self.L_sparse_modes(:,1:3);
-            proj_3d = (modes_3d.')*attractor_reconstruction;
-            if use_centroid
-                proj_3d = mean(proj_3d,2);
-                plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), ...
-                    'k*', 'LineWidth', 50)
-            else
-                plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), ...
-                    'ko', 'LineWidth', 8)
-            end
-            
-            title(sprintf(...
-                'Fixed points for control structure in %s behavior(s)',...
-                which_label))
-        end
-        
-        function fig = plot_user_control_fixed_points(self,...
-                which_label, use_centroid, fig)
-            % Plots fixed points for manually set control on top of colored
-            % original dataset
-            assert(~isempty(self.user_control_reconstruction),...
-                'No reconstructed data stored')
-            if ~exist('fig','var')
-                fig = self.plot_colored_data(false, 'plot');
-            end
-            if ~exist('use_centroid','var')
-                use_centroid = false;
-            end
-            if ~exist('which_label','var')
-                which_label = 'all';
-            end
-            
-            % Get the dynamics and control matrices, and the control signal
-            ad_obj = self.AdaptiveDmdc_obj;
-            x_dat = 1:ad_obj.x_len;
-            %             x_ctr = (ad_obj.x_len+1):self.total_sz(1);
-            A = ad_obj.A_original(x_dat, x_dat);
-            B = self.user_control_matrix;
-            u = self.user_control_input;
-            if ~strcmp(which_label,'all')
-                [~, ~, ~, u_ind] = ...
-                    self.get_control_signal_during_label(which_label);
-                u = u(:, u_ind);
-            end
-            % Reconstruct the attractor and project it into the same space
-            % Find x (fixed point) in:
-            %   x = A x + B u
-            attractor_reconstruction = ((eye(length(A))-A)\B)*u;
-            
-            modes_3d = self.L_sparse_modes(:,1:3);
-            proj_3d = (modes_3d.')*attractor_reconstruction;
-            if use_centroid
-                proj_3d = mean(proj_3d,2);
-            end
-            plot3(proj_3d(1,:),proj_3d(2,:),proj_3d(3,:), ...
-                'k*', 'LineWidth', 1.5)
-            title(sprintf(...
-                'Fixed points for control structure in %s behavior(s)',...
-                which_label))
         end
         
         function fig = plot_colored_control_arrow(self, ...
