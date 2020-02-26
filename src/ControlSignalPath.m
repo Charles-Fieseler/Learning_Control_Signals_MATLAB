@@ -49,14 +49,16 @@ classdef ControlSignalPath < handle
             % 'objective_function' which is saved in this object
             %
             % TODO: allow custom metrics
+            assert(ischar(objective_function),...
+                'Should pass string name of function')
+            assert(ismethod(self, objective_function),...
+                'Custom objective function not implemented (yet')
             
             self.objective_function = objective_function;
             
             vals = zeros(size(self.all_U));
             for i = 1:length(self.all_U)
-%                 all_nnz(i) = nnz(all_U{i});
-                vals(i) = objective_function(self, i);
-%                 vals(i) = objective_function(self.all_U{i}', 1, false);
+                vals(i) = self.(objective_function)(i);
             end
             vals(end) = vals(end-1);
             self.objective_values = vals;
