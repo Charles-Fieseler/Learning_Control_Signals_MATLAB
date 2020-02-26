@@ -2,10 +2,13 @@
 
 MATLAB code for disambiguating control signals from intrinsic dynamics.
 The mathematical form is, in matrix notation:
+
 	x' = Ax + Bu
+	
 where x is the data (e.g. voltage level of neurons), x' is the next step in time, A is a matrix that implements the intrinsic dynamics, u is the control signal, and B maps the control input to the full phase space.
 	
-If you use this, please cite: ...
+If you use this, please cite: 
+Fieseler, C., Zimmer, M. and Kutz, N., 2020. Unsupervised learning of control signals and their encodings in $\textit {C. elegans} $ whole-brain recordings. arXiv preprint arXiv:2001.08346.
 
 ### What is this repository for? ###
 
@@ -46,17 +49,21 @@ The following toolboxes, which need to be downloaded and the folders added to th
 
 * Learning control signals
 	* Main function: learn_control_signals.m
-	* This function returns a sweep of possible control signals with increasing sparsity
+	* This function returns a data class that contains a "path" of possible control signals with increasing sparsity
+* Determining "best" control signal
 	* Several helper functions are included to automatically choose the "best" one; type 'help learn_control_signals' for more information
-* Learning intrinsic dynamics
-	* The main user interface is provided by the large class, 'SignalLearningObject.m'
+
+
+#### Advanced usage
+* Learning intrinsic dynamics and automatically importing control signals
+	* This large class can process structs of data, with the specific use case of C. elegans neural data, 'SignalLearningObject.m'
 	* This will intake the relevant data and solve the optimization problem. 
 	* There are many plotting options and algorithm settings available, as documented in the class.
 
 
 ### Contribution guidelines ###
 
-For academic use; I'm not planning on continuing to support this MATLAB version of the code.
+For academic use; I'm not planning on continuing to support this MATLAB version of the code for long (as of 2/26/2020).
 
 
 ### Who do I talk to? ###
