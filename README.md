@@ -27,7 +27,7 @@ Fieseler, C., Zimmer, M. and Kutz, N., 2020. Unsupervised learning of control si
 
 ### How do I get set up? ###
 
-Download the custom toolboxes with helper functions as described in the next section.
+Download or clone this repository.
 
 The script 'setup_Learn_control_signals.m' adds these folders to your MATLAB path.
 
