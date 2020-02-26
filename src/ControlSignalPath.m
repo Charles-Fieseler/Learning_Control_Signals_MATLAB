@@ -24,6 +24,9 @@ classdef ControlSignalPath < handle
         
         % Best values and model
         best_index
+    end
+    
+    properties (Dependent)
         A
         B
         U
@@ -58,9 +61,21 @@ classdef ControlSignalPath < handle
             % Get maximum of above
             [~, i] = max(vals);
             self.best_index = i;
-            self.U = self.all_U{i};
-            self.A = self.all_A{i};
-            self.B = self.all_B{i};
+        end
+    end
+    
+    
+    methods % For dependent variables
+        function out = get.A(self)
+            out = self.all_A{self.best_index};
+        end
+        
+        function out = get.B(self)
+            out = self.all_B{self.best_index};
+        end
+        
+        function out = get.U(self)
+            out = self.all_U{self.best_index};
         end
     end
 end
