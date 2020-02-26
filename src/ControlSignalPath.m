@@ -32,7 +32,7 @@ classdef ControlSignalPath < handle
         U
     end
     
-    methods
+    methods % User-facing
         function self = ControlSignalPath(...
                 data, settings, all_A, all_B, all_U)
             % Imports data produced by learn_control_signals.m
@@ -47,13 +47,16 @@ classdef ControlSignalPath < handle
         function calc_best_control_signal(self, objective_function)
             % Calculates the best control signal, according to function
             % 'objective_function' which is saved in this object
+            %
+            % TODO: allow custom metrics
             
             self.objective_function = objective_function;
             
             vals = zeros(size(self.all_U));
             for i = 1:length(self.all_U)
 %                 all_nnz(i) = nnz(all_U{i});
-                vals(i) = acf(self.all_U{i}', 1, false);
+                vals(i) = objective_function(self, i);
+%                 vals(i) = objective_function(self.all_U{i}', 1, false);
             end
             vals(end) = vals(end-1);
             self.objective_values = vals;
@@ -61,6 +64,13 @@ classdef ControlSignalPath < handle
             % Get maximum of above
             [~, i] = max(vals);
             self.best_index = i;
+        end
+    end
+    
+    methods % Metrics for control signal quality
+        function val = acf(self, i)
+            % Simplest objective function: autocorrelation
+            val = acf(self.all_U{i}', 1, false);
         end
     end
     
