@@ -1,4 +1,4 @@
-function [all_U, all_A, all_B, my_model_base] =...
+function [ControlSignalPath_object, my_model_base] = ...%[all_U, all_A, all_B, my_model_base] = ...
     learn_control_signals(file_or_obj, s)
 %% learn_control_signals
 % Analyzes the residuals of a DMD model in order to learn control signals
@@ -11,10 +11,11 @@ function [all_U, all_A, all_B, my_model_base] =...
 %   s - settings struct
 %
 % OUTPUTS
-%   all_U - The control signal matrices in a cell array, across sparsity
-%       iterations. Each approximately solves: X2 = A*X1 + B*U
-%   all_A - The A matrices corresponding the control signals U above
-%   all_B - The B matrices corresponding the control signals U above
+%   ControlSignalPath_object - A class which contains:
+%       all_U - The control signal matrices in a cell array, across sparsity
+%           iterations. Each approximately solves: X2 = A*X1 + B*U
+%       all_A - The A matrices corresponding the control signals U above
+%       all_B - The B matrices corresponding the control signals U above
 %   my_model_base - The model used to preprocess the data. Note that in the
 %       future I should definitely separate out the data processing from
 %       the model object
@@ -77,30 +78,26 @@ if ischar(file_or_obj)
 
     settings = struct(...
         'to_subtract_mean',false,...
-        'to_subtract_mean_sparse',false,...
         'to_subtract_mean_global',false,...
         'add_constant_signal',false,...
         'use_deriv',false,...
-        ...'designated_controller_channels', {{'sensory', 1}},...
         'filter_window_dat', 1,...
-        'dmd_mode','func_DMDc',...
-        'autocorrelation_noise_threshold', 0.6,...
-        'lambda_sparse',0);
+        'dmd_mode','func_DMDc');
     settings.global_signal_mode = 'ID_binary_transitions';
 
-    my_model_base = SignalLearningObject(dat_struct, settings);
+    my_model_base = SimulationPlottingObject(dat_struct, settings);
 elseif isnumeric(file_or_obj)
     % Assume this is just the data
     my_model_base = file_or_obj;
 else
-    assert(isa(file_or_obj, 'SignalLearningObject'), 'Wrong object type')
+    assert(isa(file_or_obj, 'SimulationPlottingObject'), 'Wrong object type')
     my_model_base = file_or_obj;
 end
 
 %---------------------------------------------
 %% Initialize the control signal
 %---------------------------------------------
-if isa(file_or_obj, 'SignalLearningObject')
+if isa(file_or_obj, 'SimulationPlottingObject')
     X1 = my_model_base.dat(:,1:end-1);
     X2 = my_model_base.dat(:,2:end);
 else
@@ -247,11 +244,11 @@ for i = 1:s.num_iter
     
     all_err(i, 2) = norm(A*X1 + B*U - X2, 'fro');
     if has_stalled
-        warning('All control signals are 0. Stopping early')
+        disp('All control signals are 0. Stopping early (this is nothing to worry about)')
         break
     end
 end
-% Fill rest of output to not cause errors later
+% Fill rest of output to keep output consistent
 if has_stalled
     for i2 = i:s.num_iter
         all_U{i2} = all_U{i-1};
@@ -264,5 +261,9 @@ end
 if s.verbose
     toc(tstart)
 end
+
+% Final output packaging
+ControlSignalPath_object = ControlSignalPath(...
+    file_or_obj, s, all_A, all_B, all_U);
 
 end

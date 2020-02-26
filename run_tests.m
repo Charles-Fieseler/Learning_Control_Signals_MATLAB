@@ -1,7 +1,7 @@
 function [results, suites] = run_tests(which_tests)
 % Runs some set of tests:
 %   1 - sparse residual analysis functions
-%   2 - SignalLearningObject object (base is the DMDc algorithm)
+%   2 - SimulationPlottingObject object (base is the DMDc algorithm)
 %   3 - TODO (will be sparse encoding analysis)
 if ~exist('which_tests', 'var')
     which_tests = 1:2;
@@ -21,9 +21,9 @@ if ismember(1, which_tests)
     suites = my_append(suites, {suite_SRA});
 end
 if ismember(2, which_tests)
-    disp('Running tests on SignalLearningObject object and functions')
+    disp('Running tests on SimulationPlottingObject object and functions')
     suite_CEM = matlab.unittest.TestSuite.fromFolder(...
-        './tests/SignalLearningObject_tests');
+        './tests/SimulationPlottingObject_tests');
     result_CEM = run(suite_CEM);
     results = my_append(results, {result_CEM});
     suites = my_append(suites, {suite_CEM});

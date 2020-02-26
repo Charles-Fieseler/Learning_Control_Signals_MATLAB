@@ -1,7 +1,6 @@
-classdef SignalLearningObjectTest_Stimulus < matlab.unittest.TestCase
+classdef SimulationPlottingObjectTest_Kato < matlab.unittest.TestCase
     % CElegansModelTest tests inputs and basic processing properties for
     % Kato-type structs
-    %   Note: the location of the data is hardcoded
     
     properties
         filename
@@ -11,8 +10,10 @@ classdef SignalLearningObjectTest_Stimulus < matlab.unittest.TestCase
     
     methods(TestClassSetup)
         function setFilename(testCase)
-            folder_name = 'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\npr1_1_PreLet\AN20140730a_ZIM575_PreLet_6m_O2_21_s_1TF_47um_1330_\';
-            testCase.filename = [folder_name 'wbdataset.mat'];
+            folder_name = 'C:\Users\charl\Documents\MATLAB\Collaborations\Zimmer_data\wbdataKato2015\wbdata\';
+            testCase.filename = ...
+                {[folder_name 'sevenStateColoring.mat'],...
+                [folder_name 'TS20141221b_THK178_lite-1_punc-31_NLS3_6eggs_1mMTet_basal_1080s.mat']};
             % Calculate the model
             testCase.settings = struct(...
                 'to_subtract_mean',false,...
@@ -22,11 +23,7 @@ classdef SignalLearningObjectTest_Stimulus < matlab.unittest.TestCase
                 'lambda_sparse',0);
             testCase.settings.global_signal_mode = 'ID_binary';
             testCase.model = ...
-                SignalLearningObject(testCase.filename, testCase.settings);
-            % Align control signal naming
-            testCase.model.set_simple_labels();
-            testCase.model.remove_all_control();
-            testCase.model.build_model();
+                CElegansModel(testCase.filename, testCase.settings);
         end
     end
     
@@ -36,9 +33,7 @@ classdef SignalLearningObjectTest_Stimulus < matlab.unittest.TestCase
             mdat = testCase.model.control_signals_metadata;
             
             testCase.verifyEqual(...
-                mdat{'ID_binary',:}{:}, 1:5);
-            testCase.verifyEqual(...
-                mdat{'Stimulus_O2',:}{:}, 6:7);
+                mdat{'ID_binary',:}{:}, 1:8);
         end
         
         function testSparse(testCase)
@@ -61,13 +56,13 @@ classdef SignalLearningObjectTest_Stimulus < matlab.unittest.TestCase
         function testDat(testCase)
             % Properties of the data
             testCase.verifyTrue(isequal(...
-                testCase.model.original_sz, [114,4055]));
+                testCase.model.original_sz, [129,3021]));
             
             testCase.verifyTrue(isequal(...
-                testCase.model.total_sz, [121,4055]));
+                testCase.model.total_sz, [137,3021]));
             
             testCase.verifyTrue(isequal(...
-                size(testCase.model.control_signal), [7,4055]));
+                size(testCase.model.control_signal), [8,3021]));
         end
     end
     
