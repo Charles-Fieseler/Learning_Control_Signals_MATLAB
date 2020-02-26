@@ -2,11 +2,15 @@ classdef ControlSignalPath < handle
     % Stores output of a learned control signal path, produced by the
     % function learn_control_signals.m
     %
+    % This object can be recalculated using:
+    %  >> newSelf = learn_control_signals(self.data, self.settings);
+    %
     % Also contains the results of metric evaluations used to determine the
     % "best" or "true" control signals
     
     properties
         % Settings from original object
+        data
         learn_control_signals_settings
         % Dynamics
         all_A
@@ -26,8 +30,10 @@ classdef ControlSignalPath < handle
     end
     
     methods
-        function self = ControlSignalPath(settings, all_A, all_B, all_U)
+        function self = ControlSignalPath(...
+                data, settings, all_A, all_B, all_U)
             % Imports data produced by learn_control_signals.m
+            self.data = data;
             self.learn_control_signals_settings = settings;
             
             self.all_A = all_A;

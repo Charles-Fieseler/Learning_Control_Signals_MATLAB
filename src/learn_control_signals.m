@@ -1,4 +1,4 @@
-function [all_U, all_A, all_B, my_model_base] =...
+function [ControlSignalPath_object, my_model_base] = ...%[all_U, all_A, all_B, my_model_base] = ...
     learn_control_signals(file_or_obj, s)
 %% learn_control_signals
 % Analyzes the residuals of a DMD model in order to learn control signals
@@ -11,10 +11,11 @@ function [all_U, all_A, all_B, my_model_base] =...
 %   s - settings struct
 %
 % OUTPUTS
-%   all_U - The control signal matrices in a cell array, across sparsity
-%       iterations. Each approximately solves: X2 = A*X1 + B*U
-%   all_A - The A matrices corresponding the control signals U above
-%   all_B - The B matrices corresponding the control signals U above
+%   ControlSignalPath_object - A class which contains:
+%       all_U - The control signal matrices in a cell array, across sparsity
+%           iterations. Each approximately solves: X2 = A*X1 + B*U
+%       all_A - The A matrices corresponding the control signals U above
+%       all_B - The B matrices corresponding the control signals U above
 %   my_model_base - The model used to preprocess the data. Note that in the
 %       future I should definitely separate out the data processing from
 %       the model object
@@ -260,5 +261,9 @@ end
 if s.verbose
     toc(tstart)
 end
+
+% Final output packaging
+ControlSignalPath_object = ControlSignalPath(...
+    file_or_obj, s, all_A, all_B, all_U);
 
 end
