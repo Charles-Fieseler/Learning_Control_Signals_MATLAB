@@ -1,4 +1,4 @@
-classdef SignalLearningObjectTest_Stimulus < matlab.unittest.TestCase
+classdef SimulationPlottingObjectTest_Stimulus < matlab.unittest.TestCase
     % CElegansModelTest tests inputs and basic processing properties for
     % Kato-type structs
     %   Note: the location of the data is hardcoded
@@ -22,7 +22,7 @@ classdef SignalLearningObjectTest_Stimulus < matlab.unittest.TestCase
                 'lambda_sparse',0);
             testCase.settings.global_signal_mode = 'ID_binary';
             testCase.model = ...
-                SignalLearningObject(testCase.filename, testCase.settings);
+                SimulationPlottingObject(testCase.filename, testCase.settings);
             % Align control signal naming
             testCase.model.set_simple_labels();
             testCase.model.remove_all_control();

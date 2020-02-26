@@ -85,19 +85,19 @@ if ischar(file_or_obj)
         'dmd_mode','func_DMDc');
     settings.global_signal_mode = 'ID_binary_transitions';
 
-    my_model_base = SignalLearningObject(dat_struct, settings);
+    my_model_base = SimulationPlottingObject(dat_struct, settings);
 elseif isnumeric(file_or_obj)
     % Assume this is just the data
     my_model_base = file_or_obj;
 else
-    assert(isa(file_or_obj, 'SignalLearningObject'), 'Wrong object type')
+    assert(isa(file_or_obj, 'SimulationPlottingObject'), 'Wrong object type')
     my_model_base = file_or_obj;
 end
 
 %---------------------------------------------
 %% Initialize the control signal
 %---------------------------------------------
-if isa(file_or_obj, 'SignalLearningObject')
+if isa(file_or_obj, 'SimulationPlottingObject')
     X1 = my_model_base.dat(:,1:end-1);
     X2 = my_model_base.dat(:,2:end);
 else

@@ -1,4 +1,4 @@
-classdef SignalLearningObject < SettingsImportableFromStruct
+classdef SimulationPlottingObject < SettingsImportableFromStruct
     %% Separates control signals and intrinsic dynamics
     %
     % INPUTS:
@@ -7,7 +7,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
     %           the following fields:
     %
     %       settings: struct of options. Need not be passed. Run
-    %           >> defaults = my_SignalLearningObject.set_defaults()
+    %           >> defaults = my_SimulationPlottingObject.set_defaults()
     %           to get the default options. These are:
     %         verbose
     %         % Getting the control signal
@@ -242,7 +242,7 @@ classdef SignalLearningObject < SettingsImportableFromStruct
     end
     
     methods
-        function self = SignalLearningObject(file_or_dat, settings)
+        function self = SimulationPlottingObject(file_or_dat, settings)
             
             %% Set defaults and import settings
             if ~exist('settings','var')
