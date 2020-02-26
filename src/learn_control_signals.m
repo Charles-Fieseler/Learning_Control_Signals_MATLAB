@@ -244,7 +244,7 @@ for i = 1:s.num_iter
     
     all_err(i, 2) = norm(A*X1 + B*U - X2, 'fro');
     if has_stalled
-        warning('All control signals are 0. Stopping early')
+        disp('All control signals are 0. Stopping early (this is nothing to worry about)')
         break
     end
 end
