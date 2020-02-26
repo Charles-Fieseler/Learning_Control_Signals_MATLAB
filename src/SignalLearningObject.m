@@ -1827,7 +1827,12 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         
         function plot_mean_transition_signals(self, ...
                 which_label, num_preceding_frames)
-            % Uses hand-labeled behavior
+            % Uses hand-labeled behavioral states, and plots the activity
+            % that is happening right before onset
+            % Input:
+            %   which_label - which behavioral label to focus on
+            %   num_preceding_frames - how many frames preceding the onset
+            %       of that behavior to plot
             [~, signal_mat, mean_signal] = ...
                 self.get_control_signal_during_label(...
                 which_label, num_preceding_frames);
@@ -1854,6 +1859,14 @@ classdef SignalLearningObject < SettingsImportableFromStruct
             %
             %  The eigenvalues have a callback function which plots the
             %  eigenvector (heatmap) with the neuron names as ticks
+            %
+            % Input:
+            %   neuron - string or index of the neuron to emphasize. All
+            %       eigenvalues will be plotted, with the colormap
+            %       determined by the eigenvector loading on this neuron.
+            %   tol_eigen - minimum magnitude of the imaginary part of an
+            %       eigenvalue. If smaller than this, then the eigenvalue
+            %       corresponds to a nearly constant (non-dynamic) mode.
             if ~exist('tol_eigen','var')
                 tol_eigen = 1e-3;
             end
@@ -1924,6 +1937,10 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 x0, u, tspan)
             % Plots a heatmap of the system evolving from an initial
             % condition
+            % Input:
+            %   x0 - initial point
+            %   u - control signal
+            %   tspan - vector of time points (not just end)
             
             n = self.original_sz(1);
             dat_approx = zeros(n, length(tspan));
@@ -1943,6 +1960,16 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 named_only, zero_diag, only_neurons, only_deriv,...
                 num_clusters)
             % Plot a heatmap of the dynamic matrix
+            % Input:
+            %   named_only (false) - only plot named neurons
+            %   zero_diag (false) - set the diagonal entries to 0; often
+            %       useful because they may be an order of magnitude larger
+            %       than other entries
+            %   only_neurons (true) - plots only neurons, not derivatives,
+            %       if included. If not included, does nothing
+            %   only_derivs (false) - plots only derivatives, if present
+            %   num_clusters (0) - if >0, clusters the data and sorts the
+            %       matrix according to the k-means cluster identities
             if ~exist('named_only', 'var')
                 named_only = false;
             end
