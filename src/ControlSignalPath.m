@@ -74,6 +74,13 @@ classdef ControlSignalPath < handle
             % Simplest objective function: autocorrelation
             val = acf(self.all_U{i}', 1, false);
         end
+        
+        function val = aic(self, i)
+            % Akaike Information Criteria (AIC)
+            %   Uses the 2-step error by default
+            val = -aic_2step_dmdc(self.data, self.all_U{i}, [], [], 2, ...
+                [], 'standard');
+        end
     end
     
     
