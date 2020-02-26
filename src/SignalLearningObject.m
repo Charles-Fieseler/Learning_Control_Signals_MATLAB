@@ -474,6 +474,16 @@ classdef SignalLearningObject < SettingsImportableFromStruct
                 signal_ind, custom_signal, signal_start, is_original_neuron)
             % Adds some of the current control signals to the user control
             % matrix
+            %
+            % Input:
+            %   signal_ind - Which row (i.e. neuron) to use as a signal
+            %   custom_signal ([]) - can add a row to use
+            %   signal_start - where to start the signal
+            %   is_original_neuron (true) - If false, then assumes that the
+            %       index given by signal_ind is the index of the control
+            %       signal alone, e.g. 1, instead of the index of the
+            %       control signal within the full self.dat_with_control
+            %       matrix, e.g. 280.
             self.user_control_reconstruction = [];
             num_neurons = size(self.dat_without_control,1);
             if ~exist('signal_ind','var')
@@ -522,6 +532,10 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         
         function ablate_neuron(self, neuron_ind)
             % "Ablates" a neuron by setting all connections to 0
+            %
+            % Input:
+            %   neuron_ind - Index of the neuron to be ablated. May also be
+            %       a vector
             self.user_neuron_ablation = neuron_ind;
         end
         
@@ -1226,6 +1240,9 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         
         function fig = plot_reconstruction_user_control(self, ...
                 include_control_signal, neuron_ind)
+            % Plots a reconstruction with user-set control signals
+            %   Note: control signals are not passed to this function
+            %   directly, but are saved with methods zzz
             if ~exist('include_control_signal','var')
                 include_control_signal = true;
             end
@@ -1329,6 +1346,13 @@ classdef SignalLearningObject < SettingsImportableFromStruct
         end
         
         function fig = plot_colored_data(self, plot_pca, plot_opt, cmap)
+            % Plots the data colored by behavioral labels
+            %
+            % Input:
+            %   plot_pca (false) - options for a subfunction. See: plotSVD
+            %   plot_opt ('plot') - options for a subfunction. 
+            %       See: plot_colored
+            %   cmap (self.cmap) - colormap
             if ~exist('cmap', 'var')
                 cmap = self.cmap;
             end
