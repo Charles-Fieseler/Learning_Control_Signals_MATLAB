@@ -6,7 +6,10 @@ classdef ControlSignalPath < handle
     %  >> newSelf = learn_control_signals(self.data, self.settings);
     %
     % Also contains the results of metric evaluations used to determine the
-    % "best" or "true" control signals
+    % "best" or "true" control signals. These can be calculated using the
+    % method self.calc_best_control_signal. Type:
+    %  >> help self.calc_best_control_signal
+    %   for more information
     
     properties
         % Settings from original object
@@ -48,7 +51,17 @@ classdef ControlSignalPath < handle
             % Calculates the best control signal, according to function
             % 'objective_function' which is saved in this object
             %
+            % Input:
+            %   objective_function - A string with a valid method name
+            %       that calculates an objective function using the control
+            %       signals and possibly the dynamics matrices and original
+            %       data. Currently implemented metrics are:
+            %
+            %       'acf' - simple autocorrelation of the signal
+            %       'aic' - Akaike Information Criteria (AIC)
+            %
             % TODO: allow custom metrics
+            % TODO: allow custom options
             assert(ischar(objective_function),...
                 'Should pass string name of function')
             assert(ismethod(self, objective_function),...

@@ -4,7 +4,6 @@ function [ControlSignalPath_object, my_model_base] = ...%[all_U, all_A, all_B, m
 % Analyzes the residuals of a DMD model in order to learn control signals
 % from data
 %
-%
 % INPUTS
 %   file_or_obj - the file for the data matrix OR a model with the data
 %       note: rows are channels and columns are time
@@ -20,17 +19,40 @@ function [ControlSignalPath_object, my_model_base] = ...%[all_U, all_A, all_B, m
 %       future I should definitely separate out the data processing from
 %       the model object
 %
-% EXAMPLES
-%
-%   EXAMPLE1
-%
-%
-%   EXAMPLE2
-%
-%
-%
 % Dependencies
-%   .m files, .mat files, and MATLAB products required:(updated on 20-Jan-2020)
+%   .m files, .mat files, and MATLAB products required:(updated on 26-Feb-2020)
+%         MATLAB (version 9.4)
+%         Signal Processing Toolbox (version 8.0)
+%         Statistics and Machine Learning Toolbox (version 11.3)
+%         ControlSignalPath.m
+%         SimulationPlottingObject.m
+%         aic_2step_dmdc.m
+%         calc_nstep_error.m
+%         convertKato2Zimmer.m
+%         checkModes.m
+%         func_DMD.m
+%         func_DMDc.m
+%         AdaptiveDmdc.m
+%         exact_dmdc.m
+%         sparse_dmd_fast.m
+%         AbstractDmd.m
+%         SettingsImportableFromStruct.m
+%         top_ind_then_sort.m
+%         optimal_truncation.m
+%         calc_contiguous_blocks.m
+%         calc_snr.m
+%         svd_truncate.m
+%         cmap_white_zero.m
+%         plotSVD.m
+%         plot_2imagesc_colorbar.m
+%         plot_colored.m
+%         plot_gray_lines.m
+%         plot_std_fill.m
+%         brewermap.m
+%         RobustPCA.m
+%         acf.m
+%         optimal_SVHT_coef.m
+%         TVRegDiff.m
 %         
 %
 %   See also: OTHER_FUNCTION_NAME
