@@ -49,9 +49,12 @@ The following toolboxes, which need to be downloaded and the folders added to th
 
 * Learning control signals
 	* Main function: learn_control_signals.m
-	* This function returns a data class that contains a "path" of possible control signals with increasing sparsity
+	* Input: data matrix with channels=rows and time=columns
+	* This function returns a data class (ControlSignalPath) that contains a "path" of possible control signals with increasing sparsity
 * Determining the "best" control signal
 	* Several helper functions are included to automatically choose the "best" one; type 'help ControlSignalPath' for more information
+	
+See the example MATLAB live scripts for a more complete workflow.
 
 
 #### Advanced usage
