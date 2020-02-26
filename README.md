@@ -50,8 +50,8 @@ The following toolboxes, which need to be downloaded and the folders added to th
 * Learning control signals
 	* Main function: learn_control_signals.m
 	* This function returns a data class that contains a "path" of possible control signals with increasing sparsity
-* Determining "best" control signal
-	* Several helper functions are included to automatically choose the "best" one; type 'help learn_control_signals' for more information
+* Determining the "best" control signal
+	* Several helper functions are included to automatically choose the "best" one; type 'help ControlSignalPath' for more information
 
 
 #### Advanced usage

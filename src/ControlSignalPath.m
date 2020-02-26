@@ -7,9 +7,10 @@ classdef ControlSignalPath < handle
     %
     % Also contains the results of metric evaluations used to determine the
     % "best" or "true" control signals. These can be calculated using the
-    % method self.calc_best_control_signal. Type:
-    %  >> help self.calc_best_control_signal
-    %   for more information
+    % method self.calc_best_control_signal. For more information on these
+    % helper functions:
+    %   
+    % See also: ControlSignalPath.calc_best_control_signal
     
     properties
         % Settings from original object

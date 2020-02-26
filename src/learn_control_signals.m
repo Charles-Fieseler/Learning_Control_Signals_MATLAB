@@ -7,7 +7,28 @@ function [ControlSignalPath_object, my_model_base] = ...%[all_U, all_A, all_B, m
 % INPUTS
 %   file_or_obj - the file for the data matrix OR a model with the data
 %       note: rows are channels and columns are time
-%   s - settings struct
+%   s - settings struct, with values and defaults as follows:
+%         verbose (true)
+%         to_use_L1 (false) - to use LASSO, i.e. an L1 penalty. Default is
+%           iterative least squares with hard thresholding
+%         num_iter (80) - Number of iterations
+%         iter_removal_fraction (0.05) - Fraction of entries to remove in
+%           each iteration
+%         iter_re_up_fraction (0) - Fraction of largest entries to add back
+%           in each iteration; experimental
+%         r_ctr (15) - Number of control signals to search for
+%         to_use_model_U (false) - If a simulation model is passed, whether
+%           to initialize this search using that object.
+%         to_threshold_total_U (false) - When applying hard threshold, do
+%           the entire matrix. Default is row-by-row. This is suggested
+%           because the rows are only defined up to a scaling determined by
+%           the matrix B
+%         only_positive_U (true) - Enforce positivity in the initialization
+%           of the control signal, as well as each iteration. Sometimes
+%           helps interpretability.
+%         to_smooth_controller (false) - Apply a Gaussian filter to the
+%           output control signal
+%         seed (13) - the initialization uses rng
 %
 % OUTPUTS
 %   ControlSignalPath_object - A class which contains:
@@ -19,7 +40,8 @@ function [ControlSignalPath_object, my_model_base] = ...%[all_U, all_A, all_B, m
 %       future I should definitely separate out the data processing from
 %       the model object
 %
-% Dependencies
+
+%% Dependencies
 %   .m files, .mat files, and MATLAB products required:(updated on 26-Feb-2020)
 %         MATLAB (version 9.4)
 %         Signal Processing Toolbox (version 8.0)
@@ -249,7 +271,7 @@ for i = 1:s.num_iter
     % Smooth the controller slightly; keep the max at 1.0
     if s.to_smooth_controller
 %         U = 1.02*smoothdata(U, 2, 'gaussian', [1 0]);
-%         U = smoothdata(U, 2, 'gaussian', [1 0]);
+        U = smoothdata(U, 2, 'gaussian', [1 0]);
         U = U ./ max(U, [], 2);
     end
     
