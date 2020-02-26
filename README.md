@@ -36,14 +36,6 @@ The script 'setup_Learn_control_signals.m' adds these folders to your MATLAB pat
 
 MATLAB; Tested on MATLAB 2018a.
 
-Data in the proper format as documented in the main function.
-
-The following toolboxes, which need to be downloaded and the folders added to the MATLAB path (as described in their respective README's):
-* Toolbox_DMD_git
-	* https://github.com/Charles-Fieseler/MATLAB_DMD_toolboxes
-* Charles_Matlab_toolbox
-	* https://github.com/Charles-Fieseler/Charles_Matlab_toolbox
-
 
 #### Getting started
 
