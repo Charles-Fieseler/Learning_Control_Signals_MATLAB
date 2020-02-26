@@ -77,8 +77,7 @@ function [ControlSignalPath_object, my_model_base] = ...%[all_U, all_A, all_B, m
 %         TVRegDiff.m
 %         
 %
-%   See also: OTHER_FUNCTION_NAME
-%
+%   See also: ControlSignalPath.m
 %
 %
 % Author: Charles Fieseler
