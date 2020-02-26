@@ -45,6 +45,9 @@ MATLAB; Tested on MATLAB 2018a.
 	* This function returns a data class (ControlSignalPath) that contains a "path" of possible control signals with increasing sparsity
 * Determining the "best" control signal
 	* Several helper functions are included to automatically choose the "best" one; type 'help ControlSignalPath' for more information
+* Note on 1d data
+	* If the time series is only a single dimension, then no real dynamics matrix will produce oscillations
+	* In this case, time-delay embedding is an easy way to create a dataset that is amenable to DMD-style techniques, including this one (see example 4)
 	
 See the example MATLAB live scripts for a more complete workflow.
 
