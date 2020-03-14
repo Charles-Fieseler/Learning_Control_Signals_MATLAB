@@ -120,7 +120,7 @@ classdef CrossValidationDmd < SettingsImportableFromStruct
         
         function calc_fold_indices(self)
             % Calculates folds by randomly assigning columns, making sure
-            % that the columns come from equally distribted blocks
+            % that the columns come from equally distributed blocks
             
             % First calculate blocks, evenly spaced with equal sizes
             %   Each COLUMN refers to a block;
