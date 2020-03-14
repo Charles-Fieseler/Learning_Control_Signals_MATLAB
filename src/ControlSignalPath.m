@@ -66,7 +66,7 @@ classdef ControlSignalPath < handle
             assert(ischar(objective_function),...
                 'Should pass string name of function')
             assert(ismethod(self, objective_function),...
-                'Custom objective function not implemented (yet')
+                'Custom objective function not implemented (yet)')
             
             self.objective_function = objective_function;
             
