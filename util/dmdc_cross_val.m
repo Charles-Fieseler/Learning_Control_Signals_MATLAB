@@ -2,6 +2,17 @@ function [err, all_err] = dmdc_cross_val(X, U, num_folds, err_steps, ...
     cross_val_mode, is_inclusive)
 % Does 'num_folds' cross validation with a DMDc framework
 %   Can use error steps that are greater than 1
+%
+% Input:
+%   X - data (columns are time slices)
+%   U - control signals
+%   num_folds - number of k-folds
+%   err_steps (1) - number of steps in the future to calculate the error
+%   cross_val_mode ('chaining') - by default does a "chained" or "rolling"
+%       cross-validation, which uses as test data the block exactly after
+%       the training block(s). This is recommended for time-series data
+%   is_inclusive (true) - Includes the error for multiple time steps, if 
+%       err_steps>1... otherwise does nothing
 if ~exist('err_steps', 'var')
     err_steps = 1;
 end
