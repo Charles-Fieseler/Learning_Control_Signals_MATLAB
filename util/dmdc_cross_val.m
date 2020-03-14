@@ -22,7 +22,7 @@ end
 if ~exist('is_inclusive', 'var')
     is_inclusive = true;
 end
-all_err = zeros(num_folds, 1);
+all_err = zeros(num_folds-1, 1);
 
 m = size(X, 2);
 window_starts = round(linspace(1, m, num_folds+1));
