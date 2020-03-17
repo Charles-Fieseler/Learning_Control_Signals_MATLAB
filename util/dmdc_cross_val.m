@@ -1,5 +1,5 @@
 function [err, all_err] = dmdc_cross_val(X, U, num_folds, err_steps, ...
-    cross_val_mode, is_inclusive)
+    cross_val_mode, is_inclusive, start_fold)
 % Does 'num_folds' cross validation with a DMDc framework
 %   Can use error steps that are greater than 1
 %
@@ -13,31 +13,37 @@ function [err, all_err] = dmdc_cross_val(X, U, num_folds, err_steps, ...
 %       the training block(s). This is recommended for time-series data
 %   is_inclusive (true) - Includes the error for multiple time steps, if 
 %       err_steps>1... otherwise does nothing
+%   start_fold (1) - the fold index to start on. With chaining, the first
+%       fold or two can be an extremely small amount of data and therefore
+%       much much worse
 if ~exist('err_steps', 'var')
     err_steps = 1;
 end
 if ~exist('cross_val_mode', 'var') || isempty(cross_val_mode)
     cross_val_mode = 'chaining';
 end
-if ~exist('is_inclusive', 'var')
+if ~exist('is_inclusive', 'var') || isempty(is_inclusive)
     is_inclusive = true;
 end
-all_err = zeros(num_folds-1, 1);
+if ~exist('start_fold', 'var')
+    start_fold = 1:start_fold;
+end
 
 m = size(X, 2);
 window_starts = round(linspace(1, m, num_folds+1));
 if strcmp(cross_val_mode, 'chaining')
-    window_starts(1) = [];
-    num_folds = num_folds - 1;
+    window_starts(1:start_fold) = [];
 end
+all_err = zeros(1, length(window_starts)-1);
+% Main loop
 all_ind = 1:(m-err_steps);
 n = size(X, 1);
-for i = 1:num_folds
+for iFold = 1:length(window_starts)-1
     % Get test and training indices
-    test_ind = window_starts(i):(window_starts(i+1)-err_steps);
+    test_ind = window_starts(iFold):(window_starts(iFold+1)-err_steps);
     
     if strcmp(cross_val_mode, 'chaining')
-        train_ind = 1:test_ind(i) - err_steps;
+        train_ind = 1:test_ind(iFold) - err_steps;
     else
         train_ind = all_ind;
         train_ind(test_ind) = [];
@@ -62,12 +68,12 @@ for i = 1:num_folds
     for i2 = 1:err_steps
         X_hat = A*X_hat + B*U1_t(:, i2:(end-(err_steps-i2)));
         if is_inclusive
-            all_err(i) = all_err(i) + ...
+            all_err(iFold) = all_err(iFold) + ...
                 norm(X(:, test_ind+i2) - X_hat, 'fro') / err_steps;
         end
     end
     if ~is_inclusive
-        all_err(i) = norm(X_end_t - X_hat, 'fro');
+        all_err(iFold) = norm(X_end_t - X_hat, 'fro');
     end
 end
 
