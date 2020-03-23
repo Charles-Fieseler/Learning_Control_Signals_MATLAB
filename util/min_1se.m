@@ -1,4 +1,4 @@
-function [min_1se_ind] = min_1se(dat, se)
+function [min_1se_ind, min_plus] = min_1se(dat, se)
 % Calculates the minimum value that is at most one standard deviation above
 % the minimum error, but simpler. Simpler is defined as a larger index in
 % the 'dat' vector
