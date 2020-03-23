@@ -26,7 +26,7 @@ if ~exist('is_inclusive', 'var') || isempty(is_inclusive)
     is_inclusive = true;
 end
 if ~exist('start_fold', 'var')
-    start_fold = 1:start_fold;
+    start_fold = 1;
 end
 
 m = size(X, 2);
