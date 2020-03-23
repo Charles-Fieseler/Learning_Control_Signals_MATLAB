@@ -81,6 +81,25 @@ classdef ControlSignalPath < handle
             [~, i] = max(vals);
             self.best_index = i;
         end
+        
+    end
+    
+    methods % Cross-validation specific functions
+        
+        function all_err = calc_cross_validation_error(self,...
+                k, num_error_steps)
+            % Calculates the cross validation errors for specific
+            % hyperparameters. Does not calculate the minumum
+            max_iter = length(self.all_U);
+            X = self.data;
+            
+            all_err = zeros(max_iter, k-1);
+            for i = 1:max_iter
+                this_U = self.all_U{i};
+                [~, all_err(i,:)] = ...
+                    dmdc_cross_val(X, this_U, k, num_error_steps, [], false);
+            end
+        end
     end
     
     methods % Metrics for control signal quality
