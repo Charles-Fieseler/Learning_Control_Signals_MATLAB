@@ -1,4 +1,4 @@
-classdef ControlSignalPath < handle
+classdef ControlSignalPath < matlab.mixin.Copyable
     % Stores output of a learned control signal path, produced by the
     % function learn_control_signals.m
     %
@@ -90,6 +90,9 @@ classdef ControlSignalPath < handle
                 k, num_error_steps)
             % Calculates the cross validation errors for specific
             % hyperparameters. Does not calculate the minumum
+            if length(num_error_steps) > 1
+                error('Use calc_cross_validation_error_vec() instead')
+            end
             max_iter = length(self.all_U);
             X = self.data;
             
@@ -97,6 +100,25 @@ classdef ControlSignalPath < handle
             for i = 1:max_iter
                 this_U = self.all_U{i};
                 [~, all_err(i,:)] = ...
+                    dmdc_cross_val(X, this_U, k, num_error_steps, [], false);
+            end
+        end
+        
+        function all_err = calc_cross_validation_error_vec(self,...
+                k, num_error_steps)
+            % Calculates the cross validation errors for specific
+            % hyperparameters. Does not calculate the minumum
+            assert(length(num_error_steps) > 1,...
+                'Use calc_cross_validation_error() instead')
+            % Evaluates multiple time steps at once
+            
+            max_iter = length(self.all_U);
+            X = self.data;
+            
+            all_err = zeros(max_iter, length(num_error_steps), k-1);
+            for i = 1:max_iter
+                this_U = self.all_U{i};
+                [~, all_err(i, :, :)] = ...
                     dmdc_cross_val(X, this_U, k, num_error_steps, [], false);
             end
         end
