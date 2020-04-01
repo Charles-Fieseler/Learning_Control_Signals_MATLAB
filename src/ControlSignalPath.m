@@ -48,7 +48,7 @@ classdef ControlSignalPath < matlab.mixin.Copyable
             self.all_U = all_U;
         end
         
-        function calc_best_control_signal(self, objective_function)
+        function calc_best_control_signal(self, objective_function, opt)
             % Calculates the best control signal, according to function
             % 'objective_function' which is saved in this object
             %
@@ -61,18 +61,23 @@ classdef ControlSignalPath < matlab.mixin.Copyable
             %       'acf' - simple autocorrelation of the signal
             %       'aic' - Akaike Information Criteria (AIC)
             %
+            %   opt (empty) - options to be passed to the algorithm; check
+            %       individual function documentation
+            %
             % TODO: allow custom metrics
-            % TODO: allow custom options
             assert(ischar(objective_function),...
                 'Should pass string name of function')
             assert(ismethod(self, objective_function),...
                 'Custom objective function not implemented (yet)')
+            if ~exist('opt', 'var') || isempty(opt)
+                opt = {};
+            end
             
             self.objective_function = objective_function;
             
             vals = zeros(size(self.all_U));
             for i = 1:length(self.all_U)
-                vals(i) = self.(objective_function)(i);
+                vals(i) = self.(objective_function)(i, opt);
             end
             vals(end) = vals(end-1);
             self.objective_values = vals;
@@ -130,11 +135,15 @@ classdef ControlSignalPath < matlab.mixin.Copyable
             val = acf(self.all_U{i}', 1, false);
         end
         
-        function val = aic(self, i)
+        function val = aic(self, i, opt)
             % Akaike Information Criteria (AIC)
             %   Uses the 2-step error by default
-            val = -aic_2step_dmdc(self.data, self.all_U{i}, [], [], 2, ...
-                [], 'standard');
+%             val = -aic_2step_dmdc(self.data, self.all_U{i}, [], [], 2, ...
+%                 [], 'standard');
+            if ~exist('opt', 'var') || isempty(opt)
+                opt = {2, [], 'standard'};
+            end
+            val = -aic_2step_dmdc(self.data, self.all_U{i}, [], [], opt{:});
         end
     end
     
@@ -150,6 +159,31 @@ classdef ControlSignalPath < matlab.mixin.Copyable
         
         function out = get.U(self)
             out = self.all_U{self.best_index};
+        end
+    end
+    
+    methods % Helper function for iteration over rows
+        function [out] = iterate_single_row(self, ...
+                base_U, ind_to_test, which_row, test_func)
+            % Takes a base input, then varies a single row, using any
+            % subset or all of the control signal path iterations
+            %   Each iteration does:
+            %       out{i} = test_func(this_U);
+            
+            out = cell(length(ind_to_test), 1);
+            for iIter = 1:length(ind_to_test)
+                % Retry all sparsity possibilities, leaving other rows same
+                this_U = base_U;
+                this_row_i = ind_to_test(iIter);
+                new_row_U = self.all_U{this_row_i};
+                this_U(iRow,:) = new_row_U(which_row,:);
+                out{iIter} = test_func(this_U);
+    %             [~, all_err(iIter,:,:)] = ...
+    %                 dmdc_cross_val(X, this_U, k, num_error_steps, ...
+    %                 [], false);
+%                 [~, all_err(iIter,:,:)] = ...
+%                     objective_func(X, this_U, num_error_steps);
+            end
         end
     end
 end
