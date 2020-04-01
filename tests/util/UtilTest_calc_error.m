@@ -22,8 +22,8 @@ classdef UtilTest_calc_error < matlab.unittest.TestCase
             eigenvalue_min = 0.95;  % Minimum eigenvalue; 1.0 = stable
             [X_dmd, A_true] = test_dmd_dat(n, m, 0, eigenvalue_min, seed);
 
-            % Build random controller
-            ctr_timing = 100:105;
+            % Build 2 control signals
+            ctr_timing = [100:105, 250:255];
             U = zeros(1,m-1);
             U(ctr_timing) = 1.0;
 
@@ -32,7 +32,7 @@ classdef UtilTest_calc_error < matlab.unittest.TestCase
             B = ones(n,1);
             X_true = real(calc_reconstruction_dmd(x0, [], A_true, B, U));
             % Add noise
-            noise = 0.05;
+            noise = 0.01;
             X = X_true + noise*randn(size(X_true));
             
             
@@ -84,8 +84,8 @@ classdef UtilTest_calc_error < matlab.unittest.TestCase
         function test_crossval(testCase)
             % Test that the new function is calculating all error steps
             % correctly
-%             testCase.verifyEqual(...
-%                 testCase.cross_val_old, testCase.cross_val_new);
+            testCase.verifyEqual(...
+                testCase.cross_val_old, testCase.cross_val_new);
         end
         
     end

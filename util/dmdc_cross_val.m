@@ -34,11 +34,12 @@ all_ind = 1:(m-err_steps);
 n = size(X, 1);
 for i = 1:num_folds
     % Get test and training indices
-    test_ind = window_starts(i):(window_starts(i+1)-err_steps);
+    test_ind = window_starts(i):window_starts(i+1);
     
     if strcmp(cross_val_mode, 'chaining')
         train_ind = 1:test_ind(i) - err_steps;
     else
+        warning('Check for data leakage')
         train_ind = all_ind;
         train_ind(test_ind) = [];
     end
@@ -59,7 +60,7 @@ for i = 1:num_folds
     
     % Calculate error
     
-    all_err = calc_nstep_error(X1_t, A, B, U1_t, ...
+    all_err(:,i) = calc_nstep_error(X1_t, A, B, U1_t, ...
         err_steps_to_save, false);
 %     X_hat = X1_t;
 %     for i2 = 1:err_steps
