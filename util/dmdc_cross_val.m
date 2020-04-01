@@ -49,7 +49,8 @@ for i = 1:num_folds
     U1 = U(:, train_ind);
     X1_t = X(:, test_ind);
 %     X_end_t = X(:, test_ind+err_steps);
-    U1_t = U(:, test_ind(1):(test_ind(end)+err_steps-1));
+%     U1_t = U(:, test_ind(1):(test_ind(end)+err_steps-1));
+    U1_t = U(:, test_ind(1):(test_ind(end)-1));
     
     % Build DMDc model
     AB = X2/[X1; U1];

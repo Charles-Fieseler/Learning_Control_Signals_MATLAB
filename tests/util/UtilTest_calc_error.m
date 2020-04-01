@@ -63,13 +63,13 @@ classdef UtilTest_calc_error < matlab.unittest.TestCase
             end
             
             %% Cross validation functions
-%             k = 5;
-%             % Old
-%             [~, testCase.cross_val_old] = dmdc_cross_val_old(X, U, k, ...
-%                 testCase.num_err_steps, [], false);
-%             % New
-%             [~, testCase.cross_val_new] = dmdc_cross_val(X, U, k, ...
-%                 testCase.num_err_steps, [], false);
+            k = 5;
+            % Old
+            [~, testCase.cross_val_old] = dmdc_cross_val_old(X, U, k, ...
+                testCase.num_err_steps, [], false);
+            % New
+            [~, testCase.cross_val_new] = dmdc_cross_val(X, U, k, ...
+                testCase.num_err_steps, [], false);
         end
     end
     
