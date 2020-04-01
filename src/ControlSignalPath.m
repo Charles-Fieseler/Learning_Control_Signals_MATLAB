@@ -176,7 +176,7 @@ classdef ControlSignalPath < matlab.mixin.Copyable
                 this_U = base_U;
                 this_row_i = ind_to_test(iIter);
                 new_row_U = self.all_U{this_row_i};
-                this_U(iRow,:) = new_row_U(which_row,:);
+                this_U(which_row,:) = new_row_U(which_row,:);
                 out{iIter} = test_func(this_U);
     %             [~, all_err(iIter,:,:)] = ...
     %                 dmdc_cross_val(X, this_U, k, num_error_steps, ...
