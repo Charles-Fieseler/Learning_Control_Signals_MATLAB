@@ -1,4 +1,4 @@
-function [err, all_err] = dmdc_cross_val(X, U, num_folds, err_steps, ...
+function [err, all_err] = dmdc_cross_val_old(X, U, num_folds, err_steps, ...
     cross_val_mode, is_inclusive)
 % Does 'num_folds' cross validation with a DMDc framework
 %   Can use error steps that are greater than 1
@@ -57,16 +57,21 @@ for i = 1:num_folds
     B = AB(:, (n+1):end);
     
     % Calculate error
-    
-    all_err = calc_nstep_error(X1_t, A, B, U1_t, ...
-        err_steps_to_save, false);
-%     X_hat = X1_t;
-%     for i2 = 1:err_steps
-%         X_hat = A*X_hat + B*U1_t(:, i2:(end-(err_steps-i2)));
-%         if ismember(i2,err_steps_to_save)
-%             save_ind = ismember(err_steps_to_save, i2);
-%             all_err(save_ind, i) = norm(X(:, test_ind+i2) - X_hat, 'fro');
+%     all_err(i) = norm(A*X1_t + B*U1_t - X2_t,'fro');
+    X_hat = X1_t;
+    for i2 = 1:err_steps
+        X_hat = A*X_hat + B*U1_t(:, i2:(end-(err_steps-i2)));
+        if ismember(i2,err_steps_to_save)
+            save_ind = ismember(err_steps_to_save, i2);
+            all_err(save_ind, i) = norm(X(:, test_ind+i2) - X_hat, 'fro');
+        end
+%         if is_inclusive
+%             all_err(i) = all_err(i) + ...
+%                 norm(X(:, test_ind+i2) - X_hat, 'fro') / err_steps;
 %         end
+    end
+%     if ~is_inclusive
+%         all_err(i) = norm(X_end_t - X_hat, 'fro');
 %     end
 end
 if is_inclusive
