@@ -26,7 +26,7 @@ end
 if ~exist('formula_mode', 'var')
     formula_mode = 'stanford';
 end
-X1 = dat(:, 1:(end-num_steps));
+X1 = dat(:, 1:(end-num_steps(end)));
 if ~exist('A', 'var') || isempty(A)
     % Do EXACT, 1-step DMDc to get both A and B
     X2 = dat(:, 2:end);
@@ -40,25 +40,18 @@ if ~exist('do_aicc', 'var') || isempty(do_aicc)
     do_aicc = false;
 end
 
-RSS = calc_nstep_error(dat, A, B, U, num_steps, true);
+RSS_vec = calc_nstep_error(dat, A, B, U, num_steps, false);
 
 num_signals = size(U, 1);
 k = nnz(U) / num_signals;
 n = size(X1, 2);
 
+% Calculate for all error calculations
+aic_vec = zeros(length(num_steps), 1);
 for i = 1:length(num_steps)
-    aic_vec(i) = my_aic(formula_mode, do_aicc, {});
+    aic_vec(i) = my_aic(formula_mode, do_aicc, RSS_vec(i),...
+        k, n, num_signals, A, B, U, X1);
 end
 
-% 
-% Note: used reduced k originally because it doesn't change the difference
-
-% p = size(A,1);
-% k_d = (k + p + size(B,2))/p; % i.e. per dimension, including A and B matrices
-% Formula using p=dim(A) 
-% multi_aicc = aic + (2*n*(num_signals*k + p*(p + 1)/2)) / (n - (k + p + 1));
-% Formula using p=dim(U)
-% p = num_signals;
-% multi_aicc = aic + (2*n*(p*k + p*(p + 1)/2)) / (n - (k + p + 1));
 end
 

@@ -1,7 +1,12 @@
-function [aic_out] = my_aic(formula_mode, do_aicc, varargin)
+function [aic_out] = my_aic(formula_mode, do_aicc, RSS, k, n, num_signals,...
+    A, B, U, X1)
 % Calculates AIC or AICc using various formulas. The main difference
 % between the formulas is whether the variance of the error is explicitly
 % calculated
+if ~exist('formula_mode', 'var')
+    formula_mode = 'stanford';
+end
+
 if strcmp(formula_mode, 'standard')
     n = numel(X1);
     % aic = -(2*k + m*log(RSS));
