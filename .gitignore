@@ -19,3 +19,4 @@ html/
 scratch/
 dat/correlation_table.txt
 *.ps
+*.log
