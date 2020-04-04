@@ -11,7 +11,7 @@ if strcmp(formula_mode, 'standard')
 %     n = numel(X1);
 %     aic_out = 2*num_signals*(k + n) + n*log(RSS); % From wikipedia
     aic_out = 2*num_signals*k + 2*n + n*log(RSS); % The 2*n usually doesn't matter
-elseif strcmp(formula_mode, 'multivariate_test')
+elseif strcmp(formula_mode, 'multivariate')
     % Note: AICc probably won't work here
     n = size(X1, 1);
     aic_out = 2*num_signals*k + 2*n + n*log(RSS); % The 2*n usually doesn't matter

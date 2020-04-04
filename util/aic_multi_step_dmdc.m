@@ -44,7 +44,8 @@ RSS_vec = calc_nstep_error(dat, A, B, U, num_steps, false);
 
 num_signals = size(U, 1);
 k = nnz(U) / num_signals;
-n = size(X1, 2);
+n = size(X1, 2); %TEST ZZZ
+% n = numel(X1); 
 
 % Calculate for all error calculations
 aic_vec = zeros(length(num_steps), 1);
