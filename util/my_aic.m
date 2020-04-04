@@ -4,13 +4,17 @@ function [aic_out] = my_aic(formula_mode, do_aicc, RSS, k, n, num_signals,...
 % between the formulas is whether the variance of the error is explicitly
 % calculated
 if ~exist('formula_mode', 'var')
-    formula_mode = 'stanford';
+    formula_mode = 'standard';
 end
 
 if strcmp(formula_mode, 'standard')
-    n = numel(X1);
-    % aic = -(2*k + m*log(RSS));
-    aic_out = 2*num_signals*(k + n) + n*log(RSS); % From wikipedia
+%     n = numel(X1);
+%     aic_out = 2*num_signals*(k + n) + n*log(RSS); % From wikipedia
+    aic_out = 2*num_signals*k + 2*n + n*log(RSS); % The 2*n usually doesn't matter
+elseif strcmp(formula_mode, 'multivariate_test')
+    % Note: AICc probably won't work here
+    n = size(X1, 1);
+    aic_out = 2*num_signals*k + 2*n + n*log(RSS); % The 2*n usually doesn't matter
 elseif strcmp(formula_mode, 'stanford')
     % X2 = dat(:, 2:end);
     % err_cov = norm(calc_nstep_error(dat, X2/dat(:, 1:end-1),...
@@ -55,9 +59,14 @@ end
 % First, AICc
 if do_aicc
     k_t = nnz(U) + nnz(A) + nnz(B); % Total number of parameters
+%     sz = size(X1);
+%   d = sz(2) / (sz(2) - (a/num_signals + a/sz(2) + 1));
     correction = (2*k_t.^2 + 2*k_t) / abs(n - k_t - 1);
 %     correction = (2*k_t.^2 + 2*k_t) / (numel(X1) - k_t - 1);
     aic_out = aic_out + correction;
+    if k_t > n
+        warning('Number of parameters is larger than data; AICc may be difficult to interpret')
+    end
     % TODO: k_t is usually much larger than n!!
 end
 
