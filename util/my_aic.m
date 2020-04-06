@@ -1,5 +1,5 @@
 function [aic_out] = my_aic(formula_mode, do_aicc, RSS, k, n, num_signals,...
-    A, B, U, X1)
+    A, B, U, X1, lambda)
 % Calculates AIC or AICc using various formulas. The main difference
 % between the formulas is whether the variance of the error is explicitly
 % calculated
@@ -15,6 +15,11 @@ elseif strcmp(formula_mode, 'multivariate')
     % Note: AICc probably won't work here
     n = size(X1, 1);
     aic_out = 2*num_signals*k + 2*n + n*log(RSS); % The 2*n usually doesn't matter
+elseif strcmp(formula_mode, 'window')
+    % For use when each variable does not affect the entire time series
+    %   Hyperparameter must be passed
+    n = size(X1, 1);
+    aic_out = 2*num_signals*k + 2*n + lambda*n*log(RSS); % The 2*n usually doesn't matter
 elseif strcmp(formula_mode, 'stanford')
     % X2 = dat(:, 2:end);
     % err_cov = norm(calc_nstep_error(dat, X2/dat(:, 1:end-1),...

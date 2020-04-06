@@ -1,5 +1,5 @@
 function [aic_vec] = aic_multi_step_dmdc(dat, U, A, B, num_steps, do_aicc, ...
-    formula_mode)
+    formula_mode, lambda)
 % Calculates the NEGATIVE aic for a DMDc model given data and basing the 
 % number of parameters on the number of nonzero terms in U, and follows:
 %   https://en.wikipedia.org/wiki/Akaike_information_criterion#Comparison_with_least_squares
@@ -39,6 +39,9 @@ end
 if ~exist('do_aicc', 'var') || isempty(do_aicc)
     do_aicc = false;
 end
+if ~exist('lambda', 'var')
+    lambda = 1;
+end
 
 RSS_vec = calc_nstep_error(dat, A, B, U, num_steps, false);
 
@@ -51,7 +54,7 @@ n = size(X1, 2); %TEST ZZZ
 aic_vec = zeros(length(num_steps), 1);
 for i = 1:length(num_steps)
     aic_vec(i) = my_aic(formula_mode, do_aicc, RSS_vec(i),...
-        k, n, num_signals, A, B, U, X1);
+        k, n, num_signals, A, B, U, X1, lambda);
 end
 
 end
