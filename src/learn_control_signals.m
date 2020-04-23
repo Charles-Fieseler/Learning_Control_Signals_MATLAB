@@ -28,8 +28,14 @@ function [ControlSignalPath_object, my_model_base] = ...%[all_U, all_A, all_B, m
 %           helps interpretability.
 %         to_smooth_controller (false) - Apply a Gaussian filter to the
 %           output control signal during the algorithm
-%         to_smooth_initialization (true) - Apply a Gaussian filter to the
-%           initialization
+%         to_smooth_initialization (false) - Apply a moving average and
+%           Gaussian filter to the initialization
+%         initialization_smoothing_windows ([3, 6]) - windows for the
+%           moving average and Gaussian filters, respectively. Note: 
+%           to_smooth_initialization must be 'true' to use these.
+%         custom_initialization ([]) - custom initialization for the
+%           control signals; overrides filtering and positivity options
+%           above. Checks for correct number of rows
 %         seed (13) - the initialization uses rng
 %
 % OUTPUTS
@@ -106,7 +112,9 @@ defaults = struct(...
     'to_threshold_total_U', false,...
     'only_positive_U', true,...
     'to_smooth_controller', false, ...
-    'to_smooth_initialization', true, ...
+    'to_smooth_initialization', false, ...
+    'initialization_smoothing_windows', [3, 6],...
+    'custom_initialization', [],...
     'seed', 13);
 for key = fieldnames(defaults).'
     k = key{1};
@@ -160,40 +168,31 @@ end
 [n, m] = size(X1);
 
 all_err = zeros(s.num_iter,2);
-if s.to_use_model_U
+if ~isempty(s.custom_initialization)
+    U = s.custom_initialization;
+    assert(size(U,1)==s.r_ctr,...
+        'Custom initialization should have %d rows', s.r_ctr)
+elseif s.to_use_model_U
     U = my_model_base.control_signal(1:s.r_ctr,1:m);
 else
-    if ~s.only_positive_U
-        % Initialize with the raw errors from a naive DMD fit
-        err = real(X2 - (X2/X1)*X1);
-        if s.to_smooth_initialization
-            err = smoothdata(err, 2, 'gaussian', 3); % Smooth 3x
-        end
-        [~, ~, U0] = svd(err);
-        U = U0(:,1:s.r_ctr)';
-    else
-        % Original: Initialize with non-negative factorization
-        err = real(X2 - (X2/X1)*X1);
-        % New: equalize variance
-%         X2_0 = X2 ./ std(X2, [], 2);
-%         X1_0 = X1 ./ std(X1, [], 2);
-%         err = real(X2_0 - (X2_0/X1_0)*X1_0);
-        % New: filter first!
-%         ml_sigma = norm(err,'fro')/size(X1,2); % Estimate for noise level
-%         err(abs(err) < ml_sigma) = 0;
-        if s.to_smooth_initialization
-            err = smoothdata(err, 2, 'movmean', 3);
-            err = smoothdata(err, 2, 'gaussian', 6); % Smooth 3x
-%             err_gauss = smoothdata(err, 2, 'gaussian', 3); % Smooth 3x
-%             err_golay = sgolayfilt(err', 2, 5)';
-%             err_mean = smoothdata(err, 2, 'movmean', 3);
-        end
-%         err = smoothdata(err, 2, 'gaussian', 3);
-%         err = smoothdata(err, 2, 'gaussian', 3);
-        
+    % Initialize with the raw errors from a naive DMD fit
+    err = real(X2 - (X2/X1)*X1);
+    if s.to_smooth_initialization
+        err = smoothdata(err, 2, 'movmean', ...
+            s.initialization_smoothing_windows(1));
+        err = smoothdata(err, 2, 'gaussian', ...
+            s.initialization_smoothing_windows(2));
+    end
+    
+    % Process raw error into modes
+    if s.only_positive_U
+        % Default: Initialize with non-negative factorization        
         [~, U0] = nnmf(err, s.r_ctr);
         U = U0(1:s.r_ctr,:);
         U = U ./ max(U,[],2);
+    else
+        [~, ~, U0] = svd(err);
+        U = U0(:,1:s.r_ctr)';
     end
 end
 
