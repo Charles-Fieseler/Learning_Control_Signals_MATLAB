@@ -158,7 +158,7 @@ classdef ControlSignalPath < matlab.mixin.Copyable
             objective_func_lambda = size(self.data,2) / window{1};
             objective_func = @(U) ...
                 aic_multi_step_dmdc(self.data, U, [], [], num_error_steps,...
-                true, 'window', objective_func_lambda);
+                false, 'window', objective_func_lambda);
                 
             val = - objective_func(self.all_U{i});
         end
