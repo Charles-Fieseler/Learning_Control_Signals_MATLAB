@@ -130,8 +130,9 @@ classdef ControlSignalPath < matlab.mixin.Copyable
     end
     
     methods % Metrics for control signal quality
-        function val = acf(self, i)
+        function val = acf(self, i, ~)
             % Simplest objective function: autocorrelation
+            %   No options for this
             val = acf(self.all_U{i}', 1, false);
         end
         
