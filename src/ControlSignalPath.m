@@ -155,10 +155,10 @@ classdef ControlSignalPath < matlab.mixin.Copyable
             if ~exist('window', 'var') || isempty(window)
                 window = {10}; % To match syntax
             end
-            objective_func_lambda = size(self.X,2) / window{1};
+            objective_func_lambda = size(self.data,2) / window{1};
             objective_func = @(U) ...
-                aic_multi_step_dmdc(X, U, [], [], num_error_steps, true, ...
-                    'window', objective_func_lambda);
+                aic_multi_step_dmdc(self.data, U, [], [], num_error_steps,...
+                true, 'window', objective_func_lambda);
                 
             val = - objective_func(self.all_U{i});
         end
