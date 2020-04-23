@@ -27,7 +27,9 @@ function [ControlSignalPath_object, my_model_base] = ...%[all_U, all_A, all_B, m
 %           of the control signal, as well as each iteration. Sometimes
 %           helps interpretability.
 %         to_smooth_controller (false) - Apply a Gaussian filter to the
-%           output control signal
+%           output control signal during the algorithm
+%         to_smooth_initialization (true) - Apply a Gaussian filter to the
+%           initialization
 %         seed (13) - the initialization uses rng
 %
 % OUTPUTS
@@ -104,6 +106,7 @@ defaults = struct(...
     'to_threshold_total_U', false,...
     'only_positive_U', true,...
     'to_smooth_controller', false, ...
+    'to_smooth_initialization', true, ...
     'seed', 13);
 for key = fieldnames(defaults).'
     k = key{1};
@@ -162,7 +165,11 @@ if s.to_use_model_U
 else
     if ~s.only_positive_U
         % Initialize with the raw errors from a naive DMD fit
-        [~, ~, U0] = svd(real(X2 - (X2/X1)*X1));
+        err = real(X2 - (X2/X1)*X1);
+        if s.to_smooth_initialization
+            err = smoothdata(err, 2, 'gaussian', 3); % Smooth 3x
+        end
+        [~, ~, U0] = svd(err);
         U = U0(:,1:s.r_ctr)';
     else
         % Original: Initialize with non-negative factorization
@@ -174,7 +181,13 @@ else
         % New: filter first!
 %         ml_sigma = norm(err,'fro')/size(X1,2); % Estimate for noise level
 %         err(abs(err) < ml_sigma) = 0;
-%         err = smoothdata(err, 2, 'gaussian', 3); % Smooth 3x
+        if s.to_smooth_initialization
+            err = smoothdata(err, 2, 'movmean', 3);
+            err = smoothdata(err, 2, 'gaussian', 6); % Smooth 3x
+%             err_gauss = smoothdata(err, 2, 'gaussian', 3); % Smooth 3x
+%             err_golay = sgolayfilt(err', 2, 5)';
+%             err_mean = smoothdata(err, 2, 'movmean', 3);
+        end
 %         err = smoothdata(err, 2, 'gaussian', 3);
 %         err = smoothdata(err, 2, 'gaussian', 3);
         
@@ -185,7 +198,7 @@ else
 end
 
 %---------------------------------------------
-% Iteratively sparsify the controller
+%% Iteratively sparsify the controller
 %---------------------------------------------
 sparsity_pattern = false(size(U));
 all_U = cell(s.num_iter, 1);
