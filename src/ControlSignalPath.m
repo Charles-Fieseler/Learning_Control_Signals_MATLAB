@@ -60,6 +60,7 @@ classdef ControlSignalPath < matlab.mixin.Copyable
             %
             %       'acf' - simple autocorrelation of the signal
             %       'aic' - Akaike Information Criteria (AIC)
+            %       'aic_window' - AIC above but with a sparsity parameter
             %
             %   opt (empty) - options to be passed to the algorithm; check
             %       individual function documentation
@@ -145,6 +146,21 @@ classdef ControlSignalPath < matlab.mixin.Copyable
                 opt = {2, [], 'standard'};
             end
             val = -aic_2step_dmdc(self.data, self.all_U{i}, [], [], opt{:});
+        end
+        
+        function val = aic_window(self, i, window)
+            % Akaike Information Criteria (AIC) with a "window"
+            % hyperparameter
+            num_error_steps = 2;
+            if ~exist('window', 'var') || isempty(window)
+                window = {10}; % To match syntax
+            end
+            objective_func_lambda = size(self.X,2) / window{1};
+            objective_func = @(U) ...
+                aic_multi_step_dmdc(X, U, [], [], num_error_steps, true, ...
+                    'window', objective_func_lambda);
+                
+            val = - objective_func(self.all_U{i});
         end
     end
     
