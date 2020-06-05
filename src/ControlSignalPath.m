@@ -34,6 +34,9 @@ classdef ControlSignalPath < matlab.mixin.Copyable
         A
         B
         U
+        
+        X1
+        X2
     end
     
     methods % User-facing
@@ -131,12 +134,6 @@ classdef ControlSignalPath < matlab.mixin.Copyable
     end
     
     methods % Metrics for control signal quality
-        function val = acf(self, i, ~)
-            % Simplest objective function: autocorrelation
-            %   No options for this
-            val = acf(self.all_U{i}', 1, false);
-        end
-        
         function val = aic(self, i, opt)
             % Akaike Information Criteria (AIC)
             %   Uses the 2-step error by default
@@ -162,6 +159,21 @@ classdef ControlSignalPath < matlab.mixin.Copyable
                 
             val = - objective_func(self.all_U{i});
         end
+        
+    end
+    
+    methods % Heuristics; can be used for signal quality
+        function val = acf(self, i, ~)
+            % Simplest (heuristic) objective function: autocorrelation
+            %   No options for this
+            val = acf(self.all_U{i}', 1, false);
+        end
+        
+        function val = variance_explained_by_A(self, i, ~)
+            % Calculates the variance explained by the intrinsic dynamics,
+            % i.e. the A matrix, as a fraction of the total variance
+            A = self.all_A{i};
+        end
     end
     
     
@@ -176,6 +188,14 @@ classdef ControlSignalPath < matlab.mixin.Copyable
         
         function out = get.U(self)
             out = self.all_U{self.best_index};
+        end
+        
+        function out = get.X1(self)
+            out = self.data(:,1:end-1);
+        end
+        
+        function out = get.X2(self)
+            out = self.data(:,2:end);
         end
     end
     
