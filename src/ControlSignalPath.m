@@ -172,7 +172,25 @@ classdef ControlSignalPath < matlab.mixin.Copyable
         function val = variance_explained_by_A(self, i, ~)
             % Calculates the variance explained by the intrinsic dynamics,
             % i.e. the A matrix, as a fraction of the total variance
-            A = self.all_A{i};
+            residual = self.X2 - self.all_A{i}*self.X1;
+            val = mean(var(residual, [], 2) ./ var(self.X2, [], 2));
+        end
+        
+        function val = variance_explained_by_B(self, i, ~)
+            % Calculates 1 - variance explained by the control signals,
+            % i.e. the B matrix, as a fraction of the total variance
+            %   Note: the max of this should be "best" in terms of not too
+            %   much control signal
+            residual = self.X2 - self.all_B{i} * self.all_U{i};
+            val = 1 - mean(var(residual, [], 2) ./ var(self.X2, [], 2));
+        end
+        
+        function val = variance_explained_ratio_A_to_B(self, i, ~)
+            % Calculates the ratio of the explained variance:
+            %   var(A_explained) / var(B_explained)
+            eps = 1e-8;
+            val = self.variance_explained_by_A(i) / ...
+                (1 - self.variance_explained_by_B(i) + eps);
         end
     end
     
